@@ -33,6 +33,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wav}'],
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        navigateFallback: 'index.html',
+        navigateFallbackAllowlist: [/^\/poly-pro\//],
       },
     }),
   ],
