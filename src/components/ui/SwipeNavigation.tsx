@@ -284,15 +284,8 @@ export function SwipeNavigation({
           </div>
 
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle shrink-0">
+          <div className="flex items-center px-4 py-2 border-b border-border-subtle shrink-0">
             <h2 className="text-lg font-semibold text-text-primary">Settings</h2>
-            <button
-              onClick={() => setSettingsOpen(false)}
-              className="text-sm font-medium text-[rgba(255,255,255,0.85)] min-w-[44px] min-h-[44px]
-                         flex items-center justify-center"
-            >
-              Done
-            </button>
           </div>
 
           {/* Scrollable content — swipe down when at scroll top dismisses */}
