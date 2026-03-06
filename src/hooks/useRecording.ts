@@ -7,23 +7,19 @@ import { getPreferredMicStream } from '../utils/mic';
 import * as db from '../store/db';
 import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
 
-const MAX_RECORDING_MS = 30 * 60 * 1000; // 30 minutes
-const WARNING_MS = 25 * 60 * 1000; // Warning at 25 min
+const MAX_RECORDING_MS = 30 * 60 * 1000;
+const WARNING_MS = 25 * 60 * 1000;
 
 export interface RecordingState {
   isRecording: boolean;
-  elapsed: number; // seconds
-  micLevel: number; // 0-1 peak level for waveform
+  elapsed: number;
+  micLevel: number;
   warning: string | null;
 }
 
-/**
- * Full recording lifecycle hook.
- * - Captures raw PCM at 48kHz via AudioWorklet
- * - Stores 1-second chunks to accumulator
- * - On stop: saves session to IDB
- * - Auto-starts metronome if not running
- */
+// Track whether worklet module has been loaded (survives re-renders)
+let workletLoaded = false;
+
 export function useRecording() {
   const [state, setState] = useState<RecordingState>({
     isRecording: false,
@@ -35,19 +31,42 @@ export function useRecording() {
   const micStreamRef = useRef<MediaStream | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const pcmChunksRef = useRef<Float32Array[]>([]);
+  const silentGainRef = useRef<GainNode | null>(null);
+  const pcmChunksRef = useRef<number[][]>([]);
   const startTimeRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isRecordingRef = useRef(false);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (isRecordingRef.current) {
-        stopRecording();
+        cleanupRecording();
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Tear down mic/worklet without saving */
+  const cleanupRecording = useCallback(() => {
+    isRecordingRef.current = false;
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    if (workletNodeRef.current) {
+      try { workletNodeRef.current.port.postMessage({ type: 'stop' }); } catch {}
+      try { workletNodeRef.current.disconnect(); } catch {}
+      workletNodeRef.current = null;
+    }
+    if (micSourceRef.current) {
+      try { micSourceRef.current.disconnect(); } catch {}
+      micSourceRef.current = null;
+    }
+    if (silentGainRef.current) {
+      try { silentGainRef.current.disconnect(); } catch {}
+      silentGainRef.current = null;
+    }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current = null;
+    }
   }, []);
 
   const startRecording = useCallback(async () => {
@@ -63,37 +82,45 @@ export function useRecording() {
 
       const ctx = await audioEngine.initContext();
 
-      // Load the AudioWorklet processor
-      const base = import.meta.env.BASE_URL || '/poly-pro/';
-      await ctx.audioWorklet.addModule(`${base}worklets/pcm-capture.js`);
+      // Load worklet module (once per app lifetime)
+      if (!workletLoaded) {
+        const base = import.meta.env.BASE_URL || '/poly-pro/';
+        await ctx.audioWorklet.addModule(`${base}worklets/pcm-capture.js`);
+        workletLoaded = true;
+      }
 
       // Get mic stream (prefer built-in, avoid BT)
       const stream = await getPreferredMicStream();
       micStreamRef.current = stream;
 
-      // Connect mic → AudioWorklet
+      // Connect: mic → worklet → silentGain(0) → destination
+      // Worklet must be connected to destination for process() to fire,
+      // but we use a gain node at 0 so no mic audio plays through speakers.
       const source = ctx.createMediaStreamSource(stream);
       micSourceRef.current = source;
 
       const workletNode = new AudioWorkletNode(ctx, 'pcm-capture-processor');
       workletNodeRef.current = workletNode;
 
+      const silentGain = ctx.createGain();
+      silentGain.gain.value = 0;
+      silentGainRef.current = silentGain;
+
+      source.connect(workletNode);
+      workletNode.connect(silentGain);
+      silentGain.connect(ctx.destination);
+
       // Listen for messages from worklet
       pcmChunksRef.current = [];
       workletNode.port.onmessage = (e) => {
-        if (e.data.type === 'pcm') {
-          pcmChunksRef.current.push(e.data.samples);
-        } else if (e.data.type === 'level') {
-          setState((s) => ({ ...s, micLevel: e.data.peak }));
+        const msg = e.data;
+        if (msg.type === 'pcm') {
+          // Worklet sends Array<number>, not Float32Array (avoids transfer/detach issues)
+          pcmChunksRef.current.push(msg.samples);
+        } else if (msg.type === 'level') {
+          setState((s) => ({ ...s, micLevel: msg.peak }));
         }
       };
-
-      source.connect(workletNode);
-      // Don't connect worklet to destination — we don't want mic playback
-      workletNode.connect(ctx.destination); // Required for process() to fire, but gain is 0 in worklet
-
-      // Actually — worklet needs to be connected but we don't want audio through.
-      // The worklet doesn't output anything, so connecting to destination is fine.
 
       // Tell worklet to start capturing
       workletNode.port.postMessage({ type: 'start' });
@@ -110,59 +137,56 @@ export function useRecording() {
 
       // Elapsed timer
       timerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        const el = Math.floor((Date.now() - startTimeRef.current) / 1000);
         let warning: string | null = null;
 
         if (Date.now() - startTimeRef.current > WARNING_MS) {
           warning = 'Recording will auto-stop at 30:00';
         }
-
         if (Date.now() - startTimeRef.current > MAX_RECORDING_MS) {
           stopRecording();
           return;
         }
 
-        setState((s) => ({ ...s, elapsed, warning }));
+        setState((s) => ({ ...s, elapsed: el, warning }));
       }, 1000);
 
     } catch (err) {
       console.error('Failed to start recording:', err);
-      setState((s) => ({ ...s, isRecording: false }));
+      cleanupRecording();
+      setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cleanupRecording]);
 
   const stopRecording = useCallback(async () => {
     if (!isRecordingRef.current) return;
-    isRecordingRef.current = false;
 
-    if (timerRef.current) clearInterval(timerRef.current);
-
-    // Tell worklet to stop and flush
+    // Tell worklet to flush, then wait briefly
     if (workletNodeRef.current) {
       workletNodeRef.current.port.postMessage({ type: 'stop' });
     }
+    await new Promise((r) => setTimeout(r, 200));
 
-    // Wait a moment for final flush
-    await new Promise((r) => setTimeout(r, 100));
-
-    // Disconnect and close mic
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
-    if (micSourceRef.current) {
-      micSourceRef.current.disconnect();
-      micSourceRef.current = null;
-    }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((t) => t.stop());
-      micStreamRef.current = null;
-    }
-
-    // Combine all PCM chunks into single blob
+    // Save chunks before cleanup
     const chunks = pcmChunksRef.current;
+    const durationMs = Date.now() - startTimeRef.current;
+
+    // Cleanup mic/worklet
+    cleanupRecording();
+
+    // Stop metronome
+    audioEngine.stop();
+    useMetronomeStore.getState().setPlaying(false);
+
+    // Combine all chunks into a single Float32Array
     const totalSamples = chunks.reduce((acc, c) => acc + c.length, 0);
+
+    if (totalSamples === 0) {
+      console.warn('No audio captured');
+      setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null });
+      return;
+    }
+
     const combined = new Float32Array(totalSamples);
     let offset = 0;
     for (const chunk of chunks) {
@@ -171,12 +195,11 @@ export function useRecording() {
     }
     pcmChunksRef.current = [];
 
-    // Save session
-    const durationMs = Date.now() - startTimeRef.current;
+    // Build session record
     const metronome = useMetronomeStore.getState();
     const activeProjectId = useProjectStore.getState().activeProjectId;
-
     const sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
     const session: db.SessionRecord = {
       id: sessionId,
       date: new Date().toISOString(),
@@ -185,24 +208,23 @@ export function useRecording() {
       meter: `${metronome.meterNumerator}/${metronome.meterDenominator}`,
       subdivision: metronome.subdivision,
       durationMs,
-      totalHits: 0, // Filled by analysis in Phase 5
+      totalHits: 0,
       avgDelta: 0,
       stdDev: 0,
       perfectPct: 0,
-      hasRecording: true,
+      hasRecording: totalSamples > 0,
     };
 
-    // Save session record and PCM blob to IDB
-    const pcmBlob = new Blob([combined.buffer], { type: 'audio/float32' });
+    // Save to IDB
+    const pcmBlob = new Blob([combined.buffer], { type: 'application/octet-stream' });
     await Promise.all([
       db.putSession(session),
       db.putRecording(sessionId, pcmBlob),
     ]);
 
-    // Add to session store
+    // Update stores
     await useSessionStore.getState().addSession(session);
 
-    // Update project's session list
     if (activeProjectId) {
       const project = useProjectStore.getState().projects.find((p) => p.id === activeProjectId);
       if (project) {
@@ -213,19 +235,13 @@ export function useRecording() {
       }
     }
 
-    setState({
-      isRecording: false,
-      elapsed: 0,
-      micLevel: 0,
-      warning: null,
-    });
+    setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null });
 
-    // Navigate to Progress page to see the new session
+    // Navigate to Progress page
     useNavStore.getState().navigateTo(PAGE_PROGRESS);
 
     return sessionId;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cleanupRecording]);
 
   const toggleRecording = useCallback(async () => {
     if (isRecordingRef.current) {

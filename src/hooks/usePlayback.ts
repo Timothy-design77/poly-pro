@@ -4,6 +4,7 @@ import * as db from '../store/db';
 
 /**
  * Plays back raw float32 PCM recordings from IDB via Web Audio.
+ * The blob contains raw Float32Array bytes (application/octet-stream).
  */
 export function usePlayback() {
   const [playingSessionId, setPlayingSessionId] = useState<string | null>(null);
@@ -12,7 +13,7 @@ export function usePlayback() {
   const play = useCallback(async (sessionId: string) => {
     // Stop any current playback
     if (sourceRef.current) {
-      sourceRef.current.stop();
+      try { sourceRef.current.stop(); } catch {}
       sourceRef.current = null;
     }
 
@@ -27,31 +28,43 @@ export function usePlayback() {
       return;
     }
 
-    const ctx = await audioEngine.initContext();
-    const arrayBuffer = await blob.arrayBuffer();
-    const float32 = new Float32Array(arrayBuffer);
+    try {
+      const ctx = await audioEngine.initContext();
+      const arrayBuffer = await blob.arrayBuffer();
 
-    // Create AudioBuffer from raw PCM
-    const audioBuffer = ctx.createBuffer(1, float32.length, 48000);
-    audioBuffer.getChannelData(0).set(float32);
+      // Raw bytes → Float32Array
+      const float32 = new Float32Array(arrayBuffer);
 
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
+      if (float32.length === 0) {
+        console.warn('Empty recording');
+        return;
+      }
 
-    source.onended = () => {
+      // Create AudioBuffer from raw PCM (mono, 48kHz)
+      const audioBuffer = ctx.createBuffer(1, float32.length, 48000);
+      audioBuffer.getChannelData(0).set(float32);
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+
+      source.onended = () => {
+        setPlayingSessionId(null);
+        sourceRef.current = null;
+      };
+
+      source.start();
+      sourceRef.current = source;
+      setPlayingSessionId(sessionId);
+    } catch (err) {
+      console.error('Playback failed:', err);
       setPlayingSessionId(null);
-      sourceRef.current = null;
-    };
-
-    source.start();
-    sourceRef.current = source;
-    setPlayingSessionId(sessionId);
+    }
   }, [playingSessionId]);
 
   const stop = useCallback(() => {
     if (sourceRef.current) {
-      sourceRef.current.stop();
+      try { sourceRef.current.stop(); } catch {}
       sourceRef.current = null;
     }
     setPlayingSessionId(null);
