@@ -228,6 +228,9 @@ export function HomePage() {
           ))}
         </div>
         {/* Future: meter control, subdivision picker, pattern grid, quick settings */}
+
+        {/* Scrollable dead space */}
+        <div className="h-[300px]" />
       </div>
 
       {/* Bottom spacing for settings handle */}

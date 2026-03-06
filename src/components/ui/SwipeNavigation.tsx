@@ -34,11 +34,10 @@ export function SwipeNavigation({
   const startTimeRef = useRef(0);
   const directionRef = useRef<'h' | 'v' | null>(null);
 
-  // Settings panel refs
   const settingsPanelRef = useRef<HTMLDivElement>(null);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
 
-  // ─── Main content: horizontal swipe between pages, vertical swipe to open settings ───
+  // ─── Main content: HORIZONTAL swipe only (no vertical — that's for page scrolling) ───
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const t = e.touches[0];
@@ -62,15 +61,13 @@ export function SwipeNavigation({
         return;
       }
 
+      // Only handle horizontal — vertical is native scroll
       if (directionRef.current === 'h') {
         let adj = dx;
         if ((currentPage === 0 && dx > 0) || (currentPage === pages.length - 1 && dx < 0)) {
           adj = dx * 0.2;
         }
         setDragX(adj);
-      } else if (directionRef.current === 'v' && dy < -8) {
-        setSettingsReveal(Math.min(Math.abs(dy), rootRef.current?.clientHeight || 900));
-        setSettingsDragging(true);
       }
     },
     [currentPage, pages.length],
@@ -79,9 +76,9 @@ export function SwipeNavigation({
   const handleTouchEnd = useCallback(() => {
     if (!isDragging) return;
     setIsDragging(false);
-    const elapsed = Math.max(1, Date.now() - startTimeRef.current);
 
     if (directionRef.current === 'h') {
+      const elapsed = Math.max(1, Date.now() - startTimeRef.current);
       const velocity = Math.abs(dragX) / elapsed;
       let next = currentPage;
       if (Math.abs(dragX) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
@@ -90,22 +87,42 @@ export function SwipeNavigation({
       }
       setCurrentPage(next);
       setDragX(0);
-    } else if (directionRef.current === 'v' && settingsDragging) {
-      const h = rootRef.current?.clientHeight || 900;
-      const velocity = settingsReveal / elapsed;
-      if (settingsReveal > h * SETTINGS_SNAP_FRACTION || velocity > SETTINGS_VELOCITY_THRESHOLD) {
-        setSettingsOpen(true);
-      }
-      setSettingsReveal(0);
-      setSettingsDragging(false);
     }
 
     directionRef.current = null;
-  }, [isDragging, dragX, currentPage, pages.length, settingsDragging, settingsReveal]);
+  }, [isDragging, dragX, currentPage, pages.length]);
+
+  // ─── Settings handle: swipe up from BOTTOM HANDLE ONLY ───
+
+  const handleStartRef = useRef(0);
+  const handleTimeRef = useRef(0);
+
+  const handleHandleTouchStart = useCallback((e: React.TouchEvent) => {
+    handleStartRef.current = e.touches[0].clientY;
+    handleTimeRef.current = Date.now();
+    setSettingsDragging(true);
+  }, []);
+
+  const handleHandleTouchMove = useCallback((e: React.TouchEvent) => {
+    const dy = handleStartRef.current - e.touches[0].clientY;
+    if (dy > 0) {
+      setSettingsReveal(Math.min(dy, rootRef.current?.clientHeight || 900));
+    }
+  }, []);
+
+  const handleHandleTouchEnd = useCallback(() => {
+    const h = rootRef.current?.clientHeight || 900;
+    const elapsed = Math.max(1, Date.now() - handleTimeRef.current);
+    const velocity = settingsReveal / elapsed;
+
+    if (settingsReveal > h * SETTINGS_SNAP_FRACTION || velocity > SETTINGS_VELOCITY_THRESHOLD) {
+      setSettingsOpen(true);
+    }
+    setSettingsReveal(0);
+    setSettingsDragging(false);
+  }, [settingsReveal]);
 
   // ─── Settings panel: swipe down ANYWHERE to close ───
-  // When scroll is at top and user drags down → dismiss the panel
-  // When scroll is not at top → let normal scroll happen
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -134,7 +151,6 @@ export function SwipeNavigation({
 
       if (mode === null) {
         if (Math.abs(dy) < 8) return;
-        // If scrolled to top and dragging down → dismiss mode
         if (dy > 0 && getScrollTop() <= 0) {
           mode = 'dismiss';
         } else {
@@ -143,12 +159,11 @@ export function SwipeNavigation({
       }
 
       if (mode === 'dismiss') {
-        e.preventDefault(); // stop scroll
+        e.preventDefault();
         offset = Math.max(0, dy);
         setCloseOffset(offset);
         setCloseDragging(true);
       }
-      // mode === 'scroll' → do nothing, native scroll handles it
     };
 
     const onEnd = () => {
@@ -167,7 +182,6 @@ export function SwipeNavigation({
       offset = 0;
     };
 
-    // Use native listeners with {passive: false} so we can preventDefault
     panel.addEventListener('touchstart', onStart, { passive: true });
     panel.addEventListener('touchmove', onMove, { passive: false });
     panel.addEventListener('touchend', onEnd, { passive: true });
@@ -233,7 +247,7 @@ export function SwipeNavigation({
         ))}
       </div>
 
-      {/* Pages track */}
+      {/* Pages track — horizontal swipe only */}
       <div
         className="flex-1 relative overflow-hidden"
         onTouchStart={handleTouchStart}
@@ -260,13 +274,16 @@ export function SwipeNavigation({
         </div>
       </div>
 
-      {/* Settings swipe-up handle */}
-      {!settingsOpen && !settingsDragging && (
-        <div className="shrink-0 flex flex-col items-center pb-2 pt-1">
-          <div className="w-10 h-1 rounded-full bg-text-muted mb-1" />
-          <span className="text-[10px] text-text-muted tracking-wider uppercase">Settings</span>
-        </div>
-      )}
+      {/* Settings swipe-up handle — ONLY this area triggers settings open */}
+      <div
+        className="shrink-0 flex flex-col items-center pb-2 pt-1 touch-none"
+        onTouchStart={handleHandleTouchStart}
+        onTouchMove={handleHandleTouchMove}
+        onTouchEnd={handleHandleTouchEnd}
+      >
+        <div className="w-10 h-1 rounded-full bg-text-muted mb-1" />
+        <span className="text-[10px] text-text-muted tracking-wider uppercase">Settings</span>
+      </div>
 
       {/* Settings panel — full screen, swipe down anywhere to close */}
       {showPanel && (
@@ -288,7 +305,7 @@ export function SwipeNavigation({
             <h2 className="text-lg font-semibold text-text-primary">Settings</h2>
           </div>
 
-          {/* Scrollable content — swipe down when at scroll top dismisses */}
+          {/* Scrollable content */}
           <div ref={settingsScrollRef} className="flex-1 overflow-y-auto overscroll-none">
             {settingsContent || (
               <div className="flex items-center justify-center h-full text-text-muted text-sm">
