@@ -174,18 +174,22 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
   addTrack: (beats) => {
     const { tracks } = get();
     if (tracks.length >= 4) return; // max 4 tracks
-    const id = `track-${tracks.length}`;
+    const idx = tracks.length;
+    const id = `track-${idx}`;
     const accents: VolumeState[] = [];
     for (let i = 0; i < beats; i++) {
       accents.push(i === 0 ? VolumeState.ACCENT : VolumeState.LOUD);
     }
+    // Each poly track gets a distinct default sound
+    const defaultSounds = ['clave', 'cowbell', 'rimshot'];
+    const sound = defaultSounds[(idx - 1) % defaultSounds.length];
     const newTrack = {
       id,
       beats,
       accents,
-      normalSound: 'clave',
+      normalSound: sound,
       normalVolume: 1,
-      accentSound: 'clave',
+      accentSound: sound,
       accentVolume: 2,
       muted: false,
       swing: 0,

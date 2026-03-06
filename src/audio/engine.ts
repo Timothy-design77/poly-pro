@@ -337,13 +337,16 @@ class AudioEngine {
       ioi = measureDuration / totalBeats;
     }
 
-    // Per-track swing: delays offbeats (odd-indexed subdivisions)
+    // Per-track swing: delays offbeats (odd-indexed beats/subdivisions)
     // Swing 0% = straight (50/50), Swing 100% = full triplet feel (67/33)
-    // At 100%, offbeat moves from 50% to 67% of the pair = +0.33 IOI offset
     let swingOffset = 0;
-    const swingVal = track.swing || state.swing;
-    if (swingVal > 0 && subdivision > 1 && beatIndex % 2 === 1 && trackId === 'track-0') {
-      swingOffset = ioi * swingVal * 0.33;
+    const swingVal = track.swing || (trackId === 'track-0' ? state.swing : 0);
+    if (swingVal > 0 && beatIndex % 2 === 1) {
+      // For main track: only swing if subdivision > 1
+      // For poly tracks: always swingable (beats are their own grid)
+      if (trackId !== 'track-0' || subdivision > 1) {
+        swingOffset = ioi * swingVal * 0.33;
+      }
     }
 
     this.nextNoteTime[trackId] += ioi + swingOffset;
@@ -439,7 +442,7 @@ class AudioEngine {
   }
 
   private triggerSound(
-    track: { normalSound: string; accentSound: string; soundOverrides: Record<number, string> },
+    track: { id: string; normalSound: string; accentSound: string; soundOverrides: Record<number, string> },
     beatIndex: number,
     volumeState: VolumeState,
     beatTime: number,
@@ -449,16 +452,20 @@ class AudioEngine {
 
     const settings = useSettingsStore.getState();
 
-    // Priority: per-beat override → settings store sounds → track sounds
+    // Priority: per-beat override → track/settings sounds
     const override = track.soundOverrides[beatIndex];
     let soundId: string;
     if (override) {
       soundId = override;
     } else {
       const isAccent = volumeState >= settings.accentSoundThreshold;
-      // Use settings store sounds (what the user picks in Settings)
-      // Track sounds only matter if they've been explicitly changed per-track
-      soundId = isAccent ? settings.accentSound : settings.clickSound;
+      if (track.id === 'track-0') {
+        // Main track: use global settings sounds
+        soundId = isAccent ? settings.accentSound : settings.clickSound;
+      } else {
+        // Poly tracks: use their own per-track sounds
+        soundId = isAccent ? track.accentSound : track.normalSound;
+      }
     }
     const buffer = getBuffer(soundId) || getBuffer('woodblock');
 
