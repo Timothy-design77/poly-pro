@@ -13,8 +13,9 @@
 ## CURRENT STATUS
 
 **Phase 0: COMPLETE** — deployed to GitHub Pages, PWA installable.
+**Phase 1: COMPLETE** — metronome engine functional, sample-based sounds, BPM controls wired.
 
-### What's Built (as of commit 920ea4e)
+### What's Built (as of commit 085f00a)
 
 **Scaffold & Config:**
 - Vite + React + TypeScript + Tailwind + PWA (vite-plugin-pwa)
@@ -57,16 +58,54 @@
 **ErrorBoundary (src/components/ui/ErrorBoundary.tsx):**
 - Catches render errors, displays fallback
 
-### What's Next: Phase 1
+**Phase 1 — Audio Engine (src/audio/):**
+- AudioEngine class: 25ms/100ms lookahead scheduler, Web Audio API
+- 12 CC0 WAV samples generated (woodblock, clave, tick, sticks, kick, snare, rimshot, cowbell, hihat, shaker, bell, marimba)
+- Sound catalog with category-based organization
+- AudioBuffer loader with cache
+- Per-beat gain modulation (OFF=0.0, GHOST=0.2, MED=0.55, LOUD=1.0)
+- Compressor → OutputGain → Destination audio chain
+- Haptic vibration on beat (downbeats/accents)
 
-Begin metronome engine + core UI. See Phase 1 section below. Key deliverables:
-- AudioEngine class with 25ms/100ms lookahead scheduler
-- Sample-based sound loading (10-12 CC0 WAV files)
-- Wire START/STOP to engine
-- Wire ± buttons with hold-to-accelerate
-- BPM keypad modal
-- Beat dot animation synced to scheduler
-- Settings panel content (Sounds + Vibration sections)
+**Phase 1 — Zustand Stores (src/store/):**
+- metronome-store: bpm, meter, tracks, playing, subdivision, volume, currentBeat
+- settings-store: clickSound, accentSound, haptic, vibration, detection params (stubs)
+- Full TypeScript interfaces for all store types
+
+**Phase 1 — Components (src/components/metronome/):**
+- Dial: canvas-rendered with beat dot animation, accuracy arc, BPM display, meter info
+- BpmControl: hold-to-accelerate ± buttons (×1/×5/×10 phases)
+- PlayButton: START/STOP with icon states
+- TapTempo: 3-8 taps, 3s timeout, average interval, tap counter badge
+
+**Phase 1 — UI Components (src/components/ui/):**
+- NumberInput: BPM keypad modal with slide-up animation
+- Button: base button with variant/size props
+
+**Phase 1 — Settings (src/components/settings/):**
+- SettingsOverlay with 6 collapsible sections
+- SoundSettings: sound picker (4 categories), volume slider, preview button
+- VibrationSettings: haptic toggle, intensity slider, test button
+
+**Phase 1 — Hooks:**
+- useMetronome: connects engine lifecycle to React
+- useWakeLock: screen wake lock during playback
+
+**Phase 1 — Utils:**
+- timing.ts: getBeatGrouping, getMeasureDuration, getIOI, getDefaultAccents, clampBpm
+- constants.ts: all named constants (scheduler, BPM, hold phases, audio chain)
+
+### What's Next: Phase 2
+
+Begin advanced metronome features. See Phase 2 section below. Key deliverables:
+- MeterControl (time signature selection with grouping)
+- SubdivisionPicker (None/8ths/Triplets/16ths/Sextuplets)
+- BeatGrid (accent pattern editor with 4-state cycling)
+- TrainerConfig (tempo ramp: start/end BPM, step, bars per step)
+- Multi-track / polyrhythm support
+- Swing per track
+- Count-in bars
+- Gap click / random mute modes
 
 ---
 
