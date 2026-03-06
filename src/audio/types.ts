@@ -6,11 +6,11 @@ export enum VolumeState {
   LOUD = 3,
 }
 
-/** Gain values mapped to volume states */
+/** Gain values mapped to volume states — wide curve for clear differentiation */
 export const VOLUME_GAINS: Record<VolumeState, number> = {
   [VolumeState.OFF]: 0.0,
-  [VolumeState.GHOST]: 0.2,
-  [VolumeState.MED]: 0.55,
+  [VolumeState.GHOST]: 0.10,
+  [VolumeState.MED]: 0.38,
   [VolumeState.LOUD]: 1.0,
 };
 

@@ -24,7 +24,7 @@ export const TAP_MAX_TAPS = 8;
 export const TAP_TIMEOUT_MS = 3000;
 
 // ─── Audio Engine ───
-export const COMPRESSOR_THRESHOLD = 0;
+export const COMPRESSOR_THRESHOLD = -20;
 export const COMPRESSOR_KNEE = 3;
 export const COMPRESSOR_RATIO = 2;
 export const COMPRESSOR_ATTACK = 0.002;

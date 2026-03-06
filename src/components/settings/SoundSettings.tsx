@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio/engine';
@@ -8,7 +8,7 @@ import { audioEngine } from '../../audio/engine';
  * - Click Sound picker
  * - Accent Sound picker
  * - Click Volume slider
- * - Preview button
+ * - Preview button (previews whichever was last changed)
  */
 export function SoundSettings() {
   const clickSound = useSettingsStore((s) => s.clickSound);
@@ -19,6 +19,8 @@ export function SoundSettings() {
   const setClickVolume = useSettingsStore((s) => s.setClickVolume);
 
   const [expandedPicker, setExpandedPicker] = useState<'click' | 'accent' | null>(null);
+  // Track which picker was last interacted with for the Preview button
+  const lastPickerRef = useRef<'click' | 'accent'>('click');
 
   const handlePreview = (soundId: string) => {
     audioEngine.previewSound(soundId);
@@ -45,7 +47,10 @@ export function SoundSettings() {
     return (
       <div>
         <button
-          onClick={() => setExpandedPicker(isExpanded ? null : pickerKey)}
+          onClick={() => {
+            setExpandedPicker(isExpanded ? null : pickerKey);
+            lastPickerRef.current = pickerKey;
+          }}
           className="w-full flex items-center justify-between py-2.5 px-3 rounded-lg
                      bg-bg-primary border border-border-subtle text-sm"
         >
@@ -60,7 +65,7 @@ export function SoundSettings() {
         </button>
 
         {isExpanded && (
-          <div className="mt-1 bg-bg-primary border border-border-subtle rounded-lg overflow-hidden">
+          <div className="mt-1 bg-bg-primary border border-border-subtle rounded-lg overflow-hidden max-h-[280px] overflow-y-auto">
             {categories.map((cat) => {
               const sounds = SOUND_CATALOG.filter((s) => s.category === cat);
               return (
@@ -74,6 +79,7 @@ export function SoundSettings() {
                       onClick={() => {
                         onSelect(s.id);
                         handlePreview(s.id);
+                        lastPickerRef.current = pickerKey;
                         setExpandedPicker(null);
                       }}
                       className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2
@@ -99,6 +105,10 @@ export function SoundSettings() {
       </div>
     );
   };
+
+  // Determine which sound to preview based on last interaction
+  const previewSoundId = lastPickerRef.current === 'accent' ? accentSound : clickSound;
+  const previewLabel = lastPickerRef.current === 'accent' ? 'Preview Accent' : 'Preview Click';
 
   return (
     <div className="space-y-4">
@@ -141,9 +151,9 @@ export function SoundSettings() {
         />
       </div>
 
-      {/* Preview */}
+      {/* Preview — uses last-selected picker (click or accent) */}
       <button
-        onClick={() => handlePreview(clickSound)}
+        onClick={() => handlePreview(previewSoundId)}
         className="w-full h-[40px] rounded-lg border border-border-subtle bg-bg-primary
                    text-text-secondary text-xs font-bold tracking-wide
                    active:bg-bg-raised transition-all flex items-center justify-center gap-2"
@@ -153,7 +163,7 @@ export function SoundSettings() {
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
           <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
         </svg>
-        Preview
+        {previewLabel}
       </button>
     </div>
   );

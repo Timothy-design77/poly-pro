@@ -58,6 +58,26 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('focus', checkForUpdate);
 }
 
+import { audioEngine } from './audio/engine';
+
+// ─── Audio warm-up: init AudioContext on first user gesture ───
+// Web Audio API requires a user gesture to create/resume a context.
+// By warming up on the FIRST touch anywhere in the app, the context
+// and all sound buffers are ready before the user ever hits START.
+let audioWarmedUp = false;
+const warmUpAudio = () => {
+  if (audioWarmedUp) return;
+  audioWarmedUp = true;
+  audioEngine.warmUp();
+  // Remove listeners after first trigger
+  document.removeEventListener('touchstart', warmUpAudio);
+  document.removeEventListener('pointerdown', warmUpAudio);
+  document.removeEventListener('click', warmUpAudio);
+};
+document.addEventListener('touchstart', warmUpAudio, { once: true, passive: true });
+document.addEventListener('pointerdown', warmUpAudio, { once: true });
+document.addEventListener('click', warmUpAudio, { once: true });
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>

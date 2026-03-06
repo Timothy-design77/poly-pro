@@ -51,6 +51,33 @@ class AudioEngine {
 
   private soundsLoaded = false;
   private isRunning = false;
+  private _warmedUp = false;
+  private _warmUpPromise: Promise<void> | null = null;
+
+  // ─── Warm-up: call on first user touch to pre-init everything ───
+
+  /**
+   * Pre-initialize AudioContext and load all sounds on any user gesture.
+   * After this resolves, start() is near-instant.
+   */
+  warmUp(): void {
+    if (this._warmedUp || this._warmUpPromise) return;
+    this._warmUpPromise = this._doWarmUp();
+  }
+
+  private async _doWarmUp(): Promise<void> {
+    try {
+      await this.initContext();
+      this._warmedUp = true;
+    } catch (err) {
+      console.warn('Audio warm-up failed (will retry on start):', err);
+    }
+    this._warmUpPromise = null;
+  }
+
+  get isWarmedUp(): boolean {
+    return this._warmedUp;
+  }
 
   // ─── Initialization ───
 
@@ -59,12 +86,18 @@ class AudioEngine {
       if (this.audioCtx.state === 'suspended') {
         await this.audioCtx.resume();
       }
+      // Load sounds if not yet loaded
+      if (!this.soundsLoaded) {
+        await loadAllSounds(this.audioCtx);
+        this.soundsLoaded = true;
+      }
       return this.audioCtx;
     }
 
     this.audioCtx = new AudioContext({ sampleRate: 48000 });
 
-    // Compressor → OutputGain → Destination
+    // Compressor — threshold lowered to -20 dB to preserve dynamic range
+    // Only catches loud peaks, lets quiet GHOST beats pass uncompressed
     this.compressor = this.audioCtx.createDynamicsCompressor();
     this.compressor.threshold.value = COMPRESSOR_THRESHOLD;
     this.compressor.knee.value = COMPRESSOR_KNEE;
@@ -97,6 +130,11 @@ class AudioEngine {
 
   async start(): Promise<void> {
     if (this.isRunning) return;
+
+    // Wait for warm-up if it's in progress
+    if (this._warmUpPromise) {
+      await this._warmUpPromise;
+    }
 
     const ctx = await this.initContext();
     if (ctx.state === 'suspended') {
@@ -179,7 +217,7 @@ class AudioEngine {
 
         // Play the sound
         if (volumeState !== VolumeState.OFF) {
-          this.triggerSound(track, beatIndex, volumeState, beatTime, settings.clickSound);
+          this.triggerSound(track, volumeState, beatTime, settings.clickSound);
         }
 
         // Haptic vibration
@@ -220,8 +258,6 @@ class AudioEngine {
     // Apply swing to even-numbered subdivisions (if subdivision > 1)
     let swingOffset = 0;
     if (track.swing > 0 && subdivision > 1 && beatIndex % 2 === 1) {
-      // Swing delays even subdivisions by a fraction of the IOI
-      // swing 0.5 = straight, swing 0.67 = triplet feel
       swingOffset = ioi * track.swing * 0.5;
     }
 
@@ -240,7 +276,6 @@ class AudioEngine {
 
   private triggerSound(
     track: { normalSound: string; accentSound: string },
-    _beatIndex: number,
     volumeState: VolumeState,
     beatTime: number,
     defaultSound: string
@@ -293,7 +328,7 @@ class AudioEngine {
     source.buffer = buffer;
 
     const gainNode = ctx.createGain();
-    gainNode.gain.value = 0.7;
+    gainNode.gain.value = VOLUME_GAINS[VolumeState.LOUD];
 
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
@@ -319,6 +354,7 @@ class AudioEngine {
     this.compressor = null;
     this.outputGain = null;
     this.soundsLoaded = false;
+    this._warmedUp = false;
   }
 }
 

@@ -50,13 +50,6 @@ export function HomePage() {
       }))
     : [];
 
-  const volumeLabels: Record<number, string> = {
-    [VolumeState.OFF]: 'OFF',
-    [VolumeState.GHOST]: 'G',
-    [VolumeState.MED]: 'M',
-    [VolumeState.LOUD]: 'L',
-  };
-
   return (
     <div className="h-full flex flex-col">
       {/* Header: project context */}
@@ -110,13 +103,35 @@ export function HomePage() {
 
       {/* Click visuals area — pattern row + scrollable space */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-3">
-        {/* Pattern row — beat accent cells (tap to cycle volume state) */}
+        {/* Pattern row — beat accent cells with grayscale fill bar */}
         <div
           className="grid gap-1"
           style={{ gridTemplateColumns: `repeat(${beatCount}, 1fr)` }}
         >
           {patternBeats.map((b) => {
             const isActive = playing && Math.floor(currentBeatIndex / subdivision) === b.index / subdivision;
+
+            // Grayscale fill: OFF=0%, GHOST=20%, MED=50%, LOUD=90%
+            const fillPercent =
+              b.volumeState === VolumeState.LOUD ? 90
+              : b.volumeState === VolumeState.MED ? 50
+              : b.volumeState === VolumeState.GHOST ? 20
+              : 0;
+
+            // Brightness of fill bar: OFF=transparent, GHOST=dim, MED=mid, LOUD=bright
+            const fillColor =
+              b.volumeState === VolumeState.LOUD ? 'rgba(255,255,255,0.25)'
+              : b.volumeState === VolumeState.MED ? 'rgba(255,255,255,0.12)'
+              : b.volumeState === VolumeState.GHOST ? 'rgba(255,255,255,0.05)'
+              : 'transparent';
+
+            // Text brightness scales with volume
+            const textColor =
+              b.volumeState === VolumeState.LOUD ? 'rgba(255,255,255,0.85)'
+              : b.volumeState === VolumeState.MED ? 'rgba(255,255,255,0.45)'
+              : b.volumeState === VolumeState.GHOST ? 'rgba(255,255,255,0.2)'
+              : 'rgba(255,255,255,0.07)';
+
             return (
               <button
                 key={b.index}
@@ -124,27 +139,34 @@ export function HomePage() {
                   if (track) updateTrackAccent(track.id, b.index);
                 }}
                 className={`
-                  h-[34px] rounded-lg flex items-center justify-center
-                  font-mono text-xs font-bold cursor-pointer transition-all
+                  h-[38px] rounded-lg flex items-center justify-center
+                  cursor-pointer transition-all overflow-hidden
                   touch-manipulation select-none relative
+                  border
                   ${isActive
-                    ? 'ring-1 ring-[rgba(255,255,255,0.2)]'
+                    ? 'ring-1 ring-[rgba(255,255,255,0.3)]'
                     : ''
                   }
-                  ${b.volumeState === VolumeState.LOUD
-                    ? 'bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.7)]'
-                    : b.volumeState === VolumeState.MED
-                      ? 'bg-bg-surface border border-border-subtle text-[rgba(255,255,255,0.35)]'
-                      : b.volumeState === VolumeState.GHOST
-                        ? 'bg-bg-surface border border-border-subtle text-text-muted'
-                        : 'bg-bg-primary border border-[rgba(255,255,255,0.03)] text-[rgba(255,255,255,0.1)]'
+                  ${b.volumeState === VolumeState.OFF
+                    ? 'border-[rgba(255,255,255,0.03)] bg-bg-primary'
+                    : 'border-border-subtle bg-bg-surface'
                   }
                 `}
               >
-                <span className="text-[10px]">{b.beatNum}</span>
-                {/* Volume state indicator */}
-                <span className="absolute bottom-0.5 right-1 text-[7px] opacity-40">
-                  {volumeLabels[b.volumeState]}
+                {/* Fill bar rising from bottom — height = volume level */}
+                <div
+                  className="absolute bottom-0 left-0 right-0 rounded-b-lg transition-all duration-150"
+                  style={{
+                    height: `${fillPercent}%`,
+                    backgroundColor: fillColor,
+                  }}
+                />
+                {/* Beat number */}
+                <span
+                  className="relative z-10 font-mono text-xs font-bold transition-all"
+                  style={{ color: textColor }}
+                >
+                  {b.beatNum}
                 </span>
               </button>
             );
