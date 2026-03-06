@@ -33,6 +33,14 @@ export function SoundPickerSheet({
   beatLabel,
 }: SoundPickerSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const openTimeRef = useRef(0);
+
+  // Track when sheet opens — ignore close events for 300ms after
+  useEffect(() => {
+    if (isOpen) {
+      openTimeRef.current = Date.now();
+    }
+  }, [isOpen]);
 
   // Escape to close
   useEffect(() => {
@@ -45,6 +53,13 @@ export function SoundPickerSheet({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
+
+  // Guard: don't close if the sheet just opened (same touch gesture)
+  const handleBackdropClick = () => {
+    if (Date.now() - openTimeRef.current > 300) {
+      onClose();
+    }
+  };
 
   const activeSoundId = currentSoundId || inheritedSoundId;
   const hasOverride = currentSoundId !== null;
@@ -63,12 +78,14 @@ export function SoundPickerSheet({
   return (
     <div
       className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60"
-      onClick={onClose}
+      onClick={handleBackdropClick}
+      onPointerUp={handleBackdropClick}
     >
       <div
         ref={panelRef}
         className="w-full max-w-[500px] max-h-[70vh] bg-bg-surface rounded-t-2xl flex flex-col animate-slide-up"
         onClick={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-border-subtle shrink-0">

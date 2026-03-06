@@ -18,7 +18,7 @@ const TEXT_COLOR: Record<number, string> = {
   [VolumeState.LOUD]: 'rgba(255,255,255,0.60)', [VolumeState.ACCENT]: 'rgba(255,255,255,0.90)',
 };
 
-const LONG_PRESS_MS = 400;
+const LONG_PRESS_MS = 600;
 
 /**
  * Full accent pattern editor with long-press for per-beat sound assignment.
