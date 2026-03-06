@@ -94,6 +94,7 @@ function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): Pers
 
 let metronomeTimer: ReturnType<typeof setTimeout> | null = null;
 let settingsTimer: ReturnType<typeof setTimeout> | null = null;
+let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
 function saveMetronome() {
   if (metronomeTimer) clearTimeout(metronomeTimer);
@@ -101,6 +102,8 @@ function saveMetronome() {
     const data = pickMetronome(useMetronomeStore.getState());
     db.setSetting(METRONOME_KEY, data).catch(console.error);
   }, 500);
+  // Also save snapshot to active project
+  saveActiveProjectSnapshot();
 }
 
 function saveSettings() {
@@ -109,6 +112,61 @@ function saveSettings() {
     const data = pickSettings(useSettingsStore.getState());
     db.setSetting(SETTINGS_KEY, data).catch(console.error);
   }, 500);
+  // Also save snapshot to active project
+  saveActiveProjectSnapshot();
+}
+
+/** Debounced save of full snapshot to the active project in IDB */
+function saveActiveProjectSnapshot() {
+  if (snapshotTimer) clearTimeout(snapshotTimer);
+  snapshotTimer = setTimeout(async () => {
+    // Lazy import to avoid circular dependency
+    const { useProjectStore } = await import('./project-store');
+    const { projects, activeProjectId } = useProjectStore.getState();
+    if (!activeProjectId) return;
+
+    const project = projects.find((p) => p.id === activeProjectId);
+    if (!project) return;
+
+    const m = useMetronomeStore.getState();
+    const s = useSettingsStore.getState();
+    const snapshot = {
+      bpm: m.bpm,
+      meterNumerator: m.meterNumerator,
+      meterDenominator: m.meterDenominator,
+      beatGrouping: m.beatGrouping,
+      subdivision: m.subdivision,
+      volume: m.volume,
+      swing: m.swing,
+      tracks: m.tracks,
+      trainerEnabled: m.trainerEnabled,
+      trainerStartBpm: m.trainerStartBpm,
+      trainerEndBpm: m.trainerEndBpm,
+      trainerBpmStep: m.trainerBpmStep,
+      trainerBarsPerStep: m.trainerBarsPerStep,
+      countInBars: m.countInBars,
+      gapClickEnabled: m.gapClickEnabled,
+      gapClickProbability: m.gapClickProbability,
+      randomMuteEnabled: m.randomMuteEnabled,
+      randomMuteProbability: m.randomMuteProbability,
+      playMuteCycleEnabled: m.playMuteCycleEnabled,
+      playMuteCyclePlayBars: m.playMuteCyclePlayBars,
+      playMuteCycleMuteBars: m.playMuteCycleMuteBars,
+      clickSound: s.clickSound,
+      accentSound: s.accentSound,
+      clickVolume: s.clickVolume,
+      accentSoundThreshold: s.accentSoundThreshold,
+      hapticEnabled: s.hapticEnabled,
+      vibrationIntensity: s.vibrationIntensity,
+    };
+
+    const updated = { ...project, snapshot, currentBpm: m.bpm };
+    // Update store silently (don't trigger another save cycle)
+    useProjectStore.setState({
+      projects: projects.map((p) => p.id === activeProjectId ? updated : p),
+    });
+    db.putProject(updated).catch(console.error);
+  }, 1000); // 1 second debounce — less aggressive than metronome/settings
 }
 
 // ─── Hydrate from IDB ───
