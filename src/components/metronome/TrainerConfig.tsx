@@ -2,9 +2,8 @@ import { useMetronomeStore } from '../../store/metronome-store';
 import { Toggle } from '../ui/Toggle';
 
 /**
- * Trainer mode configuration.
- * Start BPM → End BPM, step size, bars per step.
- * Compact collapsible section.
+ * Trainer mode configuration — lives inside a CollapsibleCard.
+ * All controls enlarged for easy mobile use.
  */
 export function TrainerConfig() {
   const enabled = useMetronomeStore((s) => s.trainerEnabled);
@@ -16,73 +15,78 @@ export function TrainerConfig() {
   const setConfig = useMetronomeStore((s) => s.setTrainerConfig);
 
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-lg p-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Trainer</span>
+    <div>
+      {/* Enable toggle */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm text-text-primary">Enable Trainer</span>
         <Toggle enabled={enabled} onChange={setEnabled} />
       </div>
 
       {enabled && (
-        <div className="space-y-2.5 pt-1">
+        <div className="space-y-4">
           {/* Start → End BPM */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="text-[9px] text-text-muted uppercase mb-0.5 block">Start</label>
+              <label className="text-[10px] text-text-muted uppercase mb-1 block">Start BPM</label>
               <input
                 type="number"
                 value={startBpm}
                 onChange={(e) => setConfig({ trainerStartBpm: Math.max(20, Math.min(300, Number(e.target.value))) })}
-                className="w-full h-[32px] bg-bg-primary border border-border-subtle rounded-md
-                           px-2 font-mono text-sm text-text-primary text-center outline-none
+                className="w-full h-[44px] bg-bg-surface border border-border-subtle rounded-xl
+                           px-3 font-mono text-base text-text-primary text-center outline-none
                            focus:border-border-emphasis"
               />
             </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-              className="text-text-muted mt-3 shrink-0">
+              className="text-text-muted mt-4 shrink-0">
               <line x1="5" y1="12" x2="19" y2="12" />
               <polyline points="12 5 19 12 12 19" />
             </svg>
             <div className="flex-1">
-              <label className="text-[9px] text-text-muted uppercase mb-0.5 block">End</label>
+              <label className="text-[10px] text-text-muted uppercase mb-1 block">End BPM</label>
               <input
                 type="number"
                 value={endBpm}
                 onChange={(e) => setConfig({ trainerEndBpm: Math.max(20, Math.min(300, Number(e.target.value))) })}
-                className="w-full h-[32px] bg-bg-primary border border-border-subtle rounded-md
-                           px-2 font-mono text-sm text-text-primary text-center outline-none
+                className="w-full h-[44px] bg-bg-surface border border-border-subtle rounded-xl
+                           px-3 font-mono text-base text-text-primary text-center outline-none
                            focus:border-border-emphasis"
               />
             </div>
           </div>
 
-          {/* Step + Bars */}
-          <div className="flex gap-2">
+          {/* Step + Bars — large stepper buttons */}
+          <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-[9px] text-text-muted uppercase mb-0.5 block">+BPM Step</label>
-              <div className="flex items-center bg-bg-primary border border-border-subtle rounded-md overflow-hidden">
+              <label className="text-[10px] text-text-muted uppercase mb-1 block">BPM Step</label>
+              <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button
                   onClick={() => setConfig({ trainerBpmStep: Math.max(1, step - 1) })}
-                  className="w-[28px] h-[32px] flex items-center justify-center text-text-muted active:bg-bg-raised"
+                  className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
+                             active:bg-bg-raised text-lg font-bold touch-manipulation"
                 >−</button>
-                <span className="flex-1 text-center font-mono text-sm text-text-primary">{step}</span>
+                <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{step}</span>
                 <button
                   onClick={() => setConfig({ trainerBpmStep: Math.min(20, step + 1) })}
-                  className="w-[28px] h-[32px] flex items-center justify-center text-text-muted active:bg-bg-raised"
+                  className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
+                             active:bg-bg-raised text-lg font-bold touch-manipulation"
                 >+</button>
               </div>
             </div>
             <div className="flex-1">
-              <label className="text-[9px] text-text-muted uppercase mb-0.5 block">Every N bars</label>
-              <div className="flex items-center bg-bg-primary border border-border-subtle rounded-md overflow-hidden">
+              <label className="text-[10px] text-text-muted uppercase mb-1 block">Every N Bars</label>
+              <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button
                   onClick={() => setConfig({ trainerBarsPerStep: Math.max(1, bars - 1) })}
-                  className="w-[28px] h-[32px] flex items-center justify-center text-text-muted active:bg-bg-raised"
+                  className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
+                             active:bg-bg-raised text-lg font-bold touch-manipulation"
                 >−</button>
-                <span className="flex-1 text-center font-mono text-sm text-text-primary">{bars}</span>
+                <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{bars}</span>
                 <button
                   onClick={() => setConfig({ trainerBarsPerStep: Math.min(16, bars + 1) })}
-                  className="w-[28px] h-[32px] flex items-center justify-center text-text-muted active:bg-bg-raised"
+                  className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
+                             active:bg-bg-raised text-lg font-bold touch-manipulation"
                 >+</button>
               </div>
             </div>
@@ -91,4 +95,11 @@ export function TrainerConfig() {
       )}
     </div>
   );
+}
+
+export function useTrainerBadge(): string {
+  const enabled = useMetronomeStore((s) => s.trainerEnabled);
+  const start = useMetronomeStore((s) => s.trainerStartBpm);
+  const end = useMetronomeStore((s) => s.trainerEndBpm);
+  return enabled ? `${start}→${end}` : 'Off';
 }

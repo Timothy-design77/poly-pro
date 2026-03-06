@@ -3,8 +3,8 @@ import { useMetronomeStore } from '../../store/metronome-store';
 const NUMERATORS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 /**
- * Time signature control: numerator/denominator with tap to cycle.
- * Compact inline display for the scrollable area below buttons.
+ * Time signature control — large buttons for easy tapping.
+ * Designed to live inside a CollapsibleCard.
  */
 export function MeterControl() {
   const num = useMetronomeStore((s) => s.meterNumerator);
@@ -18,37 +18,54 @@ export function MeterControl() {
   };
 
   const cycleDen = () => {
-    const next = den === 4 ? 8 : 4;
-    setMeter(num, next);
+    setMeter(num, den === 4 ? 8 : 4);
   };
 
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-[10px] text-text-muted uppercase tracking-wider mr-1">Meter</span>
-      <div className="flex items-center bg-bg-surface border border-border-subtle rounded-lg overflow-hidden">
+    <div>
+      <div className="text-[10px] text-text-muted uppercase tracking-wider mb-2">Time Signature</div>
+      <div className="flex items-center justify-center gap-3">
         <button
           onClick={() => cycleNum(-1)}
-          className="w-[30px] h-[34px] flex items-center justify-center text-text-muted active:bg-bg-raised"
+          className="w-[48px] h-[48px] rounded-xl bg-bg-surface border border-border-subtle
+                     flex items-center justify-center text-text-secondary active:bg-bg-raised
+                     touch-manipulation"
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
+
         <button
           onClick={cycleDen}
-          className="px-1.5 h-[34px] flex items-center justify-center font-mono text-sm font-bold text-text-primary active:bg-bg-raised min-w-[36px]"
+          className="w-[80px] h-[56px] rounded-xl bg-bg-surface border border-border-subtle
+                     flex items-center justify-center font-mono text-2xl font-bold text-text-primary
+                     active:bg-bg-raised touch-manipulation"
         >
           {num}/{den}
         </button>
+
         <button
           onClick={() => cycleNum(1)}
-          className="w-[30px] h-[34px] flex items-center justify-center text-text-muted active:bg-bg-raised"
+          className="w-[48px] h-[48px] rounded-xl bg-bg-surface border border-border-subtle
+                     flex items-center justify-center text-text-secondary active:bg-bg-raised
+                     touch-manipulation"
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </button>
       </div>
     </div>
   );
+}
+
+/** Badge text for the collapsed header */
+export function useMeterBadge(): string {
+  const num = useMetronomeStore((s) => s.meterNumerator);
+  const den = useMetronomeStore((s) => s.meterDenominator);
+  const sub = useMetronomeStore((s) => s.subdivision);
+  const subLabels: Record<number, string> = { 1: '', 2: '8ths', 3: 'Triplets', 4: '16ths', 6: 'Sextuplets' };
+  const subText = subLabels[sub] || '';
+  return `${num}/${den}${subText ? ' · ' + subText : ''}`;
 }

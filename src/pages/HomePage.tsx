@@ -7,12 +7,13 @@ import { BpmControl } from '../components/metronome/BpmControl';
 import { TapTempo } from '../components/metronome/TapTempo';
 import { RecordButton } from '../components/metronome/RecordButton';
 import { NumberInput } from '../components/ui/NumberInput';
-import { MeterControl } from '../components/metronome/MeterControl';
+import { CollapsibleCard } from '../components/ui/CollapsibleCard';
+import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
 import { SubdivisionPicker } from '../components/metronome/SubdivisionPicker';
 import { BeatGrid } from '../components/metronome/BeatGrid';
-import { TrainerConfig } from '../components/metronome/TrainerConfig';
-import { PracticeModes } from '../components/metronome/PracticeModes';
-import { PolyrhythmControl } from '../components/metronome/PolyrhythmControl';
+import { TrainerConfig, useTrainerBadge } from '../components/metronome/TrainerConfig';
+import { PracticeModes, usePracticeBadge } from '../components/metronome/PracticeModes';
+import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 
 export function HomePage() {
   const bpm = useMetronomeStore((s) => s.bpm);
@@ -21,6 +22,11 @@ export function HomePage() {
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
   const [dialSize, setDialSize] = useState(200);
+
+  const meterBadge = useMeterBadge();
+  const trainerBadge = useTrainerBadge();
+  const practiceBadge = usePracticeBadge();
+  const polyBadge = usePolyBadge();
 
   useWakeLock();
 
@@ -53,10 +59,7 @@ export function HomePage() {
         </div>
 
         {/* Dial */}
-        <div
-          ref={dialContainerRef}
-          className="flex items-center justify-center pt-1"
-        >
+        <div ref={dialContainerRef} className="flex items-center justify-center pt-1">
           <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
         </div>
 
@@ -70,31 +73,38 @@ export function HomePage() {
           </div>
         </div>
 
-        {/* Meter + Subdivision row */}
-        <div className="flex items-center gap-3 flex-wrap mt-4 mb-3">
-          <MeterControl />
-          <SubdivisionPicker />
+        {/* ─── Collapsible sections ─── */}
+        <div className="mt-4 space-y-2">
+          {/* Meter & Subdivision */}
+          <CollapsibleCard title="Meter & Subdivision" badge={meterBadge} defaultOpen>
+            <div className="space-y-4">
+              <MeterControl />
+              <SubdivisionPicker />
+            </div>
+          </CollapsibleCard>
+
+          {/* Pattern Grid */}
+          <CollapsibleCard title="Pattern" defaultOpen>
+            <BeatGrid />
+          </CollapsibleCard>
+
+          {/* Polyrhythm */}
+          <CollapsibleCard title="Polyrhythm" badge={polyBadge}>
+            <PolyrhythmControl />
+          </CollapsibleCard>
+
+          {/* Trainer */}
+          <CollapsibleCard title="Trainer" badge={trainerBadge}>
+            <TrainerConfig />
+          </CollapsibleCard>
+
+          {/* Practice Modes */}
+          <CollapsibleCard title="Practice Modes" badge={practiceBadge}>
+            <PracticeModes />
+          </CollapsibleCard>
         </div>
 
-        {/* Pattern grid */}
-        <div className="mb-3">
-          <BeatGrid />
-        </div>
-
-        {/* Polyrhythm */}
-        <div className="mb-3">
-          <PolyrhythmControl />
-        </div>
-
-        {/* Trainer */}
-        <div className="mb-3">
-          <TrainerConfig />
-        </div>
-
-        {/* Practice modes */}
-        <PracticeModes />
-
-        {/* Bottom padding for settings handle */}
+        {/* Bottom padding */}
         <div className="h-[60px]" />
       </div>
 
