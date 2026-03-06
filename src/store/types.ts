@@ -105,18 +105,36 @@ export interface SettingsState {
 export function createDefaultTrack(
   numerator: number,
   subdivision: number,
-  trackId = 'track-0'
+  trackId = 'track-0',
+  grouping?: number[]
 ): TrackConfig {
   const totalBeats = numerator * subdivision;
   const accents: VolumeState[] = [];
 
+  // Compute which beat positions are group boundaries
+  const groups = grouping || [numerator];
+  const groupStarts = new Set<number>([0]);
+  let pos = 0;
+  for (let g = 0; g < groups.length - 1; g++) {
+    pos += groups[g];
+    groupStarts.add(pos);
+  }
+
   for (let i = 0; i < totalBeats; i++) {
-    if (i === 0) {
+    const beatNum = Math.floor(i / subdivision);
+    const isSubdivision = i % subdivision !== 0;
+
+    if (isSubdivision) {
+      accents.push(VolumeState.SOFT);
+    } else if (beatNum === 0) {
+      // Downbeat — always loudest
       accents.push(VolumeState.ACCENT);
-    } else if (i % subdivision === 0) {
+    } else if (groupStarts.has(beatNum)) {
+      // Group boundary — strong emphasis
       accents.push(VolumeState.LOUD);
     } else {
-      accents.push(VolumeState.SOFT);
+      // Other main beats — moderate
+      accents.push(VolumeState.MED);
     }
   }
 

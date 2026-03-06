@@ -60,8 +60,7 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
   setMeter: (numerator, denominator) => {
     const grouping = getBeatGrouping(numerator, denominator);
     const { subdivision, tracks } = get();
-    // Rebuild track 0 but keep extra polyrhythm tracks
-    const newTrack0 = createDefaultTrack(numerator, subdivision, 'track-0');
+    const newTrack0 = createDefaultTrack(numerator, subdivision, 'track-0', grouping);
     const extraTracks = tracks.filter(t => t.id !== 'track-0');
     set({
       meterNumerator: numerator,
@@ -73,11 +72,14 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
 
 
   setGrouping: (grouping) => {
-    set({ beatGrouping: grouping });
+    const { meterNumerator, subdivision, tracks } = get();
+    const newTrack0 = createDefaultTrack(meterNumerator, subdivision, 'track-0', grouping);
+    const extraTracks = tracks.filter(t => t.id !== 'track-0');
+    set({ beatGrouping: grouping, tracks: [newTrack0, ...extraTracks] });
   },
   setSubdivision: (sub) => {
-    const { meterNumerator, tracks } = get();
-    const newTrack0 = createDefaultTrack(meterNumerator, sub, 'track-0');
+    const { meterNumerator, beatGrouping, tracks } = get();
+    const newTrack0 = createDefaultTrack(meterNumerator, sub, 'track-0', beatGrouping);
     const extraTracks = tracks.filter(t => t.id !== 'track-0');
     set({
       subdivision: sub,
