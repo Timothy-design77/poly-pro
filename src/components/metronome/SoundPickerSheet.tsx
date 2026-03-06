@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio/engine';
 
@@ -75,7 +76,7 @@ export function SoundPickerSheet({
     onClose();
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60"
       onClick={handleBackdropClick}
@@ -166,6 +167,7 @@ export function SoundPickerSheet({
           })}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

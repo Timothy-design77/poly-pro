@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface NumberInputProps {
   isOpen: boolean;
@@ -82,7 +83,7 @@ export function NumberInput({
 
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'backspace'];
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60"
       onClick={onClose}
@@ -154,6 +155,7 @@ export function NumberInput({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
