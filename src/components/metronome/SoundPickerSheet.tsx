@@ -135,7 +135,7 @@ export function SoundPickerSheet({
                 <div className="text-[10px] text-text-muted uppercase tracking-wider px-3 pt-3 pb-1">
                   {categoryLabels[cat]}
                 </div>
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   {sounds.map((s) => {
                     const isActive = s.id === activeSoundId;
                     return (
