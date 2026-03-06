@@ -20,6 +20,7 @@ interface ProjectCreateSheetProps {
   onSubmit: (data: ProjectFormData) => void;
   initial?: Partial<ProjectFormData>;
   isEdit?: boolean;
+  onDelete?: () => void;
 }
 
 export function ProjectCreateSheet({
@@ -28,6 +29,7 @@ export function ProjectCreateSheet({
   onSubmit,
   initial,
   isEdit = false,
+  onDelete,
 }: ProjectCreateSheetProps) {
   const [icon, setIcon] = useState(initial?.icon || '🥁');
   const [name, setName] = useState(initial?.name || '');
@@ -187,8 +189,8 @@ export function ProjectCreateSheet({
           )}
         </div>
 
-        {/* Submit */}
-        <div className="px-4 pb-4 pt-2 shrink-0">
+        {/* Submit + Delete */}
+        <div className="px-4 pb-4 pt-2 shrink-0 space-y-2">
           <button
             onClick={handleSubmit}
             disabled={!isValid}
@@ -200,6 +202,15 @@ export function ProjectCreateSheet({
           >
             {isEdit ? 'Save Changes' : 'Create Project'}
           </button>
+          {isEdit && onDelete && (
+            <button
+              onClick={() => { onClose(); setTimeout(onDelete, 300); }}
+              className="w-full h-[44px] rounded-xl text-sm font-bold touch-manipulation
+                         text-danger border border-danger/20 active:bg-danger-dim"
+            >
+              Delete Project
+            </button>
+          )}
         </div>
       </div>
     </div>,

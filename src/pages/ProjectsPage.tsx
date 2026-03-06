@@ -28,7 +28,6 @@ export function ProjectsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingProject, setEditingProject] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [swipedId, setSwipedId] = useState<string | null>(null);
 
   // Long-press for edit
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -46,7 +45,6 @@ export function ProjectsPage() {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
     if (!didLongPress.current) {
       setActiveProject(id);
-      setSwipedId(null);
     }
   }, [setActiveProject]);
 
@@ -54,116 +52,76 @@ export function ProjectsPage() {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
   }, []);
 
-  // Swipe to delete
-  const touchStartX = useRef(0);
-  const handleTouchStart = useCallback((e: React.TouchEvent, id: string) => {
-    touchStartX.current = e.touches[0].clientX;
-    if (swipedId && swipedId !== id) setSwipedId(null);
-  }, [swipedId]);
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent, id: string) => {
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    if (dx < -60) {
-      setSwipedId(id);
-    } else if (dx > 30 && swipedId === id) {
-      setSwipedId(null);
-    }
-  }, [swipedId]);
-
   const editProject = projects.find((p) => p.id === editingProject);
   const deleteTargetProject = projects.find((p) => p.id === deleteTarget);
 
   return (
     <div className="h-full flex flex-col px-4 py-4 overflow-y-auto">
       <h1 className="text-lg font-semibold text-text-primary mb-1">Projects</h1>
-      <p className="text-xs text-text-secondary mb-4">Tap to switch · hold to edit · swipe to delete</p>
+      <p className="text-xs text-text-secondary mb-4">Tap to switch · hold to edit</p>
 
       {/* Project cards */}
       <div className="flex flex-col gap-1.5">
         {projects.map((project) => {
           const isActive = project.id === activeProjectId;
-          const isSwiped = swipedId === project.id;
           const sessions = getSessionsForProject(project.id);
           const sessionCount = sessions.length;
 
-          // Simple sparkline from session data (or flat line if no sessions)
           const sparkData = sessions.length >= 2
             ? sessions.slice(0, 10).reverse().map((s) => s.perfectPct)
             : [0];
 
           return (
-            <div key={project.id} className="relative overflow-hidden rounded-[10px]">
-              {/* Delete button (behind card) */}
-              {isSwiped && (
-                <button
-                  onClick={() => {
-                    if (isActive) return;
-                    setDeleteTarget(project.id);
-                    setSwipedId(null);
-                  }}
-                  className={`absolute right-0 top-0 bottom-0 w-[80px] flex items-center justify-center
-                    text-sm font-bold rounded-r-[10px]
-                    ${isActive ? 'bg-bg-raised text-text-muted' : 'bg-danger text-white'}`}
-                >
-                  {isActive ? 'Active' : 'Delete'}
-                </button>
-              )}
-
-              {/* Card */}
-              <div
-                onPointerDown={(e) => { e.preventDefault(); handlePointerDown(project.id); }}
-                onPointerUp={() => handlePointerUp(project.id)}
-                onPointerLeave={handlePointerLeave}
-                onPointerCancel={handlePointerLeave}
-                onTouchStart={(e) => handleTouchStart(e, project.id)}
-                onTouchEnd={(e) => handleTouchEnd(e, project.id)}
-                className={`rounded-[10px] border p-3 flex items-center gap-3
-                  transition-transform touch-manipulation select-none
-                  ${isSwiped ? '-translate-x-[80px]' : ''}
-                  ${isActive
-                    ? 'bg-bg-raised border-border-subtle border-l-[3px] border-l-[rgba(255,255,255,0.5)]'
-                    : 'bg-bg-surface border-border-subtle'
-                  }`}
-              >
-                <span className="text-xl shrink-0">{project.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-text-primary truncate">{project.name}</p>
-                  <p className="text-[11px] text-text-muted mt-0.5">
-                    {sessionCount > 0 ? timeAgo(project.lastOpened) : 'No sessions'}
-                  </p>
-                  <p className="text-[11px] font-mono text-text-secondary mt-0.5">
-                    {project.startBpm} → {project.goalBpm}
-                  </p>
-                </div>
-
-                {/* Sparkline */}
-                {sparkData.length > 1 && (
-                  <div className="w-12 h-6 shrink-0">
-                    <svg width="48" height="24" viewBox="0 0 48 24">
-                      <polyline
-                        fill="none"
-                        stroke="rgba(74,222,128,0.4)"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        points={sparkData
-                          .map((v, j) => {
-                            const x = (j / (sparkData.length - 1)) * 46 + 1;
-                            const y = 22 - (v / 100) * 20;
-                            return `${x},${y}`;
-                          })
-                          .join(' ')}
-                      />
-                      <circle
-                        cx={47}
-                        cy={22 - (sparkData[sparkData.length - 1] / 100) * 20}
-                        r="2"
-                        fill="rgba(74,222,128,0.6)"
-                      />
-                    </svg>
-                  </div>
-                )}
+            <div
+              key={project.id}
+              onPointerDown={(e) => { e.preventDefault(); handlePointerDown(project.id); }}
+              onPointerUp={() => handlePointerUp(project.id)}
+              onPointerLeave={handlePointerLeave}
+              onPointerCancel={handlePointerLeave}
+              className={`rounded-[10px] border p-3 flex items-center gap-3
+                touch-manipulation select-none
+                ${isActive
+                  ? 'bg-bg-raised border-border-subtle border-l-[3px] border-l-[rgba(255,255,255,0.5)]'
+                  : 'bg-bg-surface border-border-subtle active:bg-bg-raised'
+                }`}
+            >
+              <span className="text-xl shrink-0">{project.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-text-primary truncate">{project.name}</p>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {sessionCount > 0 ? timeAgo(project.lastOpened) : 'No sessions'}
+                </p>
+                <p className="text-[11px] font-mono text-text-secondary mt-0.5">
+                  {project.startBpm} → {project.goalBpm}
+                </p>
               </div>
+
+              {sparkData.length > 1 && (
+                <div className="w-12 h-6 shrink-0">
+                  <svg width="48" height="24" viewBox="0 0 48 24">
+                    <polyline
+                      fill="none"
+                      stroke="rgba(74,222,128,0.4)"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={sparkData
+                        .map((v, j) => {
+                          const x = (j / (sparkData.length - 1)) * 46 + 1;
+                          const y = 22 - (v / 100) * 20;
+                          return `${x},${y}`;
+                        })
+                        .join(' ')}
+                    />
+                    <circle
+                      cx={47}
+                      cy={22 - (sparkData[sparkData.length - 1] / 100) * 20}
+                      r="2"
+                      fill="rgba(74,222,128,0.6)"
+                    />
+                  </svg>
+                </div>
+              )}
             </div>
           );
         })}
@@ -186,10 +144,7 @@ export function ProjectsPage() {
         isOpen={showCreate}
         onClose={() => setShowCreate(false)}
         onSubmit={async (data) => {
-          await createProject({
-            ...data,
-            presetId: null,
-          });
+          await createProject({ ...data, presetId: null });
         }}
       />
 
@@ -213,17 +168,23 @@ export function ProjectsPage() {
             await updateProject(editingProject, data);
           }
         }}
+        onDelete={editingProject && editingProject !== activeProjectId
+          ? () => setDeleteTarget(editingProject)
+          : undefined}
       />
 
       {/* Delete confirmation */}
       <Modal
         isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => { setDeleteTarget(null); setEditingProject(null); }}
         title={`Delete ${deleteTargetProject?.name || 'project'}?`}
         confirmLabel="Delete"
         confirmDanger
         onConfirm={() => {
-          if (deleteTarget) deleteProject(deleteTarget);
+          if (deleteTarget) {
+            deleteProject(deleteTarget);
+            setEditingProject(null);
+          }
         }}
       >
         This will permanently remove this project.
