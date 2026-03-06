@@ -436,7 +436,7 @@ class AudioEngine {
     if (override) {
       soundId = override;
     } else {
-      const isAccent = volumeState === VolumeState.ACCENT;
+      const isAccent = volumeState >= VolumeState.LOUD;
       soundId = isAccent ? (track.accentSound || defaultSound) : (track.normalSound || defaultSound);
     }
     const buffer = getBuffer(soundId) || getBuffer(defaultSound);
