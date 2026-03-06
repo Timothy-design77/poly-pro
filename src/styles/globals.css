@@ -42,6 +42,9 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   touch-action: manipulation;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
 }
 
 /* Prevent overscroll on iOS */
@@ -72,10 +75,13 @@ body {
   border-radius: 4px;
 }
 
-/* Selection */
-::selection {
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--text-primary);
+/* No text selection — this is an app, not a document */
+
+/* Re-allow selection on inputs */
+input, textarea {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
 }
 
 /* Monospace for all numeric data */
