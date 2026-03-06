@@ -244,7 +244,16 @@ class AudioEngine {
       while (this.nextNoteTime[track.id] < now + SCHEDULE_AHEAD_S) {
         const beatTime = this.nextNoteTime[track.id];
         const beatIndex = this.currentBeat[track.id];
-        const volumeState = track.accents[beatIndex] ?? VolumeState.SOFT;
+
+        // During count-in: uniform LOUD clicks on main beats, SOFT on subdivisions
+        // This gives a clear "1-2-3-4" that leads unambiguously into beat 1
+        let volumeState: VolumeState;
+        if (this.countInActive) {
+          const isMainBeat = (beatIndex % state.subdivision === 0);
+          volumeState = isMainBeat ? VolumeState.LOUD : VolumeState.SOFT;
+        } else {
+          volumeState = track.accents[beatIndex] ?? VolumeState.SOFT;
+        }
 
         // Determine if this beat should be muted
         let muted = false;
@@ -329,6 +338,13 @@ class AudioEngine {
         this.countInRemaining--;
         if (this.countInRemaining <= 0) {
           this.countInActive = false;
+          // Sync all poly tracks to start at this measure boundary
+          for (const t of state.tracks) {
+            if (t.id !== 'track-0') {
+              this.nextNoteTime[t.id] = this.nextNoteTime[trackId];
+              this.currentBeat[t.id] = 0;
+            }
+          }
         }
       }
 
