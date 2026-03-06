@@ -38,41 +38,40 @@ export function HomePage() {
   }, []);
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header: project context */}
-      <div className="flex items-center gap-2 py-1.5 px-4 shrink-0">
-        <span className="text-base">🥁</span>
-        <span className="text-sm font-medium text-text-secondary truncate">
-          My First Project
-        </span>
-        <div className="flex items-center gap-1.5 ml-auto shrink-0">
-          <span className="text-xs font-mono font-bold text-success">87%</span>
-          <span className="text-[9px] text-text-muted">3🔥</span>
+    <div className="h-full overflow-y-auto">
+      <div className="px-4 pb-4">
+        {/* Header: project context */}
+        <div className="flex items-center gap-2 py-1.5">
+          <span className="text-base">🥁</span>
+          <span className="text-sm font-medium text-text-secondary truncate">
+            My First Project
+          </span>
+          <div className="flex items-center gap-1.5 ml-auto shrink-0">
+            <span className="text-xs font-mono font-bold text-success">87%</span>
+            <span className="text-[9px] text-text-muted">3🔥</span>
+          </div>
         </div>
-      </div>
 
-      {/* Dial */}
-      <div
-        ref={dialContainerRef}
-        className="shrink-0 flex items-center justify-center px-4 pt-1"
-      >
-        <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-col gap-2 px-4 pt-6 shrink-0">
-        <BpmControl />
-        <PlayButton />
-        <div className="flex gap-2">
-          <RecordButton />
-          <TapTempo />
+        {/* Dial */}
+        <div
+          ref={dialContainerRef}
+          className="flex items-center justify-center pt-1"
+        >
+          <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
         </div>
-      </div>
 
-      {/* Scrollable area — meter, subdivision, pattern grid, modes */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-2">
+        {/* Controls */}
+        <div className="flex flex-col gap-2 pt-6">
+          <BpmControl />
+          <PlayButton />
+          <div className="flex gap-2">
+            <RecordButton />
+            <TapTempo />
+          </div>
+        </div>
+
         {/* Meter + Subdivision row */}
-        <div className="flex items-center gap-3 flex-wrap mb-3">
+        <div className="flex items-center gap-3 flex-wrap mt-4 mb-3">
           <MeterControl />
           <SubdivisionPicker />
         </div>
@@ -95,12 +94,9 @@ export function HomePage() {
         {/* Practice modes */}
         <PracticeModes />
 
-        {/* Bottom padding */}
-        <div className="h-[80px]" />
+        {/* Bottom padding for settings handle */}
+        <div className="h-[60px]" />
       </div>
-
-      {/* Bottom spacing for settings handle */}
-      <div className="h-1 shrink-0" />
 
       {/* BPM Keypad */}
       <NumberInput
