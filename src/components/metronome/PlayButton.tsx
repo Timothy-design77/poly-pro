@@ -1,21 +1,40 @@
+import { useCallback, useRef } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { useMetronome } from '../../hooks/useMetronome';
 
 /**
  * Full-width START/STOP button.
- * START: soft white bg, dark text, play icon.
- * STOP: raised bg, light text.
+ *
+ * LATENCY: Uses onPointerDown (fires on finger TOUCH, not release).
+ * No transition on bg/color — visual state snaps instantly.
  */
 export function PlayButton() {
   const playing = useMetronomeStore((s) => s.playing);
   const { togglePlay } = useMetronome();
+  const firedRef = useRef(false);
+
+  // Fire on pointer DOWN — instant, no waiting for finger lift
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    firedRef.current = true;
+    togglePlay();
+  }, [togglePlay]);
+
+  // Prevent click from double-firing after pointerdown
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (firedRef.current) {
+      e.preventDefault();
+      firedRef.current = false;
+    }
+  }, []);
 
   return (
     <button
-      onClick={togglePlay}
+      onPointerDown={handlePointerDown}
+      onClick={handleClick}
       className={`
         w-full rounded-[14px] text-sm font-bold tracking-wider
-        flex items-center justify-center gap-2.5 transition-all h-[52px]
+        flex items-center justify-center gap-2.5 h-[52px]
         touch-manipulation select-none
         ${playing
           ? 'bg-bg-raised text-text-primary border border-border-emphasis'
