@@ -14,6 +14,7 @@
 
 **Phase 0: COMPLETE** — deployed to GitHub Pages, PWA installable.
 **Phase 1: COMPLETE** — metronome engine functional, sample-based sounds, BPM controls wired.
+**Phase 2: COMPLETE** — advanced metronome features, trainer, practice modes, polyrhythm.
 
 ### What's Built (as of commit 085f00a)
 
@@ -95,17 +96,37 @@
 - timing.ts: getBeatGrouping, getMeasureDuration, getIOI, getDefaultAccents, clampBpm
 - constants.ts: all named constants (scheduler, BPM, hold phases, audio chain)
 
-### What's Next: Phase 2
+**Phase 2 — Audio Engine Updates:**
+- Trainer mode: auto-increment BPM after N bars, configurable start/end/step
+- Count-in: click-only bars before full pattern, only track-0 plays
+- Gap click: randomly mute individual beats (configurable probability, never downbeat)
+- Random mute: randomly mute entire measures
+- Multi-track polyrhythm: correct IOI per track (fits N beats into measure)
+- Per-track swing (timing offset for even subdivisions)
 
-Begin advanced metronome features. See Phase 2 section below. Key deliverables:
-- MeterControl (time signature selection with grouping)
-- SubdivisionPicker (None/8ths/Triplets/16ths/Sextuplets)
-- BeatGrid (accent pattern editor with 4-state cycling)
-- TrainerConfig (tempo ramp: start/end BPM, step, bars per step)
-- Multi-track / polyrhythm support
-- Swing per track
-- Count-in bars
-- Gap click / random mute modes
+**Phase 2 — Store Updates:**
+- metronome-store: trainerEnabled/config, countInBars, gapClick, randomMute, swing
+- Track management: addTrack, removeTrack, setTrackMuted, setTrackSwing, setTrackSound
+
+**Phase 2 — Components:**
+- MeterControl: time signature with left/right arrows and tap-to-toggle denominator
+- SubdivisionPicker: horizontal pill selector (None/8ths/Triplets/16ths/Sextuplets)
+- BeatGrid: full pattern editor with grayscale fill bars, beat + subdivision rows, multi-track
+- TrainerConfig: tempo ramp settings with toggle, start/end BPM, step, bars per step
+- PracticeModes: count-in, swing slider, gap click toggle+slider, random mute toggle+slider
+- PolyrhythmControl: add/remove tracks, mute/unmute, beat count selector
+- RecordButton: present in UI, wired in Phase 4
+- Toggle: reusable toggle switch component
+
+### What's Next: Phase 3
+
+Begin projects, presets, and persistence. See Phase 3 section below. Key deliverables:
+- IndexedDB setup with `idb` library
+- Project store: CRUD, active project, auto-advance
+- Session store: CRUD, current session
+- ProjectsPage: card list, create/edit/delete flow
+- ProgressPage: hero chart, heatmap, BPM progress bar
+- Zustand → IDB persistence with 500ms debounce
 
 ---
 

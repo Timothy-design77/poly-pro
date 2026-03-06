@@ -20,6 +20,25 @@ export interface MetronomeState {
   currentBeatIndex: number;
   currentBeatTime: number;
 
+  // Trainer mode
+  trainerEnabled: boolean;
+  trainerStartBpm: number;
+  trainerEndBpm: number;
+  trainerBpmStep: number;
+  trainerBarsPerStep: number;
+
+  // Count-in
+  countInBars: number;
+
+  // Practice modes
+  gapClickEnabled: boolean;
+  gapClickProbability: number;  // 0-1, probability a beat is muted
+  randomMuteEnabled: boolean;
+  randomMuteProbability: number; // 0-1, probability a measure is muted
+
+  // Swing (global default, tracks can override)
+  swing: number;
+
   // Actions
   setPlaying: (playing: boolean) => void;
   setBpm: (bpm: number) => void;
@@ -27,8 +46,20 @@ export interface MetronomeState {
   setMeter: (numerator: number, denominator: number) => void;
   setSubdivision: (sub: number) => void;
   setVolume: (vol: number) => void;
+  setSwing: (swing: number) => void;
   setCurrentBeat: (index: number, time: number) => void;
   updateTrackAccent: (trackId: string, beatIndex: number) => void;
+  setTrackSound: (trackId: string, soundId: string, isAccent: boolean) => void;
+  setTrackMuted: (trackId: string, muted: boolean) => void;
+  setTrackSwing: (trackId: string, swing: number) => void;
+  addTrack: (beats: number) => void;
+  removeTrack: (trackId: string) => void;
+  setTrainerEnabled: (enabled: boolean) => void;
+  setTrainerConfig: (config: Partial<Pick<MetronomeState,
+    'trainerStartBpm' | 'trainerEndBpm' | 'trainerBpmStep' | 'trainerBarsPerStep'>>) => void;
+  setCountInBars: (bars: number) => void;
+  setGapClick: (enabled: boolean, probability?: number) => void;
+  setRandomMute: (enabled: boolean, probability?: number) => void;
   resetToDefaults: () => void;
 }
 
@@ -71,23 +102,24 @@ export interface SettingsState {
 
 export function createDefaultTrack(
   numerator: number,
-  subdivision: number
+  subdivision: number,
+  trackId = 'track-0'
 ): TrackConfig {
   const totalBeats = numerator * subdivision;
   const accents: VolumeState[] = [];
 
   for (let i = 0; i < totalBeats; i++) {
     if (i === 0) {
-      accents.push(VolumeState.ACCENT);  // downbeat = loudest + accent sound
+      accents.push(VolumeState.ACCENT);
     } else if (i % subdivision === 0) {
-      accents.push(VolumeState.LOUD);    // other beats = strong
+      accents.push(VolumeState.LOUD);
     } else {
-      accents.push(VolumeState.SOFT);    // subdivisions = quiet
+      accents.push(VolumeState.SOFT);
     }
   }
 
   return {
-    id: 'track-0',
+    id: trackId,
     beats: totalBeats,
     accents,
     normalSound: 'woodblock',

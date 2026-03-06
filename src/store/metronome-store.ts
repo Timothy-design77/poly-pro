@@ -28,6 +28,25 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
   currentBeatIndex: -1,
   currentBeatTime: 0,
 
+  // Trainer
+  trainerEnabled: false,
+  trainerStartBpm: 80,
+  trainerEndBpm: 140,
+  trainerBpmStep: 5,
+  trainerBarsPerStep: 4,
+
+  // Count-in
+  countInBars: 0,
+
+  // Practice modes
+  gapClickEnabled: false,
+  gapClickProbability: 0.3,
+  randomMuteEnabled: false,
+  randomMuteProbability: 0.25,
+
+  // Swing
+  swing: 0,
+
   // ─── Actions ───
 
   setPlaying: (playing) => set({ playing }),
@@ -41,24 +60,31 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
 
   setMeter: (numerator, denominator) => {
     const grouping = getBeatGrouping(numerator, denominator);
-    const { subdivision } = get();
+    const { subdivision, tracks } = get();
+    // Rebuild track 0 but keep extra polyrhythm tracks
+    const newTrack0 = createDefaultTrack(numerator, subdivision, 'track-0');
+    const extraTracks = tracks.filter(t => t.id !== 'track-0');
     set({
       meterNumerator: numerator,
       meterDenominator: denominator,
       beatGrouping: grouping,
-      tracks: [createDefaultTrack(numerator, subdivision)],
+      tracks: [newTrack0, ...extraTracks],
     });
   },
 
   setSubdivision: (sub) => {
-    const { meterNumerator } = get();
+    const { meterNumerator, tracks } = get();
+    const newTrack0 = createDefaultTrack(meterNumerator, sub, 'track-0');
+    const extraTracks = tracks.filter(t => t.id !== 'track-0');
     set({
       subdivision: sub,
-      tracks: [createDefaultTrack(meterNumerator, sub)],
+      tracks: [newTrack0, ...extraTracks],
     });
   },
 
   setVolume: (vol) => set({ volume: Math.max(0, Math.min(1, vol)) }),
+
+  setSwing: (swing) => set({ swing: Math.max(0, Math.min(1, swing)) }),
 
   setCurrentBeat: (index, time) => set({ currentBeatIndex: index, currentBeatTime: time }),
 
@@ -67,7 +93,6 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
     const updated = tracks.map((t) => {
       if (t.id !== trackId) return t;
       const newAccents = [...t.accents];
-      // Cycle: OFF → GHOST → SOFT → MED → LOUD → ACCENT → OFF
       const current = newAccents[beatIndex];
       const next = current >= VolumeState.ACCENT ? VolumeState.OFF : (current + 1) as VolumeState;
       newAccents[beatIndex] = next;
@@ -75,6 +100,75 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
     });
     set({ tracks: updated });
   },
+
+  setTrackSound: (trackId, soundId, isAccent) => {
+    const { tracks } = get();
+    const updated = tracks.map((t) => {
+      if (t.id !== trackId) return t;
+      return isAccent ? { ...t, accentSound: soundId } : { ...t, normalSound: soundId };
+    });
+    set({ tracks: updated });
+  },
+
+  setTrackMuted: (trackId, muted) => {
+    const { tracks } = get();
+    set({ tracks: tracks.map(t => t.id === trackId ? { ...t, muted } : t) });
+  },
+
+  setTrackSwing: (trackId, swing) => {
+    const { tracks } = get();
+    set({ tracks: tracks.map(t => t.id === trackId ? { ...t, swing: Math.max(0, Math.min(1, swing)) } : t) });
+  },
+
+  addTrack: (beats) => {
+    const { tracks } = get();
+    if (tracks.length >= 4) return; // max 4 tracks
+    const id = `track-${tracks.length}`;
+    const accents: VolumeState[] = [];
+    for (let i = 0; i < beats; i++) {
+      accents.push(i === 0 ? VolumeState.ACCENT : VolumeState.LOUD);
+    }
+    const newTrack = {
+      id,
+      beats,
+      accents,
+      normalSound: 'clave',
+      normalVolume: 1,
+      accentSound: 'clave',
+      accentVolume: 2,
+      muted: false,
+      swing: 0,
+    };
+    set({ tracks: [...tracks, newTrack] });
+  },
+
+  removeTrack: (trackId) => {
+    const { tracks } = get();
+    if (tracks.length <= 1) return;
+    set({ tracks: tracks.filter(t => t.id !== trackId) });
+  },
+
+  setTrainerEnabled: (enabled) => {
+    const { bpm } = get();
+    set({
+      trainerEnabled: enabled,
+      ...(enabled ? { trainerStartBpm: bpm } : {}),
+    });
+  },
+
+  setTrainerConfig: (config) => set(config),
+
+  setCountInBars: (bars) => set({ countInBars: Math.max(0, Math.min(8, bars)) }),
+
+  setGapClick: (enabled, probability) => set({
+    gapClickEnabled: enabled,
+    ...(probability !== undefined ? { gapClickProbability: probability } : {}),
+  }),
+
+  setRandomMute: (enabled, probability) => set({
+    randomMuteEnabled: enabled,
+    ...(probability !== undefined ? { randomMuteProbability: probability } : {}),
+  }),
 
   resetToDefaults: () => {
     set({
@@ -88,6 +182,11 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
       tracks: [createDefaultTrack(DEFAULT_METER_NUMERATOR, DEFAULT_SUBDIVISION)],
       currentBeatIndex: -1,
       currentBeatTime: 0,
+      trainerEnabled: false,
+      countInBars: 0,
+      gapClickEnabled: false,
+      randomMuteEnabled: false,
+      swing: 0,
     });
   },
 }));

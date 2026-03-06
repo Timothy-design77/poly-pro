@@ -1,14 +1,16 @@
 /**
  * AudioEngine — the heart of Poly Pro.
  *
- * Singleton class that runs independently of React.
- * Uses the "A Tale of Two Clocks" pattern:
- *   - setTimeout(25ms) triggers the scheduling check
- *   - Looks 100ms ahead into the future
- *   - Schedules Web Audio notes at exact AudioContext times
- *   - UI NEVER drives timing — it only REFLECTS beat state
+ * Singleton. 25ms/100ms lookahead scheduler.
+ * Reads config from Zustand stores via getState().
  *
- * Reads config from Zustand stores via getState() — never from React props.
+ * Phase 2 additions:
+ * - Trainer mode: auto-increment BPM after N bars
+ * - Count-in: click-only bars before full pattern
+ * - Gap click: randomly mute individual beats
+ * - Random mute: randomly mute entire measures
+ * - Multi-track polyrhythm support
+ * - Per-track swing
  */
 
 import { VolumeState, VOLUME_GAINS } from './types';
@@ -28,7 +30,6 @@ import {
   MASTER_GAIN_MULTIPLIER,
 } from '../utils/constants';
 
-/** Callback for beat events — used by UI to sync visuals */
 type BeatCallback = (event: BeatEvent) => void;
 
 class AudioEngine {
@@ -43,10 +44,20 @@ class AudioEngine {
   public measureStart = 0;
   private measureCount = 0;
 
-  // Scheduled beats for onset matching (used in recording/analysis phases)
-  public scheduledBeats: ScheduledBeat[] = [];
+  // Trainer state (used by advanceBeat)
+  private lastTrainerMeasure = -1;
 
-  // Beat callbacks for UI sync
+  // Count-in state
+  private countInActive = false;
+  private countInRemaining = 0;
+
+  // Random mute — per-measure decision cached
+  private measureMuted = false;
+
+  // Gap click — precomputed per-beat mute decisions for current measure
+  private gapMuteMap: Record<string, Set<number>> = {};
+
+  public scheduledBeats: ScheduledBeat[] = [];
   private beatCallbacks: Set<BeatCallback> = new Set();
 
   private soundsLoaded = false;
@@ -54,12 +65,8 @@ class AudioEngine {
   private _warmedUp = false;
   private _warmUpPromise: Promise<void> | null = null;
 
-  // ─── Warm-up: call on first user touch to pre-init everything ───
+  // ─── Warm-up ───
 
-  /**
-   * Pre-initialize AudioContext and load all sounds on any user gesture.
-   * After this resolves, start() is near-instant.
-   */
   warmUp(): void {
     if (this._warmedUp || this._warmUpPromise) return;
     this._warmUpPromise = this._doWarmUp();
@@ -70,7 +77,7 @@ class AudioEngine {
       await this.initContext();
       this._warmedUp = true;
     } catch (err) {
-      console.warn('Audio warm-up failed (will retry on start):', err);
+      console.warn('Audio warm-up failed:', err);
     }
     this._warmUpPromise = null;
   }
@@ -86,7 +93,6 @@ class AudioEngine {
       if (this.audioCtx.state === 'suspended') {
         await this.audioCtx.resume();
       }
-      // Load sounds if not yet loaded
       if (!this.soundsLoaded) {
         await loadAllSounds(this.audioCtx);
         this.soundsLoaded = true;
@@ -96,8 +102,6 @@ class AudioEngine {
 
     this.audioCtx = new AudioContext({ sampleRate: 48000 });
 
-    // Compressor — threshold lowered to -20 dB to preserve dynamic range
-    // Only catches loud peaks, lets quiet GHOST beats pass uncompressed
     this.compressor = this.audioCtx.createDynamicsCompressor();
     this.compressor.threshold.value = COMPRESSOR_THRESHOLD;
     this.compressor.knee.value = COMPRESSOR_KNEE;
@@ -112,12 +116,10 @@ class AudioEngine {
     const vol = useMetronomeStore.getState().volume;
     this.masterGain.gain.value = vol * MASTER_GAIN_MULTIPLIER;
 
-    // Chain: masterGain → compressor → outputGain → destination
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.outputGain);
     this.outputGain.connect(this.audioCtx.destination);
 
-    // Load all sounds
     if (!this.soundsLoaded) {
       await loadAllSounds(this.audioCtx);
       this.soundsLoaded = true;
@@ -128,15 +130,8 @@ class AudioEngine {
 
   // ─── Start / Stop ───
 
-  /**
-   * Synchronous start — zero delay when context is already warm.
-   * Returns true if started synchronously, false if async fallback needed.
-   * Call this from click handlers for instant response.
-   */
   startSync(): boolean {
     if (this.isRunning) return true;
-
-    // Can only go sync if context is warm and running
     if (!this.audioCtx || this.audioCtx.state !== 'running' || !this.soundsLoaded) {
       return false;
     }
@@ -145,12 +140,28 @@ class AudioEngine {
     const ctx = this.audioCtx;
     const state = useMetronomeStore.getState();
 
-    // Initialize beat counters
     this.nextNoteTime = {};
     this.currentBeat = {};
     this.scheduledBeats = [];
     this.measureStart = ctx.currentTime;
     this.measureCount = 0;
+    this.lastTrainerMeasure = -1;
+    this.measureMuted = false;
+    this.gapMuteMap = {};
+
+    // Trainer: set starting BPM
+    if (state.trainerEnabled) {
+      useMetronomeStore.getState().setBpm(state.trainerStartBpm);
+    }
+
+    // Count-in
+    if (state.countInBars > 0) {
+      this.countInActive = true;
+      this.countInRemaining = state.countInBars;
+    } else {
+      this.countInActive = false;
+      this.countInRemaining = 0;
+    }
 
     for (const track of state.tracks) {
       this.nextNoteTime[track.id] = ctx.currentTime;
@@ -161,21 +172,14 @@ class AudioEngine {
       this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER;
     }
 
-    // Schedule immediately — first beat fires within this call stack
     this.schedule();
     return true;
   }
 
-  /**
-   * Async start — fallback for when context isn't warmed up yet.
-   */
   async start(): Promise<void> {
     if (this.isRunning) return;
-
-    // Try sync first
     if (this.startSync()) return;
 
-    // Async fallback: wait for warm-up, init context
     if (this._warmUpPromise) {
       await this._warmUpPromise;
     }
@@ -185,7 +189,6 @@ class AudioEngine {
       await ctx.resume();
     }
 
-    // Try sync again now that context is ready
     if (!this.isRunning) {
       this.startSync();
     }
@@ -200,7 +203,8 @@ class AudioEngine {
       this.schedulerTimer = null;
     }
 
-    // Reset beat display
+    this.countInActive = false;
+    this.countInRemaining = 0;
     useMetronomeStore.getState().setCurrentBeat(-1, 0);
   }
 
@@ -217,7 +221,6 @@ class AudioEngine {
     const state = useMetronomeStore.getState();
     const settings = useSettingsStore.getState();
 
-    // Update master gain dynamically
     if (this.masterGain) {
       this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER;
     }
@@ -225,49 +228,66 @@ class AudioEngine {
     const now = ctx.currentTime;
 
     for (const track of state.tracks) {
+      // During count-in, only play track-0
+      if (this.countInActive && track.id !== 'track-0') continue;
       if (track.muted) continue;
 
-      // Ensure this track has been initialized
       if (this.nextNoteTime[track.id] === undefined) {
         this.nextNoteTime[track.id] = now;
         this.currentBeat[track.id] = 0;
       }
 
-      // Schedule all beats within the lookahead window
       while (this.nextNoteTime[track.id] < now + SCHEDULE_AHEAD_S) {
         const beatTime = this.nextNoteTime[track.id];
         const beatIndex = this.currentBeat[track.id];
-        const volumeState = track.accents[beatIndex] ?? VolumeState.GHOST;
+        const volumeState = track.accents[beatIndex] ?? VolumeState.SOFT;
+
+        // Determine if this beat should be muted
+        let muted = false;
+
+        // Random mute: entire measure silenced
+        if (state.randomMuteEnabled && this.measureMuted && !this.countInActive) {
+          muted = true;
+        }
+
+        // Gap click: individual beats randomly muted
+        if (state.gapClickEnabled && !this.countInActive && !muted) {
+          const trackGaps = this.gapMuteMap[track.id];
+          if (trackGaps && trackGaps.has(beatIndex)) {
+            muted = true;
+          }
+        }
 
         // Play the sound
-        if (volumeState !== VolumeState.OFF) {
+        if (volumeState !== VolumeState.OFF && !muted) {
           this.triggerSound(track, volumeState, beatTime, settings.clickSound);
         }
 
-        // Haptic vibration — trigger on LOUD and ACCENT
-        if (settings.hapticEnabled && volumeState >= VolumeState.LOUD) {
+        // Haptic
+        if (settings.hapticEnabled && volumeState >= VolumeState.LOUD && !muted) {
           this.triggerVibration(beatTime - now, volumeState, settings.vibrationIntensity);
         }
 
         // Record scheduled beat
         this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState });
 
-        // Notify UI
-        const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
-        this.beatCallbacks.forEach((cb) => cb(event));
+        // Notify UI (for track-0 only to avoid multi-track beat flicker)
+        if (track.id === 'track-0') {
+          const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
+          this.beatCallbacks.forEach((cb) => cb(event));
+        }
 
-        // Advance to next beat
+        // Advance
         this.advanceBeat(track.id, state);
       }
     }
 
-    // Re-schedule
     this.schedulerTimer = setTimeout(this.schedule, SCHEDULE_INTERVAL_MS);
   };
 
   // ─── Beat Advancement ───
 
-  private advanceBeat(trackId: string, state: typeof useMetronomeStore extends { getState: () => infer S } ? S : never): void {
+  private advanceBeat(trackId: string, state: ReturnType<typeof useMetronomeStore.getState>): void {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
 
@@ -276,23 +296,77 @@ class AudioEngine {
     const bpm = state.bpm;
     const subdivision = state.subdivision;
 
-    // IOI = time between subdivisions
-    const ioi = 60 / bpm / subdivision;
-
-    // Apply swing to even-numbered subdivisions (if subdivision > 1)
-    let swingOffset = 0;
-    if (track.swing > 0 && subdivision > 1 && beatIndex % 2 === 1) {
-      swingOffset = ioi * track.swing * 0.5;
+    let ioi: number;
+    if (trackId === 'track-0') {
+      // Main track: IOI based on BPM and subdivision
+      ioi = 60 / bpm / subdivision;
+    } else {
+      // Poly track: fit track.beats into one measure
+      // Measure duration = (60/bpm) * meterNumerator (from track-0)
+      const measureDuration = (60 / bpm) * state.meterNumerator;
+      ioi = measureDuration / totalBeats;
     }
 
-    // Advance
+    // Per-track swing
+    let swingOffset = 0;
+    const swingVal = track.swing || state.swing;
+    if (swingVal > 0 && subdivision > 1 && beatIndex % 2 === 1 && trackId === 'track-0') {
+      swingOffset = ioi * swingVal * 0.5;
+    }
+
     this.nextNoteTime[trackId] += ioi + swingOffset;
     this.currentBeat[trackId] = (beatIndex + 1) % totalBeats;
 
-    // Check for measure boundary
-    if (this.currentBeat[trackId] === 0) {
+    // Measure boundary (track-0 is authoritative)
+    if (trackId === 'track-0' && this.currentBeat[trackId] === 0) {
       this.measureCount++;
       this.measureStart = this.nextNoteTime[trackId];
+
+      // Count-in check
+      if (this.countInActive) {
+        this.countInRemaining--;
+        if (this.countInRemaining <= 0) {
+          this.countInActive = false;
+        }
+      }
+
+      // Trainer mode: increment BPM after N bars
+      if (state.trainerEnabled && !this.countInActive) {
+        const barsSinceLast = this.measureCount - (this.lastTrainerMeasure < 0 ? 0 : this.lastTrainerMeasure);
+        if (barsSinceLast >= state.trainerBarsPerStep) {
+          this.lastTrainerMeasure = this.measureCount;
+          const dir = state.trainerEndBpm >= state.trainerStartBpm ? 1 : -1;
+          const newBpm = state.bpm + state.trainerBpmStep * dir;
+          const clamped = dir > 0
+            ? Math.min(newBpm, state.trainerEndBpm)
+            : Math.max(newBpm, state.trainerEndBpm);
+          if (clamped !== state.bpm) {
+            useMetronomeStore.getState().setBpm(clamped);
+          }
+        }
+      }
+
+      // Random mute: decide for next measure
+      if (state.randomMuteEnabled && !this.countInActive) {
+        this.measureMuted = Math.random() < state.randomMuteProbability;
+      } else {
+        this.measureMuted = false;
+      }
+
+      // Gap click: precompute which beats to mute in next measure
+      if (state.gapClickEnabled && !this.countInActive) {
+        this.gapMuteMap = {};
+        for (const t of state.tracks) {
+          const gaps = new Set<number>();
+          for (let i = 0; i < t.beats; i++) {
+            // Never mute beat 0 (downbeat)
+            if (i > 0 && Math.random() < state.gapClickProbability) {
+              gaps.add(i);
+            }
+          }
+          this.gapMuteMap[t.id] = gaps;
+        }
+      }
     }
   }
 
@@ -330,7 +404,6 @@ class AudioEngine {
 
     const duration = volumeState === VolumeState.ACCENT ? 20 : 12;
     const scaledDuration = Math.round(duration * intensity);
-
     if (scaledDuration <= 0) return;
 
     const delay = Math.max(0, delayMs * 1000);
@@ -382,5 +455,4 @@ class AudioEngine {
   }
 }
 
-// ─── Singleton Export ───
 export const audioEngine = new AudioEngine();
