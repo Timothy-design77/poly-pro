@@ -163,10 +163,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       currentBpm: input.startBpm,
       consecutiveCount: 0,
       sessionIds: [],
-        snapshot: null,
+      snapshot: null,
     };
     await db.putProject(project);
     set((s) => ({ projects: [...s.projects, project] }));
+
+    // Auto-activate the new project (snapshots old, resets to clean defaults)
+    get().setActiveProject(id);
     return id;
   },
 
