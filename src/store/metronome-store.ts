@@ -67,13 +67,9 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
     const updated = tracks.map((t) => {
       if (t.id !== trackId) return t;
       const newAccents = [...t.accents];
-      // Cycle: OFF → GHOST → MED → LOUD → OFF
+      // Cycle: OFF → GHOST → SOFT → MED → LOUD → ACCENT → OFF
       const current = newAccents[beatIndex];
-      const next =
-        current === VolumeState.OFF ? VolumeState.GHOST
-        : current === VolumeState.GHOST ? VolumeState.MED
-        : current === VolumeState.MED ? VolumeState.LOUD
-        : VolumeState.OFF;
+      const next = current >= VolumeState.ACCENT ? VolumeState.OFF : (current + 1) as VolumeState;
       newAccents[beatIndex] = next;
       return { ...t, accents: newAccents };
     });

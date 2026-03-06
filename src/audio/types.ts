@@ -1,17 +1,24 @@
-/** Volume states for beat accents */
+/** Volume states for beat accents — 6 levels: OFF + 5 audible */
 export enum VolumeState {
   OFF = 0,
-  GHOST = 1,
-  MED = 2,
-  LOUD = 3,
+  GHOST = 1,    // barely audible tap
+  SOFT = 2,     // quiet
+  MED = 3,      // moderate
+  LOUD = 4,     // strong
+  ACCENT = 5,   // loudest — uses accent sound
 }
 
-/** Gain values mapped to volume states — wide curve for clear differentiation */
+/** Number of audible volume states (for cycling) */
+export const VOLUME_STATE_COUNT = 6;
+
+/** Gain values — exponential curve for clear separation at every level */
 export const VOLUME_GAINS: Record<VolumeState, number> = {
   [VolumeState.OFF]: 0.0,
-  [VolumeState.GHOST]: 0.10,
-  [VolumeState.MED]: 0.38,
-  [VolumeState.LOUD]: 1.0,
+  [VolumeState.GHOST]: 0.03,
+  [VolumeState.SOFT]: 0.10,
+  [VolumeState.MED]: 0.25,
+  [VolumeState.LOUD]: 0.55,
+  [VolumeState.ACCENT]: 1.0,
 };
 
 /** Track configuration for one layer */

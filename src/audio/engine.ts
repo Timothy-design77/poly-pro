@@ -220,8 +220,8 @@ class AudioEngine {
           this.triggerSound(track, volumeState, beatTime, settings.clickSound);
         }
 
-        // Haptic vibration
-        if (settings.hapticEnabled && volumeState >= VolumeState.MED) {
+        // Haptic vibration — trigger on LOUD and ACCENT
+        if (settings.hapticEnabled && volumeState >= VolumeState.LOUD) {
           this.triggerVibration(beatTime - now, volumeState, settings.vibrationIntensity);
         }
 
@@ -282,7 +282,7 @@ class AudioEngine {
   ): void {
     if (!this.audioCtx || !this.masterGain) return;
 
-    const isAccent = volumeState === VolumeState.LOUD;
+    const isAccent = volumeState === VolumeState.ACCENT;
     const soundId = isAccent ? (track.accentSound || defaultSound) : (track.normalSound || defaultSound);
     const buffer = getBuffer(soundId) || getBuffer(defaultSound);
 
@@ -304,7 +304,7 @@ class AudioEngine {
   private triggerVibration(delayMs: number, volumeState: VolumeState, intensity: number): void {
     if (!navigator.vibrate) return;
 
-    const duration = volumeState === VolumeState.LOUD ? 20 : 10;
+    const duration = volumeState === VolumeState.ACCENT ? 20 : 12;
     const scaledDuration = Math.round(duration * intensity);
 
     if (scaledDuration <= 0) return;
@@ -328,7 +328,7 @@ class AudioEngine {
     source.buffer = buffer;
 
     const gainNode = ctx.createGain();
-    gainNode.gain.value = VOLUME_GAINS[VolumeState.LOUD];
+    gainNode.gain.value = VOLUME_GAINS[VolumeState.ACCENT];
 
     source.connect(gainNode);
     gainNode.connect(this.masterGain);

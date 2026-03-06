@@ -78,11 +78,11 @@ export function createDefaultTrack(
 
   for (let i = 0; i < totalBeats; i++) {
     if (i === 0) {
-      accents.push(VolumeState.LOUD);
+      accents.push(VolumeState.ACCENT);  // downbeat = loudest + accent sound
     } else if (i % subdivision === 0) {
-      accents.push(VolumeState.MED);
+      accents.push(VolumeState.LOUD);    // other beats = strong
     } else {
-      accents.push(VolumeState.GHOST);
+      accents.push(VolumeState.SOFT);    // subdivisions = quiet
     }
   }
 

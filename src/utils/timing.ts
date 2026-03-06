@@ -66,13 +66,13 @@ export function getDefaultAccents(
   grouping?: number[]
 ): number[] {
   const total = numerator * subdivision;
-  const accents = new Array(total).fill(1); // GHOST
+  const accents = new Array(total).fill(2); // SOFT
   const groups = grouping || [numerator];
 
-  // Mark downbeats as LOUD
+  // Mark downbeats as ACCENT (5)
   let pos = 0;
   for (const g of groups) {
-    accents[pos * subdivision] = 3; // LOUD
+    accents[pos * subdivision] = 5; // ACCENT
     pos += g;
   }
 
