@@ -35,11 +35,12 @@ export function Dial({ size, onTapBpm }: DialProps) {
   const meterNumerator = useMetronomeStore((s) => s.meterNumerator);
   const meterDenominator = useMetronomeStore((s) => s.meterDenominator);
   const subdivision = useMetronomeStore((s) => s.subdivision);
+  const beatGrouping = useMetronomeStore((s) => s.beatGrouping);
   const tracks = useMetronomeStore((s) => s.tracks);
   const currentBeats = useMetronomeStore((s) => s.currentBeats);
 
   const subLabels: Record<number, string> = {
-    1: '', 2: '8ths', 3: 'Triplets', 4: '16ths', 6: 'Sextuplets',
+    1: '', 2: '8ths', 3: 'Triplets', 4: '16ths', 5: 'Quints', 6: 'Sextuplets',
   };
 
   const draw = useCallback(() => {
@@ -77,6 +78,16 @@ export function Dial({ size, onTapBpm }: DialProps) {
     ctx.stroke();
     ctx.lineCap = 'butt';
 
+    // Compute group boundary positions for track-0
+    const groupBoundaries = new Set<number>([0]);
+    {
+      let pos = 0;
+      for (let g = 0; g < beatGrouping.length - 1; g++) {
+        pos += beatGrouping[g];
+        groupBoundaries.add(pos);
+      }
+    }
+
     // ─── Draw each track ring ───
     for (let ti = 0; ti < tracks.length; ti++) {
       const track = tracks[ti];
@@ -101,12 +112,14 @@ export function Dial({ size, onTapBpm }: DialProps) {
 
         const isDownbeat = i === 0;
         const isBeat = isMain ? (i % subdivision === 0) : true;
+        const beatNum = isMain ? Math.floor(i / subdivision) : i;
+        const isGroupStart = isMain && groupBoundaries.has(beatNum) && isBeat;
         const isActive = playing && i === activeBeat;
 
-        // Downbeat halo
-        if (isDownbeat && !isActive) {
+        // Downbeat/group-start halo
+        if ((isDownbeat || isGroupStart) && !isActive) {
           ctx.beginPath();
-          ctx.arc(x, y, isMain ? 10 : 8, 0, Math.PI * 2);
+          ctx.arc(x, y, isMain ? (isDownbeat ? 10 : 8) : 8, 0, Math.PI * 2);
           ctx.fillStyle = `${color.dot}0.04)`;
           ctx.fill();
         }
@@ -127,7 +140,7 @@ export function Dial({ size, onTapBpm }: DialProps) {
         // Dot
         let dotR: number;
         if (isMain) {
-          dotR = isDownbeat ? 5 : isBeat ? 3.5 : 2;
+          dotR = isDownbeat ? 5 : isGroupStart ? 4.5 : isBeat ? 3.5 : 2;
         } else {
           dotR = isDownbeat ? 4.5 : 3;
         }
@@ -139,6 +152,8 @@ export function Dial({ size, onTapBpm }: DialProps) {
           ctx.fillStyle = `${color.dot}0.9)`;
         } else if (isDownbeat) {
           ctx.fillStyle = `${color.dot}${isMain ? '0.5)' : '0.45)'}`;
+        } else if (isGroupStart) {
+          ctx.fillStyle = `${color.dot}0.35)`;
         } else if (isBeat) {
           ctx.fillStyle = `${color.dot}${isMain ? '0.18)' : '0.2)'}`;
         } else {
@@ -182,7 +197,7 @@ export function Dial({ size, onTapBpm }: DialProps) {
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.fillText(ratioText, cx, cy + size * 0.22);
     }
-  }, [size, bpm, playing, meterNumerator, meterDenominator, subdivision, tracks, currentBeats]);
+  }, [size, bpm, playing, meterNumerator, meterDenominator, subdivision, beatGrouping, tracks, currentBeats]);
 
   useEffect(() => { draw(); }, [draw]);
 

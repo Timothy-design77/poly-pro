@@ -10,6 +10,7 @@ import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
 import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
 import { SubdivisionPicker } from '../components/metronome/SubdivisionPicker';
+import { GroupingPicker } from '../components/metronome/GroupingPicker';
 import { BeatGrid } from '../components/metronome/BeatGrid';
 import { TrainerConfig, useTrainerBadge } from '../components/metronome/TrainerConfig';
 import { PracticeModes, usePracticeBadge } from '../components/metronome/PracticeModes';
@@ -80,6 +81,7 @@ export function HomePage() {
             <div className="space-y-4">
               <MeterControl />
               <SubdivisionPicker />
+              <GroupingPicker />
             </div>
           </CollapsibleCard>
 

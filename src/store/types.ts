@@ -43,6 +43,7 @@ export interface MetronomeState {
   setBpm: (bpm: number) => void;
   adjustBpm: (delta: number) => void;
   setMeter: (numerator: number, denominator: number) => void;
+  setGrouping: (grouping: number[]) => void;
   setSubdivision: (sub: number) => void;
   setVolume: (vol: number) => void;
   setSwing: (swing: number) => void;

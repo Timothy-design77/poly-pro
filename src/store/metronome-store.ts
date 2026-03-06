@@ -71,6 +71,10 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
     });
   },
 
+
+  setGrouping: (grouping) => {
+    set({ beatGrouping: grouping });
+  },
   setSubdivision: (sub) => {
     const { meterNumerator, tracks } = get();
     const newTrack0 = createDefaultTrack(meterNumerator, sub, 'track-0');

@@ -5,6 +5,7 @@ const SUBDIVISIONS: { value: number; label: string }[] = [
   { value: 2, label: '8ths' },
   { value: 3, label: 'Triplets' },
   { value: 4, label: '16ths' },
+  { value: 5, label: 'Quints' },
   { value: 6, label: 'Sextuplets' },
 ];
 

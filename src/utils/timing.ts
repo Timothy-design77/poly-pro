@@ -25,12 +25,68 @@ export function getBeatGrouping(numerator: number, denominator: number): number[
       case 8: return [3, 3, 2];
       case 10: return [3, 3, 2, 2];
       case 11: return [3, 3, 3, 2];
+      case 13: return [3, 3, 3, 2, 2];
+      case 15: return [3, 3, 3, 3, 3];
+      case 17: return [3, 3, 3, 3, 3, 2];
       default: break;
     }
   }
 
   // Simple meters — one group
   return [numerator];
+}
+
+/**
+ * Get all valid beat groupings for a time signature.
+ * Returns an array of grouping arrays. The first is the default.
+ * Used for the grouping picker UI.
+ */
+export function getAvailableGroupings(numerator: number, denominator: number): number[][] {
+  const defaultGrouping = getBeatGrouping(numerator, denominator);
+  const results: number[][] = [defaultGrouping];
+
+  // For simple meters (numerator <= 4 in /4 or /2 or /16), only one option
+  if (numerator <= 4 && (denominator === 4 || denominator === 2 || denominator === 16)) {
+    return results;
+  }
+
+  // Generate permutations of valid groupings using 2s and 3s
+  // A grouping is valid if the numbers sum to the numerator
+  const groupings = new Set<string>();
+  groupings.add(JSON.stringify(defaultGrouping));
+
+  function findGroupings(remaining: number, current: number[]) {
+    if (remaining === 0) {
+      groupings.add(JSON.stringify(current));
+      return;
+    }
+    if (remaining < 2) return;
+    if (current.length > 8) return; // safety
+
+    if (remaining >= 2) findGroupings(remaining - 2, [...current, 2]);
+    if (remaining >= 3) findGroupings(remaining - 3, [...current, 3]);
+    // Allow groups of 4 for /4 meters
+    if ((denominator === 4 || denominator === 2) && remaining >= 4) {
+      findGroupings(remaining - 4, [...current, 4]);
+    }
+  }
+
+  findGroupings(numerator, []);
+
+  // Convert set back to arrays, sort by pattern
+  for (const g of groupings) {
+    const parsed = JSON.parse(g) as number[];
+    if (!results.some(r => JSON.stringify(r) === g)) {
+      results.push(parsed);
+    }
+  }
+
+  // Sort: default first, then by number of groups (fewer = simpler)
+  return results.sort((a, b) => {
+    if (JSON.stringify(a) === JSON.stringify(defaultGrouping)) return -1;
+    if (JSON.stringify(b) === JSON.stringify(defaultGrouping)) return 1;
+    return a.length - b.length;
+  });
 }
 
 /**
