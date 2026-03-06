@@ -51,6 +51,7 @@ export interface MetronomeState {
   setTrackSound: (trackId: string, soundId: string, isAccent: boolean) => void;
   setTrackMuted: (trackId: string, muted: boolean) => void;
   setTrackSwing: (trackId: string, swing: number) => void;
+  setBeatSound: (trackId: string, beatIndex: number, soundId: string | null) => void;
   addTrack: (beats: number) => void;
   removeTrack: (trackId: string) => void;
   setTrainerEnabled: (enabled: boolean) => void;
@@ -127,5 +128,6 @@ export function createDefaultTrack(
     accentVolume: 2,
     muted: false,
     swing: 0,
+    soundOverrides: {},
   };
 }

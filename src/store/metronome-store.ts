@@ -122,6 +122,21 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
     set({ tracks: tracks.map(t => t.id === trackId ? { ...t, swing: Math.max(0, Math.min(1, swing)) } : t) });
   },
 
+  setBeatSound: (trackId, beatIndex, soundId) => {
+    const { tracks } = get();
+    const updated = tracks.map((t) => {
+      if (t.id !== trackId) return t;
+      const newOverrides = { ...t.soundOverrides };
+      if (soundId === null) {
+        delete newOverrides[beatIndex];
+      } else {
+        newOverrides[beatIndex] = soundId;
+      }
+      return { ...t, soundOverrides: newOverrides };
+    });
+    set({ tracks: updated });
+  },
+
   addTrack: (beats) => {
     const { tracks } = get();
     if (tracks.length >= 4) return; // max 4 tracks
@@ -140,6 +155,7 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
       accentVolume: 2,
       muted: false,
       swing: 0,
+      soundOverrides: {},
     };
     set({ tracks: [...tracks, newTrack] });
   },

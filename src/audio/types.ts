@@ -32,6 +32,8 @@ export interface TrackConfig {
   accentVolume: number;
   muted: boolean;
   swing: number;
+  /** Per-beat sound overrides. Key = beat index, value = sound ID */
+  soundOverrides: Record<number, string>;
 }
 
 /** Config snapshot the scheduler reads each tick */

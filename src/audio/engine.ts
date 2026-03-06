@@ -288,7 +288,7 @@ class AudioEngine {
             // Count-in: play the specific count-N voice sample
             this.playBuffer(countInSound, volumeState, beatTime);
           } else {
-            this.triggerSound(track, volumeState, beatTime, settings.clickSound);
+            this.triggerSound(track, beatIndex, volumeState, beatTime, settings.clickSound);
           }
         }
 
@@ -422,15 +422,23 @@ class AudioEngine {
   }
 
   private triggerSound(
-    track: { normalSound: string; accentSound: string },
+    track: { normalSound: string; accentSound: string; soundOverrides: Record<number, string> },
+    beatIndex: number,
     volumeState: VolumeState,
     beatTime: number,
     defaultSound: string
   ): void {
     if (!this.audioCtx || !this.masterGain) return;
 
-    const isAccent = volumeState === VolumeState.ACCENT;
-    const soundId = isAccent ? (track.accentSound || defaultSound) : (track.normalSound || defaultSound);
+    // Per-beat sound override takes priority
+    const override = track.soundOverrides[beatIndex];
+    let soundId: string;
+    if (override) {
+      soundId = override;
+    } else {
+      const isAccent = volumeState === VolumeState.ACCENT;
+      soundId = isAccent ? (track.accentSound || defaultSound) : (track.normalSound || defaultSound);
+    }
     const buffer = getBuffer(soundId) || getBuffer(defaultSound);
 
     if (!buffer) return;
