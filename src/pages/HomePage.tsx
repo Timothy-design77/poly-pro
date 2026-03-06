@@ -22,7 +22,9 @@ export function HomePage() {
   const setBpm = useMetronomeStore((s) => s.setBpm);
   const playing = useMetronomeStore((s) => s.playing);
   const playStartTime = useMetronomeStore((s) => s.playStartTime);
-  const activeProject = useProjectStore((s) => s.getActiveProject)();
+  const activeProject = useProjectStore((s) => {
+    return s.projects.find((p) => p.id === s.activeProjectId) || null;
+  });
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);

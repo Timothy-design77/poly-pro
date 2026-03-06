@@ -20,7 +20,9 @@ function formatDate(dateStr: string): string {
 }
 
 export function ProgressPage() {
-  const activeProject = useProjectStore((s) => s.getActiveProject)();
+  const activeProject = useProjectStore((s) => {
+    return s.projects.find((p) => p.id === s.activeProjectId) || null;
+  });
   const sessions = useSessionStore((s) =>
     activeProject ? s.getSessionsForProject(activeProject.id) : []
   );

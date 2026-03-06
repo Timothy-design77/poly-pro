@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ProjectRecord, PresetRecord } from './db';
 import * as db from './db';
+import { useMetronomeStore } from './metronome-store';
 
 interface ProjectState {
   projects: ProjectRecord[];
@@ -115,8 +116,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setActiveProject: (id) => {
+    const { projects } = get();
+    const project = projects.find((p) => p.id === id);
     set({ activeProjectId: id });
     debouncedWrite(() => db.setSetting('activeProjectId', id));
+
+    // Update metronome BPM to project's current tempo
+    if (project) {
+      useMetronomeStore.getState().setBpm(project.currentBpm);
+      // Update lastOpened
+      const updated = { ...project, lastOpened: new Date().toISOString() };
+      set((s) => ({ projects: s.projects.map((p) => p.id === id ? updated : p) }));
+      debouncedWrite(() => db.putProject(updated));
+    }
   },
 
   getActiveProject: () => {
