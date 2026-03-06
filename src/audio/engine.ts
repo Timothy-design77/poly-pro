@@ -245,12 +245,23 @@ class AudioEngine {
         const beatTime = this.nextNoteTime[track.id];
         const beatIndex = this.currentBeat[track.id];
 
-        // During count-in: uniform LOUD clicks on main beats, SOFT on subdivisions
-        // This gives a clear "1-2-3-4" that leads unambiguously into beat 1
+        // During count-in: play count-1/2/3/4 voice samples on main beats
         let volumeState: VolumeState;
+        let countInSound: string | null = null;
+
         if (this.countInActive) {
           const isMainBeat = (beatIndex % state.subdivision === 0);
-          volumeState = isMainBeat ? VolumeState.LOUD : VolumeState.SOFT;
+          if (isMainBeat) {
+            // Beat number 1-based (e.g. in 4/4: beat 0→"1", beat 1→"2", etc.)
+            const beatNum = Math.floor(beatIndex / state.subdivision) + 1;
+            // Use count-1 through count-4, wrap for meters > 4
+            const countNum = ((beatNum - 1) % 4) + 1;
+            countInSound = `count-${countNum}`;
+            volumeState = VolumeState.LOUD;
+          } else {
+            // Subdivisions silent during count-in
+            volumeState = VolumeState.OFF;
+          }
         } else {
           volumeState = track.accents[beatIndex] ?? VolumeState.SOFT;
         }
@@ -273,7 +284,12 @@ class AudioEngine {
 
         // Play the sound
         if (volumeState !== VolumeState.OFF && !muted) {
-          this.triggerSound(track, volumeState, beatTime, settings.clickSound);
+          if (countInSound) {
+            // Count-in: play the specific count-N voice sample
+            this.playBuffer(countInSound, volumeState, beatTime);
+          } else {
+            this.triggerSound(track, volumeState, beatTime, settings.clickSound);
+          }
         }
 
         // Haptic
@@ -389,6 +405,21 @@ class AudioEngine {
   }
 
   // ─── Sound Playback ───
+
+  /** Play a sound by buffer ID at the given volume and time */
+  private playBuffer(soundId: string, volumeState: VolumeState, beatTime: number): void {
+    if (!this.audioCtx || !this.masterGain) return;
+    const buffer = getBuffer(soundId);
+    if (!buffer) return;
+
+    const source = this.audioCtx.createBufferSource();
+    source.buffer = buffer;
+    const gainNode = this.audioCtx.createGain();
+    gainNode.gain.value = VOLUME_GAINS[volumeState];
+    source.connect(gainNode);
+    gainNode.connect(this.masterGain);
+    source.start(beatTime);
+  }
 
   private triggerSound(
     track: { normalSound: string; accentSound: string },

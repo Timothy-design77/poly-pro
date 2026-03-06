@@ -23,6 +23,14 @@ export const SOUND_CATALOG: SoundEntry[] = [
 /** Map of sound ID → loaded AudioBuffer */
 const bufferCache = new Map<string, AudioBuffer>();
 
+/** Count-in sound files (not shown in user picker) */
+const COUNT_SOUNDS = [
+  { id: 'count-1', file: 'count-1.wav' },
+  { id: 'count-2', file: 'count-2.wav' },
+  { id: 'count-3', file: 'count-3.wav' },
+  { id: 'count-4', file: 'count-4.wav' },
+];
+
 /** Base path for sound files */
 function getSoundBasePath(): string {
   // Vite base path
@@ -62,12 +70,39 @@ export async function loadSound(
 }
 
 /**
- * Preload all sounds in the catalog.
+ * Load a sound by filename (for non-catalog sounds like count-in).
+ */
+async function loadSoundFile(
+  ctx: AudioContext,
+  id: string,
+  filename: string
+): Promise<AudioBuffer | null> {
+  if (bufferCache.has(id)) return bufferCache.get(id)!;
+
+  try {
+    const url = `${getSoundBasePath()}${filename}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    bufferCache.set(id, audioBuffer);
+    return audioBuffer;
+  } catch (err) {
+    console.error(`Failed to load sound ${id}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Preload all sounds in the catalog + count-in sounds.
  */
 export async function loadAllSounds(ctx: AudioContext): Promise<void> {
-  const loadPromises = SOUND_CATALOG.map((entry) => loadSound(ctx, entry.id));
-  await Promise.allSettled(loadPromises);
-  console.log(`Loaded ${bufferCache.size}/${SOUND_CATALOG.length} sounds`);
+  const catalogPromises = SOUND_CATALOG.map((entry) => loadSound(ctx, entry.id));
+  const countPromises = COUNT_SOUNDS.map((entry) =>
+    loadSoundFile(ctx, entry.id, entry.file)
+  );
+  await Promise.allSettled([...catalogPromises, ...countPromises]);
+  console.log(`Loaded ${bufferCache.size}/${SOUND_CATALOG.length + COUNT_SOUNDS.length} sounds`);
 }
 
 /**
