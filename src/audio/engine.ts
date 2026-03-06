@@ -205,7 +205,11 @@ class AudioEngine {
 
     this.countInActive = false;
     this.countInRemaining = 0;
-    useMetronomeStore.getState().setCurrentBeat(-1, 0);
+    // Clear all per-track beat indicators
+    const state = useMetronomeStore.getState();
+    const cleared: Record<string, number> = {};
+    for (const t of state.tracks) cleared[t.id] = -1;
+    useMetronomeStore.setState({ currentBeats: cleared });
   }
 
   get running(): boolean {
@@ -271,11 +275,9 @@ class AudioEngine {
         // Record scheduled beat
         this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState });
 
-        // Notify UI (for track-0 only to avoid multi-track beat flicker)
-        if (track.id === 'track-0') {
-          const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
-          this.beatCallbacks.forEach((cb) => cb(event));
-        }
+        // Notify UI for ALL tracks (each track gets its own dial ring)
+        const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
+        this.beatCallbacks.forEach((cb) => cb(event));
 
         // Advance
         this.advanceBeat(track.id, state);

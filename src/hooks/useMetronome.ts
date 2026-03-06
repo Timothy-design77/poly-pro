@@ -22,7 +22,7 @@ export function useMetronome() {
   // Subscribe to beat events from the engine
   useEffect(() => {
     const unsubscribe = audioEngine.onBeat((event) => {
-      setCurrentBeat(event.beatIndex, event.time);
+      setCurrentBeat(event.trackId, event.beatIndex);
     });
     return unsubscribe;
   }, [setCurrentBeat]);

@@ -16,9 +16,8 @@ export interface MetronomeState {
   // Tracks
   tracks: TrackConfig[];
 
-  // Beat animation state
-  currentBeatIndex: number;
-  currentBeatTime: number;
+  // Beat animation state (per-track)
+  currentBeats: Record<string, number>;
 
   // Trainer mode
   trainerEnabled: boolean;
@@ -47,7 +46,7 @@ export interface MetronomeState {
   setSubdivision: (sub: number) => void;
   setVolume: (vol: number) => void;
   setSwing: (swing: number) => void;
-  setCurrentBeat: (index: number, time: number) => void;
+  setCurrentBeat: (trackId: string, index: number) => void;
   updateTrackAccent: (trackId: string, beatIndex: number) => void;
   setTrackSound: (trackId: string, soundId: string, isAccent: boolean) => void;
   setTrackMuted: (trackId: string, muted: boolean) => void;

@@ -25,8 +25,7 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
   tracks: [createDefaultTrack(DEFAULT_METER_NUMERATOR, DEFAULT_SUBDIVISION)],
 
   // Beat animation
-  currentBeatIndex: -1,
-  currentBeatTime: 0,
+  currentBeats: {},
 
   // Trainer
   trainerEnabled: false,
@@ -86,7 +85,10 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
 
   setSwing: (swing) => set({ swing: Math.max(0, Math.min(1, swing)) }),
 
-  setCurrentBeat: (index, time) => set({ currentBeatIndex: index, currentBeatTime: time }),
+  setCurrentBeat: (trackId, index) => {
+    const { currentBeats } = get();
+    set({ currentBeats: { ...currentBeats, [trackId]: index } });
+  },
 
   updateTrackAccent: (trackId, beatIndex) => {
     const { tracks } = get();
@@ -180,8 +182,7 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
       subdivision: DEFAULT_SUBDIVISION,
       volume: DEFAULT_VOLUME,
       tracks: [createDefaultTrack(DEFAULT_METER_NUMERATOR, DEFAULT_SUBDIVISION)],
-      currentBeatIndex: -1,
-      currentBeatTime: 0,
+      currentBeats: {},
       trainerEnabled: false,
       countInBars: 0,
       gapClickEnabled: false,

@@ -39,7 +39,7 @@ export function BeatGrid() {
   const tracks = useMetronomeStore((s) => s.tracks);
   const subdivision = useMetronomeStore((s) => s.subdivision);
   const playing = useMetronomeStore((s) => s.playing);
-  const currentBeatIndex = useMetronomeStore((s) => s.currentBeatIndex);
+  const currentBeats = useMetronomeStore((s) => s.currentBeats);
   const updateTrackAccent = useMetronomeStore((s) => s.updateTrackAccent);
 
   return (
@@ -90,7 +90,7 @@ export function BeatGrid() {
                 const beatNum = isMainTrack
                   ? Math.floor(beatIdx / subdivision) + 1
                   : beatIdx + 1;
-                const isActive = playing && currentBeatIndex === beatIdx && isMainTrack;
+                const isActive = playing && currentBeats[track.id] === beatIdx;
 
                 return (
                   <button
@@ -132,7 +132,7 @@ export function BeatGrid() {
                   const vol = track.accents[i] ?? VolumeState.SOFT;
                   const fillPct = FILL_MAP[vol] ?? 0;
                   const fillCol = FILL_COLOR[vol] ?? 'transparent';
-                  const isActive = playing && currentBeatIndex === i;
+                  const isActive = playing && currentBeats[track.id] === i;
 
                   return (
                     <button
