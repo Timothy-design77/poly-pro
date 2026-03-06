@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
+import { useNavStore } from '../../store/nav-store';
 
 interface SwipeNavigationProps {
   pages: ReactNode[];
@@ -21,6 +22,19 @@ export function SwipeNavigation({
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Programmatic navigation from other components
+  const targetPage = useNavStore((s) => s.targetPage);
+  const clearTarget = useNavStore((s) => s.clearTarget);
+  useEffect(() => {
+    if (targetPage !== null && targetPage !== currentPage) {
+      setCurrentPage(targetPage);
+      setDragX(0);
+      clearTarget();
+    } else if (targetPage !== null) {
+      clearTarget();
+    }
+  }, [targetPage, currentPage, clearTarget]);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsReveal, setSettingsReveal] = useState(0);

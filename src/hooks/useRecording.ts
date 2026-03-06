@@ -5,6 +5,7 @@ import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
 import { getPreferredMicStream } from '../utils/mic';
 import * as db from '../store/db';
+import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
 
 const MAX_RECORDING_MS = 30 * 60 * 1000; // 30 minutes
 const WARNING_MS = 25 * 60 * 1000; // Warning at 25 min
@@ -218,6 +219,9 @@ export function useRecording() {
       micLevel: 0,
       warning: null,
     });
+
+    // Navigate to Progress page to see the new session
+    useNavStore.getState().navigateTo(PAGE_PROGRESS);
 
     return sessionId;
   // eslint-disable-next-line react-hooks/exhaustive-deps

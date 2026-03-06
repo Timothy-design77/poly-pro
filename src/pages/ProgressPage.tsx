@@ -1,5 +1,6 @@
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
+import { usePlayback } from '../hooks/usePlayback';
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -26,6 +27,7 @@ export function ProgressPage() {
   const sessions = useSessionStore((s) =>
     activeProject ? s.getSessionsForProject(activeProject.id) : []
   );
+  const { playingSessionId, play } = usePlayback();
 
   const totalTime = sessions.reduce((acc, s) => acc + s.durationMs, 0);
   const bestPct = sessions.length > 0
@@ -188,36 +190,62 @@ export function ProgressPage() {
           </div>
         ) : (
           <div className="space-y-1.5">
-            {sessions.map((s) => (
-              <div
-                key={s.id}
-                className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5
-                           flex items-center gap-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-text-secondary">{formatDate(s.date)}</span>
-                    <span className="font-mono text-xs text-text-primary font-bold">{s.bpm} BPM</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] text-text-muted">{s.meter}</span>
-                    <span className="text-[10px] text-text-muted">{s.totalHits} hits</span>
-                    {s.durationMs > 0 && (
-                      <span className="text-[10px] text-text-muted">
-                        {Math.floor(s.durationMs / 60000)}:{String(Math.floor((s.durationMs / 1000) % 60)).padStart(2, '0')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <span className={`font-mono text-xs font-bold
-                  ${s.perfectPct >= 85 ? 'text-success'
-                    : s.perfectPct >= 70 ? 'text-warning'
-                    : 'text-danger'}`}
+            {sessions.map((s) => {
+              const isPlaying = playingSessionId === s.id;
+              return (
+                <div
+                  key={s.id}
+                  className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5
+                             flex items-center gap-3"
                 >
-                  {Math.round(s.perfectPct)}%
-                </span>
-              </div>
-            ))}
+                  {/* Play button */}
+                  {s.hasRecording && (
+                    <button
+                      onClick={() => play(s.id)}
+                      className={`w-[36px] h-[36px] rounded-lg flex items-center justify-center
+                                  shrink-0 touch-manipulation
+                        ${isPlaying
+                          ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
+                          : 'bg-bg-raised text-text-muted active:bg-[rgba(255,255,255,0.08)]'}`}
+                    >
+                      {isPlaying ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                          <rect x="5" y="4" width="5" height="16" rx="1" />
+                          <rect x="14" y="4" width="5" height="16" rx="1" />
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="6 3 20 12 6 21" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-text-secondary">{formatDate(s.date)}</span>
+                      <span className="font-mono text-xs text-text-primary font-bold">{s.bpm} BPM</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-text-muted">{s.meter}</span>
+                      <span className="text-[10px] text-text-muted">{s.totalHits} hits</span>
+                      {s.durationMs > 0 && (
+                        <span className="text-[10px] text-text-muted">
+                          {Math.floor(s.durationMs / 60000)}:{String(Math.floor((s.durationMs / 1000) % 60)).padStart(2, '0')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className={`font-mono text-xs font-bold
+                    ${s.perfectPct >= 85 ? 'text-success'
+                      : s.perfectPct >= 70 ? 'text-warning'
+                      : 'text-danger'}`}
+                  >
+                    {Math.round(s.perfectPct)}%
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
