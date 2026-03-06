@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio/engine';
+import { VolumeState } from '../../audio/types';
 
 /**
  * Settings section: Sounds
@@ -17,6 +18,8 @@ export function SoundSettings() {
   const setClickSound = useSettingsStore((s) => s.setClickSound);
   const setAccentSound = useSettingsStore((s) => s.setAccentSound);
   const setClickVolume = useSettingsStore((s) => s.setClickVolume);
+  const accentSoundThreshold = useSettingsStore((s) => s.accentSoundThreshold);
+  const setAccentSoundThreshold = useSettingsStore((s) => s.setAccentSoundThreshold);
 
   const [expandedPicker, setExpandedPicker] = useState<'click' | 'accent' | null>(null);
   // Track which picker was last interacted with for the Preview button
@@ -126,6 +129,46 @@ export function SoundSettings() {
           Accent Sound
         </label>
         {renderPicker(accentSound, setAccentSound, 'accent')}
+      </div>
+
+      {/* Accent Sound Threshold */}
+      <div>
+        <label className="text-xs text-text-muted uppercase tracking-wider mb-1.5 block">
+          Accent Sound Plays At
+        </label>
+        <div className="text-[11px] text-text-muted mb-2">
+          Levels at or above this use the accent sound
+        </div>
+        <div className="flex gap-1">
+          {([
+            { state: VolumeState.GHOST, label: 'Ghost' },
+            { state: VolumeState.SOFT, label: 'Soft' },
+            { state: VolumeState.MED, label: 'Med' },
+            { state: VolumeState.LOUD, label: 'Loud' },
+            { state: VolumeState.ACCENT, label: 'Accent' },
+          ]).map(({ state, label }) => {
+            const isActive = accentSoundThreshold === state;
+            const isAbove = state >= accentSoundThreshold;
+            return (
+              <button
+                key={state}
+                onClick={() => setAccentSoundThreshold(state)}
+                className={`
+                  flex-1 h-[40px] rounded-xl text-[10px] font-bold
+                  touch-manipulation select-none transition-colors
+                  ${isActive
+                    ? 'bg-[rgba(255,255,255,0.18)] text-text-primary border border-[rgba(255,255,255,0.2)]'
+                    : isAbove
+                      ? 'bg-[rgba(255,255,255,0.06)] text-text-secondary border border-[rgba(255,255,255,0.06)]'
+                      : 'bg-bg-primary text-text-muted border border-border-subtle active:bg-bg-raised'
+                  }
+                `}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Click Volume */}

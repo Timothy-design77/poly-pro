@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SettingsState } from './types';
+import { VolumeState } from '../audio/types';
 import { DEFAULT_CLICK_SOUND, DEFAULT_ACCENT_SOUND } from '../utils/constants';
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -7,6 +8,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   clickSound: DEFAULT_CLICK_SOUND,
   accentSound: DEFAULT_ACCENT_SOUND,
   clickVolume: 0.8,
+  accentSoundThreshold: VolumeState.LOUD, // accent sound plays at this level and above
 
   // Vibration
   hapticEnabled: true,
@@ -31,6 +33,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setClickSound: (id) => set({ clickSound: id }),
   setAccentSound: (id) => set({ accentSound: id }),
   setClickVolume: (vol) => set({ clickVolume: Math.max(0, Math.min(1, vol)) }),
+  setAccentSoundThreshold: (level) => set({ accentSoundThreshold: level }),
   setHapticEnabled: (enabled) => set({ hapticEnabled: enabled }),
   setVibrationIntensity: (intensity) =>
     set({ vibrationIntensity: Math.max(0, Math.min(1, intensity)) }),
