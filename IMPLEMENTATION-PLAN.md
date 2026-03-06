@@ -15,6 +15,7 @@
 **Phase 0: COMPLETE** — deployed to GitHub Pages, PWA installable.
 **Phase 1: COMPLETE** — metronome engine functional, sample-based sounds, BPM controls wired.
 **Phase 2: COMPLETE** — advanced metronome features, trainer, practice modes, polyrhythm.
+**Phase 3: COMPLETE** — projects, presets, sessions, IndexedDB persistence.
 
 ### What's Built (as of commit 085f00a)
 
@@ -118,15 +119,49 @@
 - RecordButton: present in UI, wired in Phase 4
 - Toggle: reusable toggle switch component
 
-### What's Next: Phase 3
+**Phase 3 — Database (src/store/db.ts):**
+- IndexedDB schema with idb library: settings, presets, projects, sessions, recordings stores
+- Full CRUD operations for all stores with typed records
+- Session index on projectId and date
 
-Begin projects, presets, and persistence. See Phase 3 section below. Key deliverables:
-- IndexedDB setup with `idb` library
-- Project store: CRUD, active project, auto-advance
-- Session store: CRUD, current session
-- ProjectsPage: card list, create/edit/delete flow
-- ProgressPage: hero chart, heatmap, BPM progress bar
-- Zustand → IDB persistence with 500ms debounce
+**Phase 3 — Stores:**
+- project-store: CRUD, active project, auto-created default project, debounced IDB writes
+- session-store: sessions CRUD, per-project filtering, sorted by date
+
+**Phase 3 — ProjectsPage:**
+- Real project cards from store (emoji, name, BPM range, sparkline)
+- Tap to switch active project, long-press to edit
+- Swipe left to reveal delete button (active project protected)
+- ProjectCreateSheet: bottom sheet with emoji grid, name input, BPM range, live preview
+- Edit mode pre-fills from existing project
+- Delete confirmation modal
+
+**Phase 3 — ProgressPage:**
+- Active project identity header (emoji, name, BPM range)
+- Bar chart of session accuracy (color-coded green/amber/red)
+- Consistency heatmap (28 days, green intensity by session count)
+- Stats: total time, session count, best accuracy, streak
+- BPM progress bar (current / goal)
+- Session list with date, BPM, hits, duration, accuracy badge
+- Zero-data states for all sections
+
+**Phase 3 — Components:**
+- Modal: portal-based confirmation dialog
+- HomePage header: reads active project from store
+
+**Phase 3 — App Initialization:**
+- IDB hydration on startup (projects + sessions loaded before render)
+- Default project auto-created on first launch
+
+### What's Next: Phase 4
+
+Begin recording system. See Phase 4 section below. Key deliverables:
+- Raw PCM capture at 48kHz from AudioWorklet (NOT MediaRecorder)
+- Mic permission handling + device selection (avoid Bluetooth HFP)
+- 30-second chunk-based storage to IndexedDB
+- Live waveform display during recording
+- Recording click mixing (optional click in recording at low volume)
+- RecordButton wired up with start/stop recording
 
 ---
 

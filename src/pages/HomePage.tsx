@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
+import { useProjectStore } from '../store/project-store';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { Dial } from '../components/metronome/Dial';
 import { PlayButton } from '../components/metronome/PlayButton';
@@ -21,6 +22,7 @@ export function HomePage() {
   const setBpm = useMetronomeStore((s) => s.setBpm);
   const playing = useMetronomeStore((s) => s.playing);
   const playStartTime = useMetronomeStore((s) => s.playStartTime);
+  const activeProject = useProjectStore((s) => s.getActiveProject)();
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
@@ -64,21 +66,20 @@ export function HomePage() {
       <div className="px-4 pb-4">
         {/* Header: project context + session timer */}
         <div className="flex items-center gap-2 py-1.5">
-          <span className="text-base">🥁</span>
+          <span className="text-base">{activeProject?.icon || '🥁'}</span>
           <span className="text-sm font-medium text-text-secondary truncate">
-            My First Project
+            {activeProject?.name || 'Poly Pro'}
           </span>
           <div className="flex items-center gap-2 ml-auto shrink-0">
             {playing && elapsed > 0 ? (
               <span className="font-mono text-xs text-text-muted">
                 {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
               </span>
-            ) : (
-              <>
-                <span className="text-xs font-mono font-bold text-success">87%</span>
-                <span className="text-[9px] text-text-muted">3🔥</span>
-              </>
-            )}
+            ) : activeProject ? (
+              <span className="text-[11px] font-mono text-text-muted">
+                {activeProject.currentBpm} / {activeProject.goalBpm}
+              </span>
+            ) : null}
           </div>
         </div>
 
