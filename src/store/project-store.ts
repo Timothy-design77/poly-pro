@@ -1,7 +1,79 @@
 import { create } from 'zustand';
-import type { ProjectRecord, PresetRecord } from './db';
+import type { ProjectRecord, PresetRecord, MetronomeSnapshot } from './db';
 import * as db from './db';
 import { useMetronomeStore } from './metronome-store';
+import { useSettingsStore } from './settings-store';
+import type { TrackConfig } from '../audio/types';
+
+/** Capture current metronome + settings state as a snapshot */
+function captureSnapshot(): MetronomeSnapshot {
+  const m = useMetronomeStore.getState();
+  const s = useSettingsStore.getState();
+  return {
+    bpm: m.bpm,
+    meterNumerator: m.meterNumerator,
+    meterDenominator: m.meterDenominator,
+    beatGrouping: m.beatGrouping,
+    subdivision: m.subdivision,
+    volume: m.volume,
+    swing: m.swing,
+    tracks: m.tracks,
+    trainerEnabled: m.trainerEnabled,
+    trainerStartBpm: m.trainerStartBpm,
+    trainerEndBpm: m.trainerEndBpm,
+    trainerBpmStep: m.trainerBpmStep,
+    trainerBarsPerStep: m.trainerBarsPerStep,
+    countInBars: m.countInBars,
+    gapClickEnabled: m.gapClickEnabled,
+    gapClickProbability: m.gapClickProbability,
+    randomMuteEnabled: m.randomMuteEnabled,
+    randomMuteProbability: m.randomMuteProbability,
+    playMuteCycleEnabled: m.playMuteCycleEnabled,
+    playMuteCyclePlayBars: m.playMuteCyclePlayBars,
+    playMuteCycleMuteBars: m.playMuteCycleMuteBars,
+    clickSound: s.clickSound,
+    accentSound: s.accentSound,
+    clickVolume: s.clickVolume,
+    accentSoundThreshold: s.accentSoundThreshold,
+    hapticEnabled: s.hapticEnabled,
+    vibrationIntensity: s.vibrationIntensity,
+  };
+}
+
+/** Restore a snapshot into metronome + settings stores */
+function restoreSnapshot(snap: MetronomeSnapshot): void {
+  useMetronomeStore.setState({
+    bpm: snap.bpm,
+    meterNumerator: snap.meterNumerator,
+    meterDenominator: snap.meterDenominator,
+    beatGrouping: snap.beatGrouping,
+    subdivision: snap.subdivision,
+    volume: snap.volume,
+    swing: snap.swing,
+    tracks: snap.tracks as TrackConfig[],
+    trainerEnabled: snap.trainerEnabled,
+    trainerStartBpm: snap.trainerStartBpm,
+    trainerEndBpm: snap.trainerEndBpm,
+    trainerBpmStep: snap.trainerBpmStep,
+    trainerBarsPerStep: snap.trainerBarsPerStep,
+    countInBars: snap.countInBars,
+    gapClickEnabled: snap.gapClickEnabled,
+    gapClickProbability: snap.gapClickProbability,
+    randomMuteEnabled: snap.randomMuteEnabled,
+    randomMuteProbability: snap.randomMuteProbability,
+    playMuteCycleEnabled: snap.playMuteCycleEnabled,
+    playMuteCyclePlayBars: snap.playMuteCyclePlayBars,
+    playMuteCycleMuteBars: snap.playMuteCycleMuteBars,
+  });
+  useSettingsStore.setState({
+    clickSound: snap.clickSound,
+    accentSound: snap.accentSound,
+    clickVolume: snap.clickVolume,
+    accentSoundThreshold: snap.accentSoundThreshold,
+    hapticEnabled: snap.hapticEnabled,
+    vibrationIntensity: snap.vibrationIntensity,
+  });
+}
 
 interface ProjectState {
   projects: ProjectRecord[];
@@ -11,7 +83,7 @@ interface ProjectState {
 
   // Actions
   loadFromDB: () => Promise<void>;
-  createProject: (project: Omit<ProjectRecord, 'id' | 'created' | 'lastOpened' | 'currentBpm' | 'consecutiveCount' | 'sessionIds'>) => Promise<string>;
+  createProject: (project: Omit<ProjectRecord, 'id' | 'created' | 'lastOpened' | 'currentBpm' | 'consecutiveCount' | 'sessionIds' | 'snapshot'>) => Promise<string>;
   updateProject: (id: string, updates: Partial<ProjectRecord>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   setActiveProject: (id: string) => void;
@@ -65,6 +137,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         consecutiveCount: 0,
         presetId: null,
         sessionIds: [],
+        snapshot: null,
       };
       await db.putProject(defaultProject);
       projects.push(defaultProject);
@@ -90,6 +163,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       currentBpm: input.startBpm,
       consecutiveCount: 0,
       sessionIds: [],
+        snapshot: null,
     };
     await db.putProject(project);
     set((s) => ({ projects: [...s.projects, project] }));
@@ -116,16 +190,35 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setActiveProject: (id) => {
-    const { projects } = get();
-    const project = projects.find((p) => p.id === id);
+    const { projects, activeProjectId } = get();
+    if (id === activeProjectId) return;
+
+    // 1. Save snapshot of current state to the OLD project
+    if (activeProjectId) {
+      const snapshot = captureSnapshot();
+      const oldProject = projects.find((p) => p.id === activeProjectId);
+      if (oldProject) {
+        const updated = { ...oldProject, snapshot, currentBpm: snapshot.bpm };
+        set((s) => ({ projects: s.projects.map((p) => p.id === activeProjectId ? updated : p) }));
+        db.putProject(updated).catch(console.error);
+      }
+    }
+
+    // 2. Switch active project
     set({ activeProjectId: id });
     debouncedWrite(() => db.setSetting('activeProjectId', id));
 
-    // Update metronome BPM to project's current tempo
-    if (project) {
-      useMetronomeStore.getState().setBpm(project.currentBpm);
+    // 3. Restore snapshot from the NEW project (or defaults from project config)
+    const newProject = projects.find((p) => p.id === id);
+    if (newProject) {
+      if (newProject.snapshot) {
+        restoreSnapshot(newProject.snapshot);
+      } else {
+        // No snapshot yet — just set BPM to project's start
+        useMetronomeStore.getState().setBpm(newProject.currentBpm);
+      }
       // Update lastOpened
-      const updated = { ...project, lastOpened: new Date().toISOString() };
+      const updated = { ...newProject, lastOpened: new Date().toISOString() };
       set((s) => ({ projects: s.projects.map((p) => p.id === id ? updated : p) }));
       debouncedWrite(() => db.putProject(updated));
     }

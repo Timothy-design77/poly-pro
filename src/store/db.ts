@@ -11,6 +11,37 @@ export interface PolyProDB {
   recordings: { key: string; value: Blob };
 }
 
+export interface MetronomeSnapshot {
+  bpm: number;
+  meterNumerator: number;
+  meterDenominator: number;
+  beatGrouping: number[];
+  subdivision: number;
+  volume: number;
+  swing: number;
+  tracks: unknown[]; // TrackConfig[] stored as JSON-safe
+  trainerEnabled: boolean;
+  trainerStartBpm: number;
+  trainerEndBpm: number;
+  trainerBpmStep: number;
+  trainerBarsPerStep: number;
+  countInBars: number;
+  gapClickEnabled: boolean;
+  gapClickProbability: number;
+  randomMuteEnabled: boolean;
+  randomMuteProbability: number;
+  playMuteCycleEnabled: boolean;
+  playMuteCyclePlayBars: number;
+  playMuteCycleMuteBars: number;
+  // Settings
+  clickSound: string;
+  accentSound: string;
+  clickVolume: number;
+  accentSoundThreshold: number;
+  hapticEnabled: boolean;
+  vibrationIntensity: number;
+}
+
 export interface ProjectRecord {
   id: string;
   name: string;
@@ -27,6 +58,8 @@ export interface ProjectRecord {
   consecutiveCount: number;
   presetId: string | null;
   sessionIds: string[];
+  /** Full metronome + settings snapshot, auto-saved on project switch */
+  snapshot: MetronomeSnapshot | null;
 }
 
 export interface PresetRecord {
