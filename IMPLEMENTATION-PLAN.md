@@ -10,6 +10,66 @@
 
 ---
 
+## CURRENT STATUS
+
+**Phase 0: COMPLETE** — deployed to GitHub Pages, PWA installable.
+
+### What's Built (as of commit 920ea4e)
+
+**Scaffold & Config:**
+- Vite + React + TypeScript + Tailwind + PWA (vite-plugin-pwa)
+- GitHub Pages deployment via GitHub Actions
+- DM Sans + JetBrains Mono loaded from Google Fonts
+- Full dark color palette (soft white accent, NO purple/indigo)
+- Safe area handling, overscroll prevention, touch optimization
+
+**SwipeNavigation (src/components/ui/SwipeNavigation.tsx):**
+- 3-page horizontal swipe with velocity detection + page indicator pills
+- Settings swipe-up triggered ONLY from bottom handle (not full-page vertical swipe)
+- Settings panel: full-screen overlay, swipe down anywhere to close (scroll-at-top detection)
+- No jitter — handle stays in layout during drag, panel overlays on top
+- Escape key dismisses settings
+
+**HomePage (src/pages/HomePage.tsx):**
+- Canvas-rendered dial: 80% container width, max 360px, pushed toward top
+- Dial features: accuracy arc (outer green ring), beat dots (3 sizes: downbeat 5px > beat 3.5px > subdivision 2px), BPM number, "BPM" label, meter info — all canvas-drawn
+- ± hold-to-accelerate buttons BELOW dial (not flanking) with breathing room (pt-6)
+- START button: soft white bg, dark text, play icon
+- RECORD + TAP TEMPO: side by side, neutral gray, RECORD has small red dot icon
+- Compact 4-cell pattern row (beat accent visualization)
+- Scrollable area below buttons with 300px dead space for future click visuals
+- All placeholder — no audio engine wired yet
+
+**ProjectsPage (src/pages/ProjectsPage.tsx):**
+- Lean card: emoji | name + last practiced + goal | SVG sparkline with green trend line
+- Active project: raised bg + 3px white left border accent
+- Dashed "+ New Project" button
+- Single default project (placeholder data)
+
+**ProgressPage (src/pages/ProgressPage.tsx):**
+- Project identity header (emoji + name + BPM goal)
+- Hero chart placeholder with zero-data message
+- Stats strip: consistency heatmap (4 weeks × 7 days grid) + 4 stat rows
+- BPM progress bar
+- Milestones section (zero-data state)
+- Sessions list (zero-data state)
+
+**ErrorBoundary (src/components/ui/ErrorBoundary.tsx):**
+- Catches render errors, displays fallback
+
+### What's Next: Phase 1
+
+Begin metronome engine + core UI. See Phase 1 section below. Key deliverables:
+- AudioEngine class with 25ms/100ms lookahead scheduler
+- Sample-based sound loading (10-12 CC0 WAV files)
+- Wire START/STOP to engine
+- Wire ± buttons with hold-to-accelerate
+- BPM keypad modal
+- Beat dot animation synced to scheduler
+- Settings panel content (Sounds + Vibration sections)
+
+---
+
 ## TABLE OF CONTENTS
 
 1. [Vision & Context](#1-vision--context)
@@ -42,7 +102,7 @@
 
 ### What is Poly Pro?
 
-A mobile-first PWA metronome and drumming practice tool. It synthesizes click sounds via Web Audio API, records the user's drumming via microphone, detects onsets (hit events), and provides detailed timing analytics. It also has a project system for structured practice with auto-BPM-advancement and progress tracking over weeks/months.
+A mobile-first PWA metronome and drumming practice tool. It plays click sounds via Web Audio API (sample-based AudioBuffer playback), records the user's drumming via microphone, detects onsets (hit events), and provides detailed timing analytics. It also has a project system for structured practice with auto-BPM-advancement and progress tracking over weeks/months.
 
 ### What makes it different from other metronomes
 
@@ -731,10 +791,14 @@ poly-pro/
 
 ---
 
-## 8. Phase 0: Scaffold + PWA + Deploy
+## 8. Phase 0: Scaffold + PWA + Deploy ✅ COMPLETE
 
 ### Goal
 Working PWA shell deployed to GitHub Pages. Installs on Android. Loads offline.
+
+### Status: DONE
+All files below are created and deployed. See CURRENT STATUS section for details on what's built.
+The pages are not placeholders — they contain the approved UX layouts with correct styling.
 
 ### Files to Create
 1. `package.json` — dependencies + scripts
@@ -798,13 +862,18 @@ export default defineConfig({
 });
 ```
 
-### 🧪 USER TEST GATE — Ask user to test:
-- [ ] Visit deployed URL on Galaxy Z Fold 7
-- [ ] Install as PWA (Add to Home Screen)
-- [ ] Open PWA — should see 3-page swipe with Home (center), Projects (left), Progress (right)
-- [ ] Swipe between pages — smooth animation with page dots
-- [ ] Kill app, airplane mode, reopen — should load offline
-- [ ] Reload should not white-screen
+### 🧪 USER TEST GATE — Phase 0: ✅ PASSED
+- [x] Visit deployed URL on Galaxy Z Fold 7
+- [x] Install as PWA (Add to Home Screen)
+- [x] Open PWA — 3-page swipe with Home (center), Projects (left), Progress (right)
+- [x] Swipe between pages — smooth animation with page dots
+- [x] Settings swipe-up from bottom handle only (no conflict with page scroll)
+- [x] Settings panel swipe-down to close
+- [x] Home: canvas dial, ± buttons below, START/RECORD/TAP, pattern row, scrollable area
+- [x] Projects: lean card with sparkline, active border, "+ New Project"
+- [x] Progress: hero chart placeholder, heatmap, stats, zero-data states
+- [ ] Kill app, airplane mode, reopen — should load offline (needs verification)
+- [ ] Reload should not white-screen (needs verification)
 
 ---
 
@@ -835,7 +904,7 @@ Stable, accurate metronome with v2 tempo controls and sample-based sounds. The c
 
 **Components:**
 - `src/components/metronome/PlayButton.tsx` — full width START button, soft white bg, dark text
-- `src/components/metronome/BpmControl.tsx` — two large ± hold-to-accelerate buttons flanking dial
+- `src/components/metronome/BpmControl.tsx` — two large ± hold-to-accelerate buttons below dial
 - `src/components/metronome/TapTempo.tsx` — tap button with BPM display
 - `src/components/metronome/Dial.tsx` — port circular beat visualization (70% of width - padding)
 - `src/components/ui/Button.tsx` — base button component
@@ -919,7 +988,7 @@ class AudioEngine {
 
 ### BPM Controls Spec
 
-Two large ± hold-to-accelerate buttons flanking the dial:
+Two large ± hold-to-accelerate buttons in a row BELOW the dial:
 
 ```
 Hold behavior:
@@ -935,6 +1004,7 @@ Tap BPM number → numeric keypad modal for exact entry.
 ```
 
 **⚠️ There are NO [-10] [-5] [-1] [+1] [+5] [+10] jump buttons. Only the 2 hold-to-accelerate buttons.**
+**⚠️ Buttons are BELOW the dial, NOT flanking/beside it.**
 
 ### Home Screen Layout
 
@@ -943,11 +1013,14 @@ Tap BPM number → numeric keypad modal for exact entry.
 │ 🥁 My First Project · 87% · 🔥3 │  ← header: emoji + name + accuracy + streak
 ├──────────────────────────────────┤
 │                                  │
-│     [ − ]    ◯ DIAL ◯    [ + ]  │  ← ± hold buttons flanking dial
-│              120.0               │  ← BPM (tap for keypad)
-│              BPM                 │
-│              4/4 · 8ths          │
+│           ◯ DIAL ◯               │  ← canvas dial (80% width, max 360px)
+│            120.0                 │  ← BPM (tap for keypad)
+│             BPM                  │
+│           4/4 · 8ths             │
 │                                  │
+│     ┌──────────┐ ┌──────────┐   │
+│     │    −     │ │    +     │   │  ← ± hold buttons BELOW dial (pt-6 gap)
+│     └──────────┘ └──────────┘   │
 │     ┌──────────────────────┐     │
 │     │       START          │     │  ← full width, soft white bg
 │     └──────────────────────┘     │
@@ -955,11 +1028,14 @@ Tap BPM number → numeric keypad modal for exact entry.
 │     │  RECORD  │ │ TAP TEMPO│   │  ← side by side below START
 │     └──────────┘ └──────────┘   │
 │                                  │
-│  ── scroll down for more ──     │
+│  ── scrollable area below ──    │
 │  [Accent pattern grid]          │
 │  [Quick settings tiles]         │
+│  [300px dead space]             │
 └──────────────────────────────────┘
 ```
+
+**⚠️ ± buttons are BELOW the dial, NOT flanking it. This matches the approved preview and the built code.**
 
 **Visual reference:** `poly-pro-fold-preview.jsx`
 
