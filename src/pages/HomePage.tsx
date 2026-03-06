@@ -19,10 +19,25 @@ import { PolyrhythmControl, usePolyBadge } from '../components/metronome/Polyrhy
 export function HomePage() {
   const bpm = useMetronomeStore((s) => s.bpm);
   const setBpm = useMetronomeStore((s) => s.setBpm);
+  const playing = useMetronomeStore((s) => s.playing);
+  const playStartTime = useMetronomeStore((s) => s.playStartTime);
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
   const [dialSize, setDialSize] = useState(200);
+
+  // Session timer — ticks every second while playing
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!playing || !playStartTime) {
+      setElapsed(0);
+      return;
+    }
+    const tick = () => setElapsed(Math.floor((Date.now() - playStartTime) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [playing, playStartTime]);
 
   const meterBadge = useMeterBadge();
   const trainerBadge = useTrainerBadge();
@@ -47,15 +62,23 @@ export function HomePage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="px-4 pb-4">
-        {/* Header: project context */}
+        {/* Header: project context + session timer */}
         <div className="flex items-center gap-2 py-1.5">
           <span className="text-base">🥁</span>
           <span className="text-sm font-medium text-text-secondary truncate">
             My First Project
           </span>
-          <div className="flex items-center gap-1.5 ml-auto shrink-0">
-            <span className="text-xs font-mono font-bold text-success">87%</span>
-            <span className="text-[9px] text-text-muted">3🔥</span>
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            {playing && elapsed > 0 ? (
+              <span className="font-mono text-xs text-text-muted">
+                {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+              </span>
+            ) : (
+              <>
+                <span className="text-xs font-mono font-bold text-success">87%</span>
+                <span className="text-[9px] text-text-muted">3🔥</span>
+              </>
+            )}
           </div>
         </div>
 

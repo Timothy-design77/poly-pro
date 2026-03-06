@@ -149,6 +149,9 @@ class AudioEngine {
     this.measureMuted = false;
     this.gapMuteMap = {};
 
+    // Session timer + bar counter
+    useMetronomeStore.setState({ playStartTime: Date.now(), currentBar: 0 });
+
     // Trainer: set starting BPM
     if (state.trainerEnabled) {
       useMetronomeStore.getState().setBpm(state.trainerStartBpm);
@@ -209,7 +212,7 @@ class AudioEngine {
     const state = useMetronomeStore.getState();
     const cleared: Record<string, number> = {};
     for (const t of state.tracks) cleared[t.id] = -1;
-    useMetronomeStore.setState({ currentBeats: cleared });
+    useMetronomeStore.setState({ currentBeats: cleared, playStartTime: 0 });
   }
 
   get running(): boolean {
@@ -269,8 +272,8 @@ class AudioEngine {
         // Determine if this beat should be muted
         let muted = false;
 
-        // Random mute: entire measure silenced
-        if (state.randomMuteEnabled && this.measureMuted && !this.countInActive) {
+        // Play/Mute cycle or Random mute: entire measure silenced
+        if (this.measureMuted && !this.countInActive) {
           muted = true;
         }
 
@@ -366,6 +369,11 @@ class AudioEngine {
         }
       }
 
+      // Update bar counter (only count non-count-in bars)
+      if (!this.countInActive) {
+        useMetronomeStore.setState({ currentBar: this.measureCount });
+      }
+
       // Trainer mode: increment BPM after N bars
       if (state.trainerEnabled && !this.countInActive) {
         const barsSinceLast = this.measureCount - (this.lastTrainerMeasure < 0 ? 0 : this.lastTrainerMeasure);
@@ -382,10 +390,17 @@ class AudioEngine {
         }
       }
 
-      // Random mute: decide for next measure
-      if (state.randomMuteEnabled && !this.countInActive) {
+      // Play/Mute cycling: structured internalization
+      // e.g. Play 4 bars, Mute 4 bars, repeat
+      if (state.playMuteCycleEnabled && !this.countInActive) {
+        const cycleLen = state.playMuteCyclePlayBars + state.playMuteCycleMuteBars;
+        const posInCycle = (this.measureCount - 1) % cycleLen;
+        this.measureMuted = posInCycle >= state.playMuteCyclePlayBars;
+      }
+      // Random mute (only if play/mute cycle isn't active)
+      else if (state.randomMuteEnabled && !this.countInActive) {
         this.measureMuted = Math.random() < state.randomMuteProbability;
-      } else {
+      } else if (!state.playMuteCycleEnabled) {
         this.measureMuted = false;
       }
 

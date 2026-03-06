@@ -27,6 +27,10 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
   // Beat animation
   currentBeats: {},
 
+  // Bar counter + session timer
+  currentBar: 0,
+  playStartTime: 0,
+
   // Trainer
   trainerEnabled: false,
   trainerStartBpm: 80,
@@ -42,6 +46,9 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
   gapClickProbability: 0.3,
   randomMuteEnabled: false,
   randomMuteProbability: 0.25,
+  playMuteCycleEnabled: false,
+  playMuteCyclePlayBars: 4,
+  playMuteCycleMuteBars: 4,
 
   // Swing
   swing: 0,
@@ -95,6 +102,10 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
     const { currentBeats } = get();
     set({ currentBeats: { ...currentBeats, [trackId]: index } });
   },
+
+  setCurrentBar: (bar) => set({ currentBar: bar }),
+
+  setPlayStartTime: (time) => set({ playStartTime: time }),
 
   updateTrackAccent: (trackId, beatIndex) => {
     const { tracks } = get();
@@ -211,6 +222,12 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
     ...(probability !== undefined ? { randomMuteProbability: probability } : {}),
   }),
 
+  setPlayMuteCycle: (enabled, playBars, muteBars) => set({
+    playMuteCycleEnabled: enabled,
+    ...(playBars !== undefined ? { playMuteCyclePlayBars: playBars } : {}),
+    ...(muteBars !== undefined ? { playMuteCycleMuteBars: muteBars } : {}),
+  }),
+
   resetToDefaults: () => {
     set({
       playing: false,
@@ -222,10 +239,13 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
       volume: DEFAULT_VOLUME,
       tracks: [createDefaultTrack(DEFAULT_METER_NUMERATOR, DEFAULT_SUBDIVISION)],
       currentBeats: {},
+      currentBar: 0,
+      playStartTime: 0,
       trainerEnabled: false,
       countInBars: 0,
       gapClickEnabled: false,
       randomMuteEnabled: false,
+      playMuteCycleEnabled: false,
       swing: 0,
     });
   },

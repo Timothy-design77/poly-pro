@@ -38,6 +38,7 @@ export function Dial({ size, onTapBpm }: DialProps) {
   const beatGrouping = useMetronomeStore((s) => s.beatGrouping);
   const tracks = useMetronomeStore((s) => s.tracks);
   const currentBeats = useMetronomeStore((s) => s.currentBeats);
+  const currentBar = useMetronomeStore((s) => s.currentBar);
 
   const subLabels: Record<number, string> = {
     1: '', 2: '8ths', 3: 'Triplets', 4: '16ths', 5: 'Quints', 6: 'Sextuplets',
@@ -165,6 +166,15 @@ export function Dial({ size, onTapBpm }: DialProps) {
 
     // ─── Center content (drawn on top of rings) ───
 
+    // Bar counter (shown when playing)
+    if (playing && currentBar > 0) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `600 ${Math.round(size * 0.038)}px "JetBrains Mono", monospace`;
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillText(`Bar ${currentBar}`, cx, cy - size * 0.16);
+    }
+
     // BPM number
     const bpmFontSize = Math.round(size * 0.22);
     ctx.textAlign = 'center';
@@ -197,7 +207,7 @@ export function Dial({ size, onTapBpm }: DialProps) {
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.fillText(ratioText, cx, cy + size * 0.22);
     }
-  }, [size, bpm, playing, meterNumerator, meterDenominator, subdivision, beatGrouping, tracks, currentBeats]);
+  }, [size, bpm, playing, meterNumerator, meterDenominator, subdivision, beatGrouping, tracks, currentBeats, currentBar]);
 
   useEffect(() => { draw(); }, [draw]);
 

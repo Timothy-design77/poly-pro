@@ -19,6 +19,10 @@ export interface MetronomeState {
   // Beat animation state (per-track)
   currentBeats: Record<string, number>;
 
+  // Bar counter + session timer
+  currentBar: number;
+  playStartTime: number; // Date.now() when play started, 0 when stopped
+
   // Trainer mode
   trainerEnabled: boolean;
   trainerStartBpm: number;
@@ -34,6 +38,9 @@ export interface MetronomeState {
   gapClickProbability: number;  // 0-1, probability a beat is muted
   randomMuteEnabled: boolean;
   randomMuteProbability: number; // 0-1, probability a measure is muted
+  playMuteCycleEnabled: boolean;
+  playMuteCyclePlayBars: number;  // bars with click
+  playMuteCycleMuteBars: number;  // bars silent
 
   // Swing (global default, tracks can override)
   swing: number;
@@ -48,6 +55,8 @@ export interface MetronomeState {
   setVolume: (vol: number) => void;
   setSwing: (swing: number) => void;
   setCurrentBeat: (trackId: string, index: number) => void;
+  setCurrentBar: (bar: number) => void;
+  setPlayStartTime: (time: number) => void;
   updateTrackAccent: (trackId: string, beatIndex: number) => void;
   setTrackSound: (trackId: string, soundId: string, isAccent: boolean) => void;
   setTrackMuted: (trackId: string, muted: boolean) => void;
@@ -62,6 +71,7 @@ export interface MetronomeState {
   setCountInBars: (bars: number) => void;
   setGapClick: (enabled: boolean, probability?: number) => void;
   setRandomMute: (enabled: boolean, probability?: number) => void;
+  setPlayMuteCycle: (enabled: boolean, playBars?: number, muteBars?: number) => void;
   resetToDefaults: () => void;
 }
 
