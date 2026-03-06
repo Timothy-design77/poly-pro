@@ -426,20 +426,24 @@ class AudioEngine {
     beatIndex: number,
     volumeState: VolumeState,
     beatTime: number,
-    defaultSound: string
+    _defaultSound: string
   ): void {
     if (!this.audioCtx || !this.masterGain) return;
 
-    // Per-beat sound override takes priority
+    const settings = useSettingsStore.getState();
+
+    // Priority: per-beat override → settings store sounds → track sounds
     const override = track.soundOverrides[beatIndex];
     let soundId: string;
     if (override) {
       soundId = override;
     } else {
-      const isAccent = volumeState >= useSettingsStore.getState().accentSoundThreshold;
-      soundId = isAccent ? (track.accentSound || defaultSound) : (track.normalSound || defaultSound);
+      const isAccent = volumeState >= settings.accentSoundThreshold;
+      // Use settings store sounds (what the user picks in Settings)
+      // Track sounds only matter if they've been explicitly changed per-track
+      soundId = isAccent ? settings.accentSound : settings.clickSound;
     }
-    const buffer = getBuffer(soundId) || getBuffer(defaultSound);
+    const buffer = getBuffer(soundId) || getBuffer('woodblock');
 
     if (!buffer) return;
 
