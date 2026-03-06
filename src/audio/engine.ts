@@ -128,25 +128,24 @@ class AudioEngine {
 
   // ─── Start / Stop ───
 
-  async start(): Promise<void> {
-    if (this.isRunning) return;
+  /**
+   * Synchronous start — zero delay when context is already warm.
+   * Returns true if started synchronously, false if async fallback needed.
+   * Call this from click handlers for instant response.
+   */
+  startSync(): boolean {
+    if (this.isRunning) return true;
 
-    // Wait for warm-up if it's in progress
-    if (this._warmUpPromise) {
-      await this._warmUpPromise;
-    }
-
-    const ctx = await this.initContext();
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
+    // Can only go sync if context is warm and running
+    if (!this.audioCtx || this.audioCtx.state !== 'running' || !this.soundsLoaded) {
+      return false;
     }
 
     this.isRunning = true;
-
-    // Read current config
+    const ctx = this.audioCtx;
     const state = useMetronomeStore.getState();
 
-    // Initialize beat counters for all tracks
+    // Initialize beat counters
     this.nextNoteTime = {};
     this.currentBeat = {};
     this.scheduledBeats = [];
@@ -158,13 +157,38 @@ class AudioEngine {
       this.currentBeat[track.id] = 0;
     }
 
-    // Update master gain
     if (this.masterGain) {
       this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER;
     }
 
-    // Start scheduler
+    // Schedule immediately — first beat fires within this call stack
     this.schedule();
+    return true;
+  }
+
+  /**
+   * Async start — fallback for when context isn't warmed up yet.
+   */
+  async start(): Promise<void> {
+    if (this.isRunning) return;
+
+    // Try sync first
+    if (this.startSync()) return;
+
+    // Async fallback: wait for warm-up, init context
+    if (this._warmUpPromise) {
+      await this._warmUpPromise;
+    }
+
+    const ctx = await this.initContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+
+    // Try sync again now that context is ready
+    if (!this.isRunning) {
+      this.startSync();
+    }
   }
 
   stop(): void {
