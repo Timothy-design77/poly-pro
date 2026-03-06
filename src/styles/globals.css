@@ -45,6 +45,12 @@ html, body, #root {
   -webkit-user-select: none;
   -moz-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Block native context menu on long-press */
+* {
+  -webkit-touch-callout: none;
 }
 
 /* Prevent overscroll on iOS */

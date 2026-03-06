@@ -4,6 +4,11 @@ import { App } from './App';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import './styles/globals.css';
 
+// ─── Block native long-press context menu (Android Chrome) ───
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
 // ─── Force service worker updates on every load ───
 if ('serviceWorker' in navigator) {
   const checkForUpdate = async () => {

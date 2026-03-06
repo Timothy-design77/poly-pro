@@ -83,7 +83,7 @@ export function SoundPickerSheet({
     >
       <div
         ref={panelRef}
-        className="w-full max-w-[500px] max-h-[70vh] bg-bg-surface rounded-t-2xl flex flex-col animate-slide-up"
+        className="w-full max-h-[70vh] bg-bg-surface rounded-t-2xl flex flex-col animate-slide-up"
         onClick={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
       >
