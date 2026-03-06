@@ -334,11 +334,13 @@ class AudioEngine {
       ioi = measureDuration / totalBeats;
     }
 
-    // Per-track swing
+    // Per-track swing: delays offbeats (odd-indexed subdivisions)
+    // Swing 0% = straight (50/50), Swing 100% = full triplet feel (67/33)
+    // At 100%, offbeat moves from 50% to 67% of the pair = +0.33 IOI offset
     let swingOffset = 0;
     const swingVal = track.swing || state.swing;
     if (swingVal > 0 && subdivision > 1 && beatIndex % 2 === 1 && trackId === 'track-0') {
-      swingOffset = ioi * swingVal * 0.5;
+      swingOffset = ioi * swingVal * 0.33;
     }
 
     this.nextNoteTime[trackId] += ioi + swingOffset;

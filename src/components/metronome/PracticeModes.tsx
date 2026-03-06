@@ -17,6 +17,7 @@ export function PracticeModes() {
   const setRandomMute = useMetronomeStore((s) => s.setRandomMute);
   const swing = useMetronomeStore((s) => s.swing);
   const setSwing = useMetronomeStore((s) => s.setSwing);
+  const subdivision = useMetronomeStore((s) => s.subdivision);
 
   return (
     <div className="space-y-5">
@@ -61,6 +62,11 @@ export function PracticeModes() {
                      [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
                      [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
         />
+        {swing > 0 && subdivision <= 1 && (
+          <div className="text-[11px] text-warning mt-1.5">
+            Swing requires a subdivision (8ths, triplets, etc.)
+          </div>
+        )}
       </div>
 
       {/* Gap Click */}
