@@ -111,6 +111,7 @@ export interface SettingsState {
   setHapticEnabled: (enabled: boolean) => void;
   setVibrationIntensity: (intensity: number) => void;
   setLatencyOffset: (offset: number) => void;
+  resetToDefaults: () => void;
 }
 
 // ─── Helper to create default track ───

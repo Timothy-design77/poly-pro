@@ -217,8 +217,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (newProject.snapshot) {
         restoreSnapshot(newProject.snapshot);
       } else {
-        // No snapshot yet — reset to clean defaults, then set project's BPM
+        // No snapshot yet — reset BOTH stores to clean defaults
         useMetronomeStore.getState().resetToDefaults();
+        useSettingsStore.getState().resetToDefaults();
         useMetronomeStore.getState().setBpm(newProject.currentBpm);
       }
       // Update lastOpened

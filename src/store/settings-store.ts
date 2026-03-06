@@ -38,4 +38,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setVibrationIntensity: (intensity) =>
     set({ vibrationIntensity: Math.max(0, Math.min(1, intensity)) }),
   setLatencyOffset: (offset) => set({ latencyOffset: offset }),
+
+  resetToDefaults: () => set({
+    clickSound: DEFAULT_CLICK_SOUND,
+    accentSound: DEFAULT_ACCENT_SOUND,
+    clickVolume: 0.8,
+    accentSoundThreshold: VolumeState.LOUD,
+    hapticEnabled: true,
+    vibrationIntensity: 0.5,
+  }),
 }));
