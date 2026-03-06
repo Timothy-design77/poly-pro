@@ -132,16 +132,16 @@ export function HomePage() {
         />
       </div>
 
-      {/* Controls — tight below dial */}
-      <div className="flex flex-col gap-1.5 px-4 pt-2 shrink-0">
+      {/* Controls — spaced below dial */}
+      <div className="flex flex-col gap-2 px-4 pt-6 shrink-0">
         {/* +/- row */}
         <div className="flex gap-2">
           <button
             className="flex-1 flex items-center justify-center rounded-[14px] border-[1.5px]
                        border-border-subtle bg-bg-surface
-                       active:bg-bg-raised active:border-border-emphasis transition-all h-[46px]"
+                       active:bg-bg-raised active:border-border-emphasis transition-all h-[50px]"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
               className="text-text-secondary">
               <line x1="6" y1="12" x2="18" y2="12" />
@@ -150,9 +150,9 @@ export function HomePage() {
           <button
             className="flex-1 flex items-center justify-center rounded-[14px] border-[1.5px]
                        border-border-subtle bg-bg-surface
-                       active:bg-bg-raised active:border-border-emphasis transition-all h-[46px]"
+                       active:bg-bg-raised active:border-border-emphasis transition-all h-[50px]"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
               className="text-text-secondary">
               <line x1="12" y1="6" x2="12" y2="18" />
@@ -164,7 +164,7 @@ export function HomePage() {
         {/* START */}
         <button
           className={`w-full rounded-[14px] text-sm font-bold tracking-wider
-                      flex items-center justify-center gap-2.5 transition-all h-[48px]
+                      flex items-center justify-center gap-2.5 transition-all h-[52px]
             ${isPlaying
               ? 'bg-bg-raised text-text-primary border border-border-emphasis'
               : 'bg-[rgba(255,255,255,0.85)] text-bg-primary'
@@ -184,7 +184,7 @@ export function HomePage() {
             className="flex-1 flex items-center justify-center gap-1.5 rounded-xl
                        border-[1.5px] border-border-subtle bg-bg-surface
                        text-text-secondary text-xs font-bold tracking-wide
-                       active:bg-bg-raised transition-all h-[42px]"
+                       active:bg-bg-raised transition-all h-[44px]"
           >
             <svg width="11" height="11" viewBox="0 0 24 24" className="text-danger" fill="currentColor">
               <circle cx="12" cy="12" r="10" />
@@ -195,7 +195,7 @@ export function HomePage() {
             className="flex-1 flex items-center justify-center gap-1.5 rounded-xl
                        border-[1.5px] border-border-subtle bg-bg-surface
                        text-text-secondary text-xs font-bold tracking-wide
-                       active:bg-bg-raised transition-all h-[42px]"
+                       active:bg-bg-raised transition-all h-[44px]"
           >
             ♩ TAP
           </button>
