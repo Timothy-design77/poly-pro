@@ -1,20 +1,34 @@
+interface RecordButtonProps {
+  isRecording: boolean;
+  onToggle: () => void;
+}
+
 /**
- * Record button — present in P2 but recording not wired until P4.
- * Shows disabled state with tooltip.
+ * Record button — fully wired.
+ * Red pulsing when recording, normal gray when not.
  */
-export function RecordButton() {
+export function RecordButton({ isRecording, onToggle }: RecordButtonProps) {
   return (
     <button
-      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl
-                 border-[1.5px] border-border-subtle bg-bg-surface
-                 text-text-secondary text-xs font-bold tracking-wide
-                 active:bg-bg-raised transition-colors h-[44px]
-                 touch-manipulation select-none"
+      onPointerDown={(e) => { e.preventDefault(); onToggle(); }}
+      className={`
+        flex-1 flex items-center justify-center gap-1.5 rounded-xl
+        border-[1.5px] text-xs font-bold tracking-wide
+        h-[44px] touch-manipulation select-none
+        ${isRecording
+          ? 'border-danger bg-danger-dim text-danger animate-pulse'
+          : 'border-border-subtle bg-bg-surface text-text-secondary active:bg-bg-raised'
+        }
+      `}
     >
       <svg width="11" height="11" viewBox="0 0 24 24" className="text-danger" fill="currentColor">
-        <circle cx="12" cy="12" r="10" />
+        {isRecording ? (
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+        ) : (
+          <circle cx="12" cy="12" r="10" />
+        )}
       </svg>
-      RECORD
+      {isRecording ? 'STOP REC' : 'RECORD'}
     </button>
   );
 }

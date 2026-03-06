@@ -7,6 +7,8 @@ import { PlayButton } from '../components/metronome/PlayButton';
 import { BpmControl } from '../components/metronome/BpmControl';
 import { TapTempo } from '../components/metronome/TapTempo';
 import { RecordButton } from '../components/metronome/RecordButton';
+import { WaveformDisplay } from '../components/metronome/WaveformDisplay';
+import { useRecording } from '../hooks/useRecording';
 import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
 import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
@@ -29,6 +31,8 @@ export function HomePage() {
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
   const [dialSize, setDialSize] = useState(200);
+
+  const recording = useRecording();
 
   // Session timer — ticks every second while playing
   const [elapsed, setElapsed] = useState(0);
@@ -66,23 +70,38 @@ export function HomePage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="px-4 pb-4">
-        {/* Header: project context + session timer */}
+        {/* Header: project context + recording/timer indicator */}
         <div className="flex items-center gap-2 py-1.5">
-          <span className="text-base">{activeProject?.icon || '🥁'}</span>
-          <span className="text-sm font-medium text-text-secondary truncate">
-            {activeProject?.name || 'Poly Pro'}
-          </span>
-          <div className="flex items-center gap-2 ml-auto shrink-0">
-            {playing && elapsed > 0 ? (
-              <span className="font-mono text-xs text-text-muted">
-                {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+          {recording.isRecording ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-danger animate-pulse shrink-0" />
+              <span className="text-sm font-bold text-danger">REC</span>
+              <span className="font-mono text-xs text-text-secondary ml-1">
+                {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
               </span>
-            ) : activeProject ? (
-              <span className="text-[11px] font-mono text-text-muted">
-                {activeProject.currentBpm} / {activeProject.goalBpm}
+              {recording.warning && (
+                <span className="text-[9px] text-warning ml-auto">{recording.warning}</span>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="text-base">{activeProject?.icon || '🥁'}</span>
+              <span className="text-sm font-medium text-text-secondary truncate">
+                {activeProject?.name || 'Poly Pro'}
               </span>
-            ) : null}
-          </div>
+              <div className="flex items-center gap-2 ml-auto shrink-0">
+                {playing && elapsed > 0 ? (
+                  <span className="font-mono text-xs text-text-muted">
+                    {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+                  </span>
+                ) : activeProject ? (
+                  <span className="text-[11px] font-mono text-text-muted">
+                    {activeProject.currentBpm} / {activeProject.goalBpm}
+                  </span>
+                ) : null}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Dial */}
@@ -95,9 +114,12 @@ export function HomePage() {
           <BpmControl />
           <PlayButton />
           <div className="flex gap-2">
-            <RecordButton />
+            <RecordButton isRecording={recording.isRecording} onToggle={recording.toggleRecording} />
             <TapTempo />
           </div>
+
+          {/* Live waveform during recording */}
+          <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
         </div>
 
         {/* ─── Collapsible sections ─── */}

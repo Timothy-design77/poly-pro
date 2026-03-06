@@ -16,6 +16,7 @@
 **Phase 1: COMPLETE** — metronome engine functional, sample-based sounds, BPM controls wired.
 **Phase 2: COMPLETE** — advanced metronome features, trainer, practice modes, polyrhythm.
 **Phase 3: COMPLETE** — projects, presets, sessions, IndexedDB persistence.
+**Phase 4: COMPLETE** — recording system with raw PCM capture via AudioWorklet.
 
 ### What's Built (as of commit 085f00a)
 
@@ -153,15 +154,14 @@
 - IDB hydration on startup (projects + sessions loaded before render)
 - Default project auto-created on first launch
 
-### What's Next: Phase 4
+### What's Next: Phase 5
 
-Begin recording system. See Phase 4 section below. Key deliverables:
-- Raw PCM capture at 48kHz from AudioWorklet (NOT MediaRecorder)
-- Mic permission handling + device selection (avoid Bluetooth HFP)
-- 30-second chunk-based storage to IndexedDB
-- Live waveform display during recording
-- Recording click mixing (optional click in recording at low volume)
-- RecordButton wired up with start/stop recording
+Begin onset detection and dual-mode analysis. See Phase 5 section below. Key deliverables:
+- Real-time energy threshold onset detection in AudioWorklet (Mode 1)
+- Post-processing spectral flux pipeline (Mode 2: 8 stages)
+- Scoring formula (consistency σ as primary metric)
+- Session detail with score, deviations, metrics
+- "Analyzing..." overlay with progress stages
 
 ---
 
