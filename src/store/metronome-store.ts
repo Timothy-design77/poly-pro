@@ -137,6 +137,23 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
     set({ tracks: updated });
   },
 
+  setAllSubdivisionVolume: (volume) => {
+    const { tracks, subdivision } = get();
+    if (subdivision <= 1) return; // no subdivisions to change
+    const updated = tracks.map((t) => {
+      if (t.id !== 'track-0') return t;
+      const newAccents = [...t.accents];
+      for (let i = 0; i < newAccents.length; i++) {
+        // Only change subdivision cells (not main beats)
+        if (i % subdivision !== 0) {
+          newAccents[i] = volume;
+        }
+      }
+      return { ...t, accents: newAccents };
+    });
+    set({ tracks: updated });
+  },
+
   addTrack: (beats) => {
     const { tracks } = get();
     if (tracks.length >= 4) return; // max 4 tracks

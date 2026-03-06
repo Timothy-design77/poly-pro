@@ -20,6 +20,62 @@ const TEXT_COLOR: Record<number, string> = {
 
 const LONG_PRESS_MS = 600;
 
+const VOL_LEVELS = [
+  { state: VolumeState.OFF, label: 'Off' },
+  { state: VolumeState.GHOST, label: 'Ghost' },
+  { state: VolumeState.SOFT, label: 'Soft' },
+  { state: VolumeState.MED, label: 'Med' },
+  { state: VolumeState.LOUD, label: 'Loud' },
+  { state: VolumeState.ACCENT, label: 'Accent' },
+];
+
+/** Quick control to set all subdivision cells to a volume level at once */
+function SubVolumeControl({ track, subdivision }: { track: { accents: VolumeState[] }; subdivision: number }) {
+  const setAllSubVol = useMetronomeStore((s) => s.setAllSubdivisionVolume);
+
+  // Detect current sub volume (most common non-beat cell value)
+  const subValues: VolumeState[] = [];
+  for (let i = 0; i < track.accents.length; i++) {
+    if (i % subdivision !== 0) subValues.push(track.accents[i]);
+  }
+  const currentVol = subValues.length > 0 ? subValues[0] : VolumeState.SOFT;
+  const allSame = subValues.every(v => v === currentVol);
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5 mb-0.5">
+      <span className="text-[9px] text-text-muted uppercase tracking-wider shrink-0">Sub</span>
+      <div className="flex gap-0.5 flex-1">
+        {VOL_LEVELS.map(({ state, label }) => {
+          const isActive = allSame && currentVol === state;
+          const fillPct = FILL_MAP[state] ?? 0;
+          const fillCol = FILL_COLOR[state] ?? 'transparent';
+          return (
+            <button
+              key={state}
+              onClick={() => setAllSubVol(state)}
+              className={`
+                flex-1 h-[28px] rounded-md text-[8px] font-bold
+                touch-manipulation select-none relative overflow-hidden
+                border transition-colors
+                ${isActive
+                  ? 'border-[rgba(255,255,255,0.15)] text-text-primary'
+                  : 'border-border-subtle text-text-muted active:bg-bg-raised'
+                }
+              `}
+            >
+              <div
+                className={`absolute bottom-0 left-0 right-0 ${fillPct === 100 ? 'rounded-md' : 'rounded-b-md'}`}
+                style={{ height: `${fillPct}%`, backgroundColor: fillCol }}
+              />
+              <span className="relative z-10">{label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Full accent pattern editor with long-press for per-beat sound assignment.
  * Tap: cycle volume state. Long-press: open sound picker.
@@ -148,6 +204,11 @@ export function BeatGrid() {
                   );
                 })}
               </div>
+
+              {/* Sub Volume — quick control for all subdivision cells */}
+              {hasSubRow && (
+                <SubVolumeControl track={track} subdivision={subdivision} />
+              )}
 
               {/* Subdivision cells */}
               {hasSubRow && (

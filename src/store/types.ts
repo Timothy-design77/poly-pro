@@ -52,6 +52,7 @@ export interface MetronomeState {
   setTrackMuted: (trackId: string, muted: boolean) => void;
   setTrackSwing: (trackId: string, swing: number) => void;
   setBeatSound: (trackId: string, beatIndex: number, soundId: string | null) => void;
+  setAllSubdivisionVolume: (volume: VolumeState) => void;
   addTrack: (beats: number) => void;
   removeTrack: (trackId: string) => void;
   setTrainerEnabled: (enabled: boolean) => void;
