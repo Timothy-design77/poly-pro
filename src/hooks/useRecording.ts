@@ -48,11 +48,9 @@ export function useRecording() {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isRecordingRef = useRef(false);
 
-  // Mic level metering — uses AnalyserNode on a separate silent context
-  // that does NOT route to destination (no ducking)
-  const meterCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const meterRafRef = useRef<number>(0);
+  // No mic level metering during recording — connecting mic to ANY
+  // AudioContext triggers Android volume ducking. Waveform display
+  // will show a static "recording" indicator instead.
 
   useEffect(() => {
     return () => {
@@ -63,7 +61,6 @@ export function useRecording() {
   const cleanupRecording = useCallback(() => {
     isRecordingRef.current = false;
     if (timerRef.current) clearInterval(timerRef.current);
-    if (meterRafRef.current) cancelAnimationFrame(meterRafRef.current);
 
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
       try { recorderRef.current.stop(); } catch {}
@@ -74,12 +71,6 @@ export function useRecording() {
       micStreamRef.current.getTracks().forEach((t) => t.stop());
       micStreamRef.current = null;
     }
-
-    if (meterCtxRef.current && meterCtxRef.current.state !== 'closed') {
-      meterCtxRef.current.close().catch(() => {});
-      meterCtxRef.current = null;
-    }
-    analyserRef.current = null;
   }, []);
 
   const startRecording = useCallback(async () => {
@@ -126,36 +117,6 @@ export function useRecording() {
       };
 
       recorder.start(1000); // Collect data every 1 second
-
-      // Set up level metering using a detached AnalyserNode
-      // Create a minimal AudioContext just for metering — NOT connected to destination
-      try {
-        const meterCtx = new AudioContext({ sampleRate: 16000 }); // low sample rate = minimal overhead
-        meterCtxRef.current = meterCtx;
-        const source = meterCtx.createMediaStreamSource(stream);
-        const analyser = meterCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        // Do NOT connect analyser to destination — no output, no ducking
-        analyserRef.current = analyser;
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        const updateMeter = () => {
-          if (!isRecordingRef.current) return;
-          analyser.getByteTimeDomainData(dataArray);
-          let peak = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            const val = Math.abs(dataArray[i] - 128) / 128;
-            if (val > peak) peak = val;
-          }
-          setState((s) => ({ ...s, micLevel: peak }));
-          meterRafRef.current = requestAnimationFrame(updateMeter);
-        };
-        meterRafRef.current = requestAnimationFrame(updateMeter);
-      } catch {
-        // Metering failed — recording still works, just no waveform
-        console.warn('Level metering unavailable');
-      }
 
       isRecordingRef.current = true;
       startTimeRef.current = Date.now();
