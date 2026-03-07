@@ -25,23 +25,21 @@ export const TAP_TIMEOUT_MS = 3000;
 
 // ─── Audio Engine ───
 // ─── Audio Tuning ───
-// Signal chain: sample → per-beat gain → master gain → limiter → destination
+// Signal chain: sample → per-beat gain → master gain → limiter → output → destination
 //
-// Design: samples are normalized WAVs. Per-beat ACCENT=1.0 plays at
-// full sample level. Master gain scales 0-1 from volume slider.
-// Brickwall limiter at -1dB catches overlapping peaks only.
-// No unnecessary amplification = clean, loud, punchy output.
-//
-// Maximum loudness comes from the system volume, not digital gain.
-// Boosting digital gain above 0dBFS just causes compression/distortion.
-export const COMPRESSOR_THRESHOLD = -1;   // dB — brickwall limiter, only catches true peaks
-export const COMPRESSOR_KNEE = 0;         // hard knee — immediate limiting
-export const COMPRESSOR_RATIO = 20;       // effectively infinite — brickwall
-export const COMPRESSOR_ATTACK = 0.001;   // 1ms — fast enough to catch transients
+// Web Audio on Android outputs quieter than native HTML audio.
+// Need gain boost to reach usable loudness, with brickwall limiter
+// to prevent clipping when multiple sounds overlap.
+export const COMPRESSOR_THRESHOLD = -3;   // dB — catches peaks from overlapping sounds
+export const COMPRESSOR_KNEE = 2;         // slight softening
+export const COMPRESSOR_RATIO = 20;       // brickwall above threshold
+export const COMPRESSOR_ATTACK = 0.001;   // 1ms — catches transients
 export const COMPRESSOR_RELEASE = 0.01;   // 10ms — fast release, no pumping
-export const OUTPUT_GAIN = 1.0;           // unity — no amplification after limiter
-// Samples peak at -0.8 to -3.1 dB — already near 0dBFS. No amplification needed.
-export const MASTER_GAIN_MULTIPLIER = 1.0; // unity — volume slider maps 0-1 directly
+// Samples peak at -0.8 to -3.1 dB. At ACCENT (gain 1.0) + volume 1.0:
+// Single sound: -0.8 to -3.1 dB (below limiter = clean)
+// Two overlapping: up to +3dB (limiter catches = safe)
+export const OUTPUT_GAIN = 1.0;           // unity after limiter
+export const MASTER_GAIN_MULTIPLIER = 6.0; // fills Android's quiet Web Audio output
 
 // ─── Meter Defaults ───
 export const DEFAULT_METER_NUMERATOR = 4;
