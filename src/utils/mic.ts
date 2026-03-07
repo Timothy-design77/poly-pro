@@ -1,34 +1,24 @@
 /**
  * Mic selection utility.
  * 
- * CRITICAL: Must avoid opening a Bluetooth mic, which forces Android
- * to switch BT from A2DP (high quality stereo output) to HFP
- * (compressed mono bidirectional).
+ * Uses simple { audio: true } to avoid triggering Android BT mode
+ * switches. Explicit constraints like echoCancellation:false cause
+ * Chrome to signal a "raw capture" intent which makes Samsung buds
+ * switch to transparency mode.
  * 
- * Strategy: enumerate devices WITHOUT a temp stream (avoids audio
- * ducking). If labels are available (permission already granted),
- * pick built-in by deviceId. If not, request with processing
- * disabled and let the OS pick (usually built-in).
+ * v1 works fine with BT because it uses the default constraints.
+ * Audio processing (AGC/NS/EC) can be disabled via audio track
+ * settings after the stream is opened if needed.
  */
 
 /**
- * Get a mic stream that avoids BT mics.
- * No temp streams, no audio ducking, no BT profile flicker.
+ * Get a mic stream that doesn't disturb BT earbuds.
  */
 export async function getPreferredMicStream(): Promise<MediaStream> {
-  const baseConstraints = {
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-  };
-
   try {
-    // Try to enumerate WITHOUT opening a stream first
-    // (labels are available if permission was previously granted)
+    // Enumerate to find built-in mic (if labels available)
     const devices = await navigator.mediaDevices.enumerateDevices();
     const audioInputs = devices.filter((d) => d.kind === 'audioinput');
-
-    // Check if we have labels (permission was granted before)
     const hasLabels = audioInputs.some((d) => d.label.length > 0);
 
     if (hasLabels && audioInputs.length > 1) {
@@ -39,20 +29,45 @@ export async function getPreferredMicStream(): Promise<MediaStream> {
       });
 
       if (builtIn?.deviceId) {
-        return await navigator.mediaDevices.getUserMedia({
-          audio: { ...baseConstraints, deviceId: { exact: builtIn.deviceId } },
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: builtIn.deviceId } },
         });
+        disableProcessing(stream);
+        return stream;
       }
     }
 
-    // No labels (first time) or only one mic — just request directly.
-    // Android defaults to built-in mic for getUserMedia which is what we want.
-    // The key is NOT specifying a BT device, so BT stays on A2DP.
-    return await navigator.mediaDevices.getUserMedia({ audio: baseConstraints });
+    // Default — simple request, no explicit constraint booleans
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    disableProcessing(stream);
+    return stream;
 
   } catch (err) {
     console.warn('Mic selection failed:', err);
-    return await navigator.mediaDevices.getUserMedia({ audio: baseConstraints });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    disableProcessing(stream);
+    return stream;
+  }
+}
+
+/**
+ * Disable audio processing AFTER stream is opened via track settings.
+ * This avoids the getUserMedia constraint path that triggers BT changes.
+ */
+function disableProcessing(stream: MediaStream): void {
+  const track = stream.getAudioTracks()[0];
+  if (!track) return;
+
+  try {
+    track.applyConstraints({
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    }).catch(() => {
+      // Some devices don't support applyConstraints — that's fine
+    });
+  } catch {
+    // Ignore
   }
 }
 
