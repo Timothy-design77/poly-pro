@@ -3,7 +3,7 @@ import { audioEngine } from '../audio/engine';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
-import { getPreferredMicStream } from '../utils/mic';
+import { getPreferredMicStream, hasBtAudioOutput, verifyRawAudio } from '../utils/mic';
 import * as db from '../store/db';
 import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
 
@@ -15,6 +15,8 @@ export interface RecordingState {
   elapsed: number;
   micLevel: number;
   warning: string | null;
+  btTip: string | null; // One-time BT earbuds tip
+  isRawAudio: boolean; // Whether processing is confirmed disabled
 }
 
 // Track whether worklet module has been loaded (survives re-renders)
@@ -26,6 +28,8 @@ export function useRecording() {
     elapsed: 0,
     micLevel: 0,
     warning: null,
+    btTip: null,
+    isRawAudio: false,
   });
 
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -89,9 +93,22 @@ export function useRecording() {
         workletLoaded = true;
       }
 
-      // Get mic stream (prefer built-in, avoid BT)
+      // Get mic stream (prefer built-in, raw audio processing disabled)
       const stream = await getPreferredMicStream();
       micStreamRef.current = stream;
+
+      // Verify raw audio is actually disabled
+      const audioStatus = verifyRawAudio(stream);
+      console.log('Audio processing status:', audioStatus);
+
+      // Check for BT earbuds — show one-time tip
+      const btDetected = await hasBtAudioOutput();
+      const btTipShown = localStorage.getItem('poly-pro-bt-tip-shown');
+      let btTip: string | null = null;
+      if (btDetected && !btTipShown) {
+        btTip = 'BT earbuds detected. If they switch to ambient mode, disable "Voice Detect" in Galaxy Wearable app.';
+        localStorage.setItem('poly-pro-bt-tip-shown', '1');
+      }
 
       // Connect: mic → worklet → silentGain(0) → destination
       // Worklet must be connected to destination for process() to fire,
@@ -133,6 +150,8 @@ export function useRecording() {
         elapsed: 0,
         micLevel: 0,
         warning: null,
+        btTip,
+        isRawAudio: audioStatus.isRaw,
       });
 
       // Elapsed timer
@@ -154,7 +173,7 @@ export function useRecording() {
     } catch (err) {
       console.error('Failed to start recording:', err);
       cleanupRecording();
-      setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null });
+      setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
     }
   }, [cleanupRecording]);
 
@@ -183,7 +202,7 @@ export function useRecording() {
 
     if (totalSamples === 0) {
       console.warn('No audio captured');
-      setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null });
+      setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
       return;
     }
 
@@ -235,7 +254,7 @@ export function useRecording() {
       }
     }
 
-    setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null });
+    setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
 
     // Navigate to Progress page
     useNavStore.getState().navigateTo(PAGE_PROGRESS);

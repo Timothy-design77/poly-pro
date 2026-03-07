@@ -120,6 +120,13 @@ export function HomePage() {
 
           {/* Live waveform during recording */}
           <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
+
+          {/* BT earbuds tip */}
+          {recording.btTip && (
+            <div className="text-[11px] text-warning bg-warning/10 rounded-lg px-3 py-2 mt-2">
+              {recording.btTip}
+            </div>
+          )}
         </div>
 
         {/* ─── Collapsible sections ─── */}
