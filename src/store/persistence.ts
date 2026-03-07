@@ -74,6 +74,7 @@ interface PersistedSettings {
   latencyOffset: number;
   recordingClickVolume: number;
   includeClickInRecording: boolean;
+  sensitivity: number;
 }
 
 function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): PersistedSettings {
@@ -87,6 +88,7 @@ function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): Pers
     latencyOffset: state.latencyOffset,
     recordingClickVolume: state.recordingClickVolume,
     includeClickInRecording: state.includeClickInRecording,
+    sensitivity: state.sensitivity,
   };
 }
 

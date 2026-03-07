@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { SoundSettings } from './SoundSettings';
 import { VibrationSettings } from './VibrationSettings';
+import { useSettingsStore } from '../../store/settings-store';
 
 interface SectionProps {
   title: string;
@@ -38,6 +39,46 @@ function CollapsibleSection({ title, icon, defaultOpen = false, children }: Sect
 }
 
 /**
+ * Recording settings — mic sensitivity for percussion capture.
+ */
+function RecordingSettings() {
+  const sensitivity = useSettingsStore((s) => s.sensitivity);
+  const setSensitivity = useSettingsStore((s) => s.setSensitivity);
+
+  // Gain label: sensitivity 0 = 1x, 0.5 = 3x, 1.0 = 5x
+  const gainValue = 1 + sensitivity * 4;
+  const gainLabel = gainValue === 1 ? '1x (off)' : `${gainValue.toFixed(1)}x`;
+
+  return (
+    <div className="space-y-4">
+      {/* Mic Sensitivity / Gain Boost */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs text-text-muted uppercase tracking-wider">
+            Mic Boost
+          </label>
+          <span className="font-mono text-xs text-text-secondary">{gainLabel}</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={Math.round(sensitivity * 100)}
+          onChange={(e) => setSensitivity(Number(e.target.value) / 100)}
+          className="w-full accent-white h-2 bg-bg-raised rounded-full appearance-none
+                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
+                     [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
+                     [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+        />
+        <p className="text-[10px] text-text-muted mt-1.5 leading-relaxed">
+          Boost mic input for percussion. Phone mics are voice-optimized — drum hits need more gain.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Settings overlay content — 6 collapsible sections.
  * Phase 1: Sounds + Vibration are functional.
  * Others show "Coming soon" stubs.
@@ -60,7 +101,7 @@ export function SettingsContent() {
         <SoundSettings />
       </CollapsibleSection>
 
-      {/* Section 2: Recording (stub) */}
+      {/* Section 2: Recording */}
       <CollapsibleSection
         title="Recording"
         icon={
@@ -72,7 +113,7 @@ export function SettingsContent() {
           </svg>
         }
       >
-        <div className="text-sm text-text-muted py-2">Coming in Phase 4</div>
+        <RecordingSettings />
       </CollapsibleSection>
 
       {/* Section 3: Detection (stub) */}
