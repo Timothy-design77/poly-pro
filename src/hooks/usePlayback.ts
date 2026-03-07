@@ -1,20 +1,25 @@
 import { useRef, useState, useCallback } from 'react';
-import { audioEngine } from '../audio/engine';
 import * as db from '../store/db';
 
 /**
- * Plays back raw float32 PCM recordings from IDB via Web Audio.
- * The blob contains raw Float32Array bytes (application/octet-stream).
+ * Plays back recordings from IDB.
+ * Uses the compressed playback blob (WebM/Opus) via HTML Audio element
+ * for proper volume handling through the media audio channel.
  */
 export function usePlayback() {
   const [playingSessionId, setPlayingSessionId] = useState<string | null>(null);
-  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
 
   const play = useCallback(async (sessionId: string) => {
     // Stop any current playback
-    if (sourceRef.current) {
-      try { sourceRef.current.stop(); } catch {}
-      sourceRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
     }
 
     if (playingSessionId === sessionId) {
@@ -22,39 +27,41 @@ export function usePlayback() {
       return; // Toggle off
     }
 
-    const blob = await db.getRecording(sessionId);
+    // Try compressed playback blob first, fall back to PCM blob
+    let blob = await db.getRecording(sessionId + '-playback');
+    if (!blob) {
+      blob = await db.getRecording(sessionId);
+    }
     if (!blob) {
       console.warn('No recording found for session', sessionId);
       return;
     }
 
     try {
-      const ctx = await audioEngine.initContext();
-      const arrayBuffer = await blob.arrayBuffer();
+      // Use HTML Audio element — plays through media channel at full volume
+      // (Web Audio API plays through a potentially different audio session)
+      const url = URL.createObjectURL(blob);
+      urlRef.current = url;
 
-      // Raw bytes → Float32Array
-      const float32 = new Float32Array(arrayBuffer);
+      const audio = new Audio(url);
+      audio.volume = 1.0;
+      audioRef.current = audio;
 
-      if (float32.length === 0) {
-        console.warn('Empty recording');
-        return;
-      }
-
-      // Create AudioBuffer from raw PCM (mono, 48kHz)
-      const audioBuffer = ctx.createBuffer(1, float32.length, 48000);
-      audioBuffer.getChannelData(0).set(float32);
-
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-
-      source.onended = () => {
+      audio.onended = () => {
         setPlayingSessionId(null);
-        sourceRef.current = null;
+        if (urlRef.current) {
+          URL.revokeObjectURL(urlRef.current);
+          urlRef.current = null;
+        }
+        audioRef.current = null;
       };
 
-      source.start();
-      sourceRef.current = source;
+      audio.onerror = () => {
+        console.error('Playback error');
+        setPlayingSessionId(null);
+      };
+
+      await audio.play();
       setPlayingSessionId(sessionId);
     } catch (err) {
       console.error('Playback failed:', err);
@@ -63,9 +70,13 @@ export function usePlayback() {
   }, [playingSessionId]);
 
   const stop = useCallback(() => {
-    if (sourceRef.current) {
-      try { sourceRef.current.stop(); } catch {}
-      sourceRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
     }
     setPlayingSessionId(null);
   }, []);

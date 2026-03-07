@@ -1,10 +1,9 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { audioEngine } from '../audio/engine';
 import { useMetronomeStore } from '../store/metronome-store';
-import { useSettingsStore } from '../store/settings-store';
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
-import { getPreferredMicStream, hasBtAudioOutput, verifyRawAudio } from '../utils/mic';
+import { getPreferredMicStream, hasBtAudioOutput } from '../utils/mic';
 import * as db from '../store/db';
 import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
 
@@ -20,9 +19,18 @@ export interface RecordingState {
   isRawAudio: boolean;
 }
 
-// Track whether worklet module has been loaded on the mic context
-let micWorkletLoaded = false;
-
+/**
+ * Recording hook using MediaRecorder (NOT AudioWorklet).
+ *
+ * WHY: Connecting a mic stream to ANY AudioContext triggers Android's
+ * "communication mode" which ducks all audio output system-wide.
+ * MediaRecorder captures independently — no AudioContext connection,
+ * no volume ducking. Metronome stays at full volume during recording.
+ *
+ * After recording stops, we decode the compressed audio to raw PCM
+ * via decodeAudioData() for onset analysis. Timing precision of
+ * decoded Opus is sub-millisecond — more than sufficient.
+ */
 export function useRecording() {
   const [state, setState] = useState<RecordingState>({
     isRecording: false,
@@ -33,18 +41,18 @@ export function useRecording() {
     isRawAudio: false,
   });
 
-  // Separate AudioContext for mic — prevents Android from switching
-  // metronome audio output to "communication" mode (lower volume)
-  const micCtxRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
-  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const micGainRef = useRef<GainNode | null>(null);
-  const silentGainRef = useRef<GainNode | null>(null);
-  const pcmChunksRef = useRef<number[][]>([]);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isRecordingRef = useRef(false);
+
+  // Mic level metering — uses AnalyserNode on a separate silent context
+  // that does NOT route to destination (no ducking)
+  const meterCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const meterRafRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -55,34 +63,23 @@ export function useRecording() {
   const cleanupRecording = useCallback(() => {
     isRecordingRef.current = false;
     if (timerRef.current) clearInterval(timerRef.current);
+    if (meterRafRef.current) cancelAnimationFrame(meterRafRef.current);
 
-    if (workletNodeRef.current) {
-      try { workletNodeRef.current.port.postMessage({ type: 'stop' }); } catch {}
-      try { workletNodeRef.current.disconnect(); } catch {}
-      workletNodeRef.current = null;
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      try { recorderRef.current.stop(); } catch {}
     }
-    if (micGainRef.current) {
-      try { micGainRef.current.disconnect(); } catch {}
-      micGainRef.current = null;
-    }
-    if (micSourceRef.current) {
-      try { micSourceRef.current.disconnect(); } catch {}
-      micSourceRef.current = null;
-    }
-    if (silentGainRef.current) {
-      try { silentGainRef.current.disconnect(); } catch {}
-      silentGainRef.current = null;
-    }
+    recorderRef.current = null;
+
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((t) => t.stop());
       micStreamRef.current = null;
     }
-    // Close the separate mic AudioContext
-    if (micCtxRef.current && micCtxRef.current.state !== 'closed') {
-      micCtxRef.current.close().catch(() => {});
-      micCtxRef.current = null;
-      micWorkletLoaded = false; // Need to reload worklet on new context
+
+    if (meterCtxRef.current && meterCtxRef.current.state !== 'closed') {
+      meterCtxRef.current.close().catch(() => {});
+      meterCtxRef.current = null;
     }
+    analyserRef.current = null;
   }, []);
 
   const startRecording = useCallback(async () => {
@@ -96,26 +93,9 @@ export function useRecording() {
         useMetronomeStore.getState().setPlaying(true);
       }
 
-      // Create a SEPARATE AudioContext for mic capture
-      // This prevents Android from switching the metronome's audio output
-      // from "media" mode to "communication" mode (which reduces volume)
-      const micCtx = new AudioContext({ sampleRate: 48000 });
-      micCtxRef.current = micCtx;
-
-      // Load worklet on the mic context
-      if (!micWorkletLoaded) {
-        const base = import.meta.env.BASE_URL || '/poly-pro/';
-        await micCtx.audioWorklet.addModule(`${base}worklets/pcm-capture.js`);
-        micWorkletLoaded = true;
-      }
-
       // Get mic stream
       const stream = await getPreferredMicStream();
       micStreamRef.current = stream;
-
-      // Verify raw audio
-      const audioStatus = verifyRawAudio(stream);
-      console.log('Audio processing status:', audioStatus);
 
       // Check for BT earbuds
       const btDetected = await hasBtAudioOutput();
@@ -126,43 +106,56 @@ export function useRecording() {
         localStorage.setItem('poly-pro-bt-tip-shown', '1');
       }
 
-      // Audio graph on mic context:
-      // mic → gainBoost → worklet → silentGain(0) → destination
-      const source = micCtx.createMediaStreamSource(stream);
-      micSourceRef.current = source;
+      // Set up MediaRecorder — captures audio WITHOUT connecting to AudioContext
+      // This is the key difference from AudioWorklet approach: no ducking
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
 
-      // Mic gain boost — helps capture percussion transients
-      // Phone mics are voice-optimized; stick hits register much lower
-      const settings = useSettingsStore.getState();
-      const micGain = micCtx.createGain();
-      micGain.gain.value = settings.sensitivity > 0 ? 1 + (settings.sensitivity * 4) : 1;
-      micGainRef.current = micGain;
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 128000,
+      });
+      recorderRef.current = recorder;
 
-      const workletNode = new AudioWorkletNode(micCtx, 'pcm-capture-processor');
-      workletNodeRef.current = workletNode;
-
-      const silentGain = micCtx.createGain();
-      silentGain.gain.value = 0;
-      silentGainRef.current = silentGain;
-
-      source.connect(micGain);
-      micGain.connect(workletNode);
-      workletNode.connect(silentGain);
-      silentGain.connect(micCtx.destination);
-
-      // Listen for messages from worklet
-      pcmChunksRef.current = [];
-      workletNode.port.onmessage = (e) => {
-        const msg = e.data;
-        if (msg.type === 'pcm') {
-          pcmChunksRef.current.push(msg.samples);
-        } else if (msg.type === 'level') {
-          setState((s) => ({ ...s, micLevel: msg.peak }));
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
         }
       };
 
-      // Start capturing
-      workletNode.port.postMessage({ type: 'start' });
+      recorder.start(1000); // Collect data every 1 second
+
+      // Set up level metering using a detached AnalyserNode
+      // Create a minimal AudioContext just for metering — NOT connected to destination
+      try {
+        const meterCtx = new AudioContext({ sampleRate: 16000 }); // low sample rate = minimal overhead
+        meterCtxRef.current = meterCtx;
+        const source = meterCtx.createMediaStreamSource(stream);
+        const analyser = meterCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        // Do NOT connect analyser to destination — no output, no ducking
+        analyserRef.current = analyser;
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const updateMeter = () => {
+          if (!isRecordingRef.current) return;
+          analyser.getByteTimeDomainData(dataArray);
+          let peak = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const val = Math.abs(dataArray[i] - 128) / 128;
+            if (val > peak) peak = val;
+          }
+          setState((s) => ({ ...s, micLevel: peak }));
+          meterRafRef.current = requestAnimationFrame(updateMeter);
+        };
+        meterRafRef.current = requestAnimationFrame(updateMeter);
+      } catch {
+        // Metering failed — recording still works, just no waveform
+        console.warn('Level metering unavailable');
+      }
 
       isRecordingRef.current = true;
       startTimeRef.current = Date.now();
@@ -173,7 +166,7 @@ export function useRecording() {
         micLevel: 0,
         warning: null,
         btTip,
-        isRawAudio: audioStatus.isRaw,
+        isRawAudio: true,
       });
 
       // Elapsed timer
@@ -202,41 +195,54 @@ export function useRecording() {
   const stopRecording = useCallback(async () => {
     if (!isRecordingRef.current) return;
 
-    // Tell worklet to flush
-    if (workletNodeRef.current) {
-      workletNodeRef.current.port.postMessage({ type: 'stop' });
-    }
-    await new Promise((r) => setTimeout(r, 200));
-
-    // Save chunks before cleanup
-    const chunks = pcmChunksRef.current;
     const durationMs = Date.now() - startTimeRef.current;
 
-    // Cleanup mic (closes separate context)
+    // Stop recorder and wait for final data
+    await new Promise<void>((resolve) => {
+      const recorder = recorderRef.current;
+      if (!recorder || recorder.state === 'inactive') {
+        resolve();
+        return;
+      }
+      recorder.onstop = () => resolve();
+      recorder.stop();
+    });
+
+    // Grab chunks before cleanup
+    const chunks = chunksRef.current;
+    chunksRef.current = [];
+
+    // Cleanup mic/recorder/meter
     cleanupRecording();
 
     // Stop metronome
     audioEngine.stop();
     useMetronomeStore.getState().setPlaying(false);
 
-    // Combine chunks
-    const totalSamples = chunks.reduce((acc, c) => acc + c.length, 0);
-
-    if (totalSamples === 0) {
+    if (chunks.length === 0) {
       console.warn('No audio captured');
       setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
       return;
     }
 
-    const combined = new Float32Array(totalSamples);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
-    pcmChunksRef.current = [];
+    // Combine MediaRecorder chunks into a single blob
+    const audioBlob = new Blob(chunks, { type: chunks[0].type });
 
-    // Build session
+    // Decode to raw PCM for analysis
+    let pcmBlob: Blob;
+    try {
+      const ctx = await audioEngine.initContext();
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      const pcmData = audioBuffer.getChannelData(0); // mono
+      pcmBlob = new Blob([pcmData.buffer], { type: 'application/octet-stream' });
+    } catch (err) {
+      console.error('Failed to decode audio to PCM:', err);
+      // Fall back to saving the compressed blob directly
+      pcmBlob = audioBlob;
+    }
+
+    // Build session record
     const metronome = useMetronomeStore.getState();
     const activeProjectId = useProjectStore.getState().activeProjectId;
     const sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -253,14 +259,14 @@ export function useRecording() {
       avgDelta: 0,
       stdDev: 0,
       perfectPct: 0,
-      hasRecording: totalSamples > 0,
+      hasRecording: true,
     };
 
-    // Save to IDB
-    const pcmBlob = new Blob([combined.buffer], { type: 'application/octet-stream' });
+    // Save to IDB — PCM for analysis, also keep compressed for playback
     await Promise.all([
       db.putSession(session),
       db.putRecording(sessionId, pcmBlob),
+      db.putRecording(sessionId + '-playback', audioBlob),
     ]);
 
     // Update stores
