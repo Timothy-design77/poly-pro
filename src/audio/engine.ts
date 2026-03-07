@@ -28,6 +28,7 @@ import {
   COMPRESSOR_RELEASE,
   OUTPUT_GAIN,
   MASTER_GAIN_MULTIPLIER,
+  RECORDING_GAIN_BOOST,
 } from '../utils/constants';
 
 type BeatCallback = (event: BeatEvent) => void;
@@ -62,6 +63,7 @@ class AudioEngine {
 
   private soundsLoaded = false;
   private isRunning = false;
+  private recordingBoost = 1.0; // multiplied with master gain during recording
   private _warmedUp = false;
   private _warmUpPromise: Promise<void> | null = null;
 
@@ -114,7 +116,7 @@ class AudioEngine {
 
     this.masterGain = this.audioCtx.createGain();
     const vol = useMetronomeStore.getState().volume;
-    this.masterGain.gain.value = vol * MASTER_GAIN_MULTIPLIER;
+    this.masterGain.gain.value = vol * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
 
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.outputGain);
@@ -172,7 +174,7 @@ class AudioEngine {
     }
 
     if (this.masterGain) {
-      this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER;
+      this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
     }
 
     this.schedule();
@@ -219,6 +221,18 @@ class AudioEngine {
     return this.isRunning;
   }
 
+  /**
+   * Boost metronome volume to compensate for Android's getUserMedia ducking.
+   * Call with true when recording starts, false when it stops.
+   */
+  setRecordingBoost(active: boolean): void {
+    this.recordingBoost = active ? RECORDING_GAIN_BOOST : 1.0;
+    if (this.masterGain) {
+      const state = useMetronomeStore.getState();
+      this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+    }
+  }
+
   // ─── Core Scheduler ───
 
   private schedule = (): void => {
@@ -229,7 +243,7 @@ class AudioEngine {
     const settings = useSettingsStore.getState();
 
     if (this.masterGain) {
-      this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER;
+      this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
     }
 
     const now = ctx.currentTime;

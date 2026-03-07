@@ -118,6 +118,9 @@ export function useRecording() {
 
       recorder.start(1000); // Collect data every 1 second
 
+      // Boost metronome volume to compensate for Android audio ducking
+      audioEngine.setRecordingBoost(true);
+
       isRecordingRef.current = true;
       startTimeRef.current = Date.now();
 
@@ -149,6 +152,7 @@ export function useRecording() {
     } catch (err) {
       console.error('Failed to start recording:', err);
       cleanupRecording();
+      audioEngine.setRecordingBoost(false);
       setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
     }
   }, [cleanupRecording]);
@@ -175,6 +179,9 @@ export function useRecording() {
 
     // Cleanup mic/recorder/meter
     cleanupRecording();
+
+    // Restore normal volume (remove ducking compensation)
+    audioEngine.setRecordingBoost(false);
 
     // Stop metronome
     audioEngine.stop();

@@ -25,21 +25,23 @@ export const TAP_TIMEOUT_MS = 3000;
 
 // ─── Audio Engine ───
 // ─── Audio Tuning ───
-// Web Audio on Android outputs significantly quieter than native.
-// These values are tuned for loud, clean output on mobile.
-export const COMPRESSOR_THRESHOLD = -12;  // dB — moderate compression on peaks
-export const COMPRESSOR_KNEE = 4;         // smooth transition
-export const COMPRESSOR_RATIO = 4;        // moderate — preserves some dynamics
-export const COMPRESSOR_ATTACK = 0.002;   // 2ms — catches transients
-export const COMPRESSOR_RELEASE = 0.05;   // 50ms — natural release
-export const OUTPUT_GAIN = 3.0;           // boost after compression for loudness
-export const MASTER_GAIN_MULTIPLIER = 8.0; // fills Android's quiet Web Audio output
+// Web Audio on Android outputs quieter than native.
+// getUserMedia triggers Android audio ducking (~50-70% volume reduction).
+// RECORDING_GAIN_BOOST compensates to keep metronome audible while recording.
+export const COMPRESSOR_THRESHOLD = -6;   // dB — catches overlapping peaks
+export const COMPRESSOR_KNEE = 3;         // smooth transition
+export const COMPRESSOR_RATIO = 8;        // strong limiting above threshold
+export const COMPRESSOR_ATTACK = 0.001;   // 1ms
+export const COMPRESSOR_RELEASE = 0.02;   // 20ms
+export const OUTPUT_GAIN = 1.0;           // unity after compressor
+export const MASTER_GAIN_MULTIPLIER = 6.0; // normal playback — confirmed loud enough
+export const RECORDING_GAIN_BOOST = 3.0;  // extra multiplier during recording to offset ducking
 
 // ─── Meter Defaults ───
 export const DEFAULT_METER_NUMERATOR = 4;
 export const DEFAULT_METER_DENOMINATOR = 4;
 export const DEFAULT_SUBDIVISION = 1;
-export const DEFAULT_VOLUME = 1.0;
+export const DEFAULT_VOLUME = 0.8;
 
 // ─── Sound Defaults ───
 export const DEFAULT_CLICK_SOUND = 'woodblock';
