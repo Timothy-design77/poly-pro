@@ -24,13 +24,24 @@ export const TAP_MAX_TAPS = 8;
 export const TAP_TIMEOUT_MS = 3000;
 
 // ─── Audio Engine ───
-export const COMPRESSOR_THRESHOLD = -20;
-export const COMPRESSOR_KNEE = 3;
-export const COMPRESSOR_RATIO = 2;
-export const COMPRESSOR_ATTACK = 0.002;
-export const COMPRESSOR_RELEASE = 0.05;
-export const OUTPUT_GAIN = 4.0;
-export const MASTER_GAIN_MULTIPLIER = 8.0;
+// ─── Audio Tuning ───
+// Signal chain: sample → per-beat gain → master gain → limiter → destination
+//
+// Design: samples are normalized WAVs. Per-beat ACCENT=1.0 plays at
+// full sample level. Master gain scales 0-1 from volume slider.
+// Brickwall limiter at -1dB catches overlapping peaks only.
+// No unnecessary amplification = clean, loud, punchy output.
+//
+// Maximum loudness comes from the system volume, not digital gain.
+// Boosting digital gain above 0dBFS just causes compression/distortion.
+export const COMPRESSOR_THRESHOLD = -1;   // dB — brickwall limiter, only catches true peaks
+export const COMPRESSOR_KNEE = 0;         // hard knee — immediate limiting
+export const COMPRESSOR_RATIO = 20;       // effectively infinite — brickwall
+export const COMPRESSOR_ATTACK = 0.001;   // 1ms — fast enough to catch transients
+export const COMPRESSOR_RELEASE = 0.01;   // 10ms — fast release, no pumping
+export const OUTPUT_GAIN = 1.0;           // unity — no amplification after limiter
+// Samples peak at -0.8 to -3.1 dB — already near 0dBFS. No amplification needed.
+export const MASTER_GAIN_MULTIPLIER = 1.0; // unity — volume slider maps 0-1 directly
 
 // ─── Meter Defaults ───
 export const DEFAULT_METER_NUMERATOR = 4;
