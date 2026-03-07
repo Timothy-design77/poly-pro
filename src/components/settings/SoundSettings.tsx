@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
+import { useMetronomeStore } from '../../store/metronome-store';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio/engine';
 import { VolumeState } from '../../audio/types';
@@ -14,10 +15,10 @@ import { VolumeState } from '../../audio/types';
 export function SoundSettings() {
   const clickSound = useSettingsStore((s) => s.clickSound);
   const accentSound = useSettingsStore((s) => s.accentSound);
-  const clickVolume = useSettingsStore((s) => s.clickVolume);
+  const clickVolume = useMetronomeStore((s) => s.volume);
   const setClickSound = useSettingsStore((s) => s.setClickSound);
   const setAccentSound = useSettingsStore((s) => s.setAccentSound);
-  const setClickVolume = useSettingsStore((s) => s.setClickVolume);
+  const setClickVolume = useMetronomeStore((s) => s.setVolume);
   const accentSoundThreshold = useSettingsStore((s) => s.accentSoundThreshold);
   const setAccentSoundThreshold = useSettingsStore((s) => s.setAccentSoundThreshold);
 

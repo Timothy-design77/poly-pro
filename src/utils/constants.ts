@@ -25,17 +25,16 @@ export const TAP_TIMEOUT_MS = 3000;
 
 // ─── Audio Engine ───
 // ─── Audio Tuning ───
-// Web Audio on Android outputs quieter than native.
-// getUserMedia triggers Android audio ducking (~50-70% volume reduction).
-// RECORDING_GAIN_BOOST compensates to keep metronome audible while recording.
-export const COMPRESSOR_THRESHOLD = -6;   // dB — catches overlapping peaks
-export const COMPRESSOR_KNEE = 3;         // smooth transition
-export const COMPRESSOR_RATIO = 8;        // strong limiting above threshold
-export const COMPRESSOR_ATTACK = 0.001;   // 1ms
-export const COMPRESSOR_RELEASE = 0.02;   // 20ms
-export const OUTPUT_GAIN = 1.0;           // unity after compressor
-export const MASTER_GAIN_MULTIPLIER = 6.0; // normal playback — confirmed loud enough
-export const RECORDING_GAIN_BOOST = 3.0;  // extra multiplier during recording to offset ducking
+// THESE ARE THE EXACT V1 PROVEN VALUES — DO NOT CHANGE
+// Chain: per-beat gain → masterGain (vol × 8) → compressor (0dB, 2:1) → output (×4) → destination
+export const COMPRESSOR_THRESHOLD = 0;
+export const COMPRESSOR_KNEE = 3;
+export const COMPRESSOR_RATIO = 2;
+export const COMPRESSOR_ATTACK = 0.002;
+export const COMPRESSOR_RELEASE = 0.05;
+export const OUTPUT_GAIN = 4.0;
+export const MASTER_GAIN_MULTIPLIER = 8.0;
+export const RECORDING_GAIN_BOOST = 3.0;
 
 // ─── Meter Defaults ───
 export const DEFAULT_METER_NUMERATOR = 4;
