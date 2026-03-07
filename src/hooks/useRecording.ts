@@ -105,7 +105,7 @@ export function useRecording() {
 
       const recorder = new MediaRecorder(stream, {
         mimeType,
-        audioBitsPerSecond: 128000,
+        audioBitsPerSecond: 256000, // 256kbps — better percussion transient quality
       });
       recorderRef.current = recorder;
 

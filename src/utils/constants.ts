@@ -25,27 +25,21 @@ export const TAP_TIMEOUT_MS = 3000;
 
 // ─── Audio Engine ───
 // ─── Audio Tuning ───
-// Signal chain: sample → per-beat gain → master gain → limiter → output → destination
-//
-// Web Audio on Android outputs quieter than native HTML audio.
-// Need gain boost to reach usable loudness, with brickwall limiter
-// to prevent clipping when multiple sounds overlap.
-export const COMPRESSOR_THRESHOLD = -3;   // dB — catches peaks from overlapping sounds
-export const COMPRESSOR_KNEE = 2;         // slight softening
-export const COMPRESSOR_RATIO = 20;       // brickwall above threshold
-export const COMPRESSOR_ATTACK = 0.001;   // 1ms — catches transients
-export const COMPRESSOR_RELEASE = 0.01;   // 10ms — fast release, no pumping
-// Samples peak at -0.8 to -3.1 dB. At ACCENT (gain 1.0) + volume 1.0:
-// Single sound: -0.8 to -3.1 dB (below limiter = clean)
-// Two overlapping: up to +3dB (limiter catches = safe)
-export const OUTPUT_GAIN = 1.0;           // unity after limiter
-export const MASTER_GAIN_MULTIPLIER = 6.0; // fills Android's quiet Web Audio output
+// Web Audio on Android outputs significantly quieter than native.
+// These values are tuned for loud, clean output on mobile.
+export const COMPRESSOR_THRESHOLD = -12;  // dB — moderate compression on peaks
+export const COMPRESSOR_KNEE = 4;         // smooth transition
+export const COMPRESSOR_RATIO = 4;        // moderate — preserves some dynamics
+export const COMPRESSOR_ATTACK = 0.002;   // 2ms — catches transients
+export const COMPRESSOR_RELEASE = 0.05;   // 50ms — natural release
+export const OUTPUT_GAIN = 3.0;           // boost after compression for loudness
+export const MASTER_GAIN_MULTIPLIER = 8.0; // fills Android's quiet Web Audio output
 
 // ─── Meter Defaults ───
 export const DEFAULT_METER_NUMERATOR = 4;
 export const DEFAULT_METER_DENOMINATOR = 4;
 export const DEFAULT_SUBDIVISION = 1;
-export const DEFAULT_VOLUME = 0.8;
+export const DEFAULT_VOLUME = 1.0;
 
 // ─── Sound Defaults ───
 export const DEFAULT_CLICK_SOUND = 'woodblock';

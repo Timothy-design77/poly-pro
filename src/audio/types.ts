@@ -11,13 +11,13 @@ export enum VolumeState {
 /** Number of audible volume states (for cycling) */
 export const VOLUME_STATE_COUNT = 6;
 
-/** Gain values — exponential curve for clear separation at every level */
+/** Gain values for each volume level — tuned for mobile speakers */
 export const VOLUME_GAINS: Record<VolumeState, number> = {
   [VolumeState.OFF]: 0.0,
-  [VolumeState.GHOST]: 0.03,
-  [VolumeState.SOFT]: 0.10,
-  [VolumeState.MED]: 0.25,
-  [VolumeState.LOUD]: 0.55,
+  [VolumeState.GHOST]: 0.08,
+  [VolumeState.SOFT]: 0.20,
+  [VolumeState.MED]: 0.45,
+  [VolumeState.LOUD]: 0.75,
   [VolumeState.ACCENT]: 1.0,
 };
 
