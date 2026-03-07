@@ -115,8 +115,16 @@ class AudioEngine {
     this.outputGain.gain.value = OUTPUT_GAIN;
 
     this.masterGain = this.audioCtx.createGain();
-    const vol = useMetronomeStore.getState().volume;
+    const vol = useSettingsStore.getState().clickVolume;
     this.masterGain.gain.value = vol * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+
+    // Volume updates now come from settingsStore.clickVolume
+    // Subscribe to settings store for real-time volume changes
+    useSettingsStore.subscribe((state) => {
+      if (this.masterGain) {
+        this.masterGain.gain.value = state.clickVolume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+      }
+    });
 
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.outputGain);
@@ -174,7 +182,7 @@ class AudioEngine {
     }
 
     if (this.masterGain) {
-      this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+      this.masterGain.gain.value = useSettingsStore.getState().clickVolume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
     }
 
     this.schedule();
@@ -228,8 +236,7 @@ class AudioEngine {
   setRecordingBoost(active: boolean): void {
     this.recordingBoost = active ? RECORDING_GAIN_BOOST : 1.0;
     if (this.masterGain) {
-      const state = useMetronomeStore.getState();
-      this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+      this.masterGain.gain.value = useSettingsStore.getState().clickVolume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
     }
   }
 
@@ -243,7 +250,7 @@ class AudioEngine {
     const settings = useSettingsStore.getState();
 
     if (this.masterGain) {
-      this.masterGain.gain.value = state.volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+      this.masterGain.gain.value = useSettingsStore.getState().clickVolume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
     }
 
     const now = ctx.currentTime;
