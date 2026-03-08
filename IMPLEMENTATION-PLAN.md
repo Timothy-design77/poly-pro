@@ -16,9 +16,9 @@
 **Phase 1: COMPLETE** — metronome engine functional, sample-based sounds, BPM controls wired.
 **Phase 2: COMPLETE** — advanced metronome features, trainer, practice modes, polyrhythm.
 **Phase 3: COMPLETE** — projects, presets, sessions, IndexedDB persistence.
-**Phase 4: COMPLETE** — recording system with raw PCM capture via AudioWorklet.
+**Phase 4: IN PROGRESS** — recording system deployed, awaiting user verification of audio volume fix.
 
-### What's Built (as of commit 085f00a)
+### What's Built (as of commit c3621d7)
 
 **Scaffold & Config:**
 - Vite + React + TypeScript + Tailwind + PWA (vite-plugin-pwa)
@@ -154,11 +154,45 @@
 - IDB hydration on startup (projects + sessions loaded before render)
 - Default project auto-created on first launch
 
+**Phase 4 — Recording (src/hooks/useRecording.ts):**
+- MediaRecorder-based capture (NOT AudioWorklet — see Architecture Decision below)
+- getUserMedia with raw constraints: echoCancellation/autoGainControl/noiseSuppression all {exact: false}
+- BT earbud avoidance: enumerates devices, filters out BT mics by keyword
+- Post-recording decode: Opus/WebM → decodeAudioData → Float32 PCM for analysis
+- Session record created on stop, saved to IDB with PCM blob + compressed playback blob
+- Auto-start metronome on record, auto-stop on finish, auto-navigate to Progress page
+- 30-minute max with 25-minute warning
+- Recording boost: outputGain × 2.0 during recording (v1's lBst pattern)
+
+**Phase 4 — Audio Chain Fix (src/utils/constants.ts, src/audio/engine.ts):**
+- Restored exact v1 audio constants (compressor 0dB/2:1, masterGain ×8, outputGain ×4)
+- Recording boost on outputGain (AFTER compressor, speakers only — v1 pattern)
+- Volume slider wired to metronomeStore.volume (not settingsStore.clickVolume)
+- Removed dead settingsStore.clickVolume to prevent confusion
+- Schema version migration: resets stale IDB volume to 0.8 on first load after fix
+
+**Phase 4 — Mic Selection (src/utils/mic.ts):**
+- echoCancellation: {exact: false} as master switch for Chrome Android processing pipeline
+- Built-in mic preference when BT devices detected
+- verifyRawAudio() to confirm processing is actually disabled
+- hasBtAudioOutput() for BT earbud tip display
+
+**Phase 4 — Components:**
+- RecordButton: fully wired, red dot, toggles recording
+- WaveformDisplay: static recording indicator (no live metering — see Architecture Decision)
+- BT earbud tip: one-time dismissible notification
+
+**⚠️ Phase 4 Audio Verification Pending:**
+User needs to test on Galaxy Z Fold 7:
+- [ ] Metronome plays at full volume (clear, loud clicks)
+- [ ] Volume slider works (0% silent → 100% loud)
+- [ ] Recording starts → metronome stays loud (recording boost active)
+- [ ] Recording stops → session saved → appears in Progress page
+
 ### What's Next: Phase 5
 
 Begin onset detection and dual-mode analysis. See Phase 5 section below. Key deliverables:
-- Real-time energy threshold onset detection in AudioWorklet (Mode 1)
-- Post-processing spectral flux pipeline (Mode 2: 8 stages)
+- Post-processing spectral flux pipeline on decoded PCM
 - Scoring formula (consistency σ as primary metric)
 - Session detail with score, deviations, metrics
 - "Analyzing..." overlay with progress stages
@@ -234,8 +268,8 @@ The v1 codebase is a single `index.html` file with ~1620 lines of minified-style
 | Styling | Tailwind CSS |
 | Deploy | GitHub Pages via GitHub Actions |
 | Font | DM Sans (UI text) + JetBrains Mono (all numbers) |
-| Recording | Raw PCM capture at 48kHz from AudioWorklet (NOT MediaRecorder) |
-| Analysis | Dual-mode: real-time energy threshold for feedback + spectral flux post-processing for scoring |
+| Recording | MediaRecorder (Opus 256kbps) → decodeAudioData → Float32 PCM. Mic never touches AudioContext (avoids Android ducking). See §2 Architecture Decision: Recording. |
+| Analysis | Post-processing spectral flux pipeline on decoded PCM. Real-time onset detection deferred (requires AudioContext mic connection → Android ducking). |
 | Calibration | Automated loopback chirp test (5 chirps, cross-correlation, ~6 seconds) |
 
 ---
@@ -250,7 +284,7 @@ Zustand (state management — 1KB, no boilerplate, works outside React)
 IndexedDB via `idb` (replaces localStorage — no 5MB cap)
 Tailwind CSS (utility-first styling)
 vite-plugin-pwa (service worker + manifest generation)
-Web Audio API + AudioWorklet (audio engine + analysis)
+Web Audio API (audio engine) + AudioWorklet (Phase 5: post-recording analysis if needed)
 Canvas API (charts — custom, no library, no SVG charts)
 ```
 
@@ -315,6 +349,32 @@ This is how v1 works and it's correct. The `25ms` interval and `100ms` lookahead
 ```
 
 **NOTE:** No `routineStore` — routines are deferred to post-v2.
+
+### Architecture Decision: Recording (Updated March 2026)
+
+**Decision: Use MediaRecorder (Opus 256kbps) + decodeAudioData, NOT AudioWorklet for mic capture.**
+
+**Why AudioWorklet was rejected:** On Android, calling `createMediaStreamSource()` to connect a mic stream to ANY AudioContext triggers the OS audio focus system to switch from `STREAM_MUSIC` to communication mode. This ducks all audio output by ~50-70%. The metronome becomes nearly inaudible during recording. This is an OS-level behavior, not a Chrome bug — Android assumes any app simultaneously using mic + speaker is making a phone call. No web API can prevent it.
+
+**Why MediaRecorder works:** MediaRecorder captures audio from the getUserMedia stream independently — no AudioContext connection needed. The mic stream is never connected to the metronome's AudioContext. Android never enters communication mode. Metronome stays at full volume.
+
+**What about analysis precision?** Opus at 256kbps preserves percussion transients well. Its CELT layer has explicit transient detection using short 2.5ms MDCT blocks. The codec delay (~26.5ms) is constant across all samples, so relative onset timing is preserved exactly. After recording, `decodeAudioData()` converts the entire Opus stream to Float32 PCM at 48kHz — identical to what AudioWorklet would have produced. Scoring windows (±25-50ms) are an order of magnitude wider than any codec timing uncertainty.
+
+**Tradeoffs accepted:**
+- No real-time mic level metering during recording (connecting mic to AudioContext would trigger ducking)
+- No live onset detection during recording (Mode 1 from the original plan is deferred — onset detection happens post-recording only)
+- `decodeAudioData()` processes the entire recording at once (memory consideration for 30-min sessions: ~173MB Float32)
+
+**Audio output chain (v1-proven, restored):**
+```
+clicks → per-beat gain (0.0–1.0)
+       → masterGain (volume × 8.0, default 0.8 → 6.4)
+       → compressor (threshold=0dB, knee=3, ratio=2:1, attack=0.002, release=0.05)
+       → outputGain (4.0, or 8.0 during recording via ×2.0 boost)
+       → destination (speakers)
+```
+
+**Recording boost:** outputGain goes from 4.0 → 8.0 during recording (v1's `lBst=2` pattern). This compensates for any residual Android ducking from just having getUserMedia active. The boost is AFTER the compressor and only affects speaker output.
 
 ---
 
@@ -493,9 +553,9 @@ No horizontal overflow, no clipping
 | Persistence | localStorage (5MB cap, sync writes) | IndexedDB with debounced writes (500ms) |
 | Navigation | Swipe-based, no URLs, no back button | 3-page swipe, deep-linkable session detail |
 | Error handling | No error boundaries, native confirm() | Error boundaries per page, custom Modal component |
-| Recording | MediaRecorder compressed blobs | Raw PCM from AudioWorklet (float32, 48kHz) |
+| Recording | MediaRecorder compressed blobs | MediaRecorder (Opus 256kbps) → decodeAudioData → Float32 PCM. Mic isolated from AudioContext to avoid Android ducking. |
 | Styling | Inline style objects, new on every render | Tailwind utility classes |
-| Analysis | Main thread only, real-time | Dual-mode: real-time visual + offline post-processing |
+| Analysis | Main thread only, real-time | Post-processing on decoded PCM (spectral flux pipeline). Real-time deferred. |
 | Sound engine | Synth functions (22 sounds) | Sample-based AudioBuffer (10-12 CC0 samples) |
 
 ---
@@ -774,8 +834,7 @@ poly-pro/
     │   ├── sounds.ts          (AudioBuffer loader + catalog)
     │   ├── types.ts
     │   └── worklets/
-    │       ├── analyzer.worklet.ts    (P5: real-time onset detection)
-    │       └── pcm-capture.worklet.ts (P4: raw PCM capture)
+    │       └── analyzer.worklet.ts    (P5: real-time onset detection)
     │
     ├── analysis/
     │   ├── onset-detection.ts    (P5: spectral flux post-processing)
@@ -1322,49 +1381,46 @@ const DB_VERSION = 1;
 ## 12. Phase 4: Recording System
 
 ### Goal
-Raw PCM mic recording with 48kHz fidelity. No memory growth. Reliable capture for the analysis pipeline.
+Mic recording with full metronome volume preserved on Android. Post-recording decode to 48kHz Float32 PCM for analysis. No memory growth.
 
-**⚠️ CRITICAL: Recording captures raw PCM from AudioWorklet, NOT compressed audio from MediaRecorder. MediaRecorder produces Opus/WebM which destroys sample-level precision needed for spectral analysis.**
-
-### Recording Architecture
+### Recording Architecture (UPDATED — see §2 Architecture Decision: Recording)
 
 ```
-Mic → MediaStreamSource → AudioWorklet (pcm-capture.worklet.ts)
-  ├── Real-time onset detection (Mode 1: energy threshold, visual feedback)
-  ├── Raw PCM capture (float32 → 30s chunks → IndexedDB)
-  └── (optional) Parallel MediaRecorder for playable audio export
+getUserMedia (raw: no AEC/AGC/NS) → MediaRecorder (Opus 256kbps, 1s chunks)
+  ↓ on stop
+Blob → decodeAudioData() → Float32 PCM at 48kHz → IDB (for analysis)
+                                                  + compressed blob → IDB (for playback)
+
+Metronome AudioContext (completely separate — mic never touches it):
+clicks → per-beat gain → masterGain(vol×8) → compressor(0dB,2:1) → outputGain(4.0 or 8.0) → speakers
 ```
+
+**Key: mic stream and metronome AudioContext are fully isolated. This avoids Android's communication mode switch that ducks audio output.**
 
 ### getUserMedia constraints (CRITICAL)
 
 ```javascript
 {
   audio: {
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-    latency: 0
+    echoCancellation: { exact: false },  // MASTER SWITCH on Chrome Android
+    autoGainControl: { exact: false },   // disables entire processing pipeline
+    noiseSuppression: { exact: false },
   }
 }
 ```
 
-⚠️ If `autoGainControl` cannot be reliably disabled on Galaxy Z Fold 7, ALL energy-based metrics are at risk. This must be validated in Phase A prototype.
+Using `{exact: false}` (not plain `false`) is required to reliably disable processing on Chrome Android. Confirmed by Chrome/WebRTC team.
 
-### Files to Create/Modify
-- `src/audio/worklets/pcm-capture.worklet.ts` — AudioWorklet that captures float32 samples
-- `src/hooks/useRecording.ts` — full recording lifecycle
-- `src/utils/mic.ts` — mic selection utility (port BT avoidance from v1)
-- `src/components/metronome/RecordButton.tsx` — now fully wired
-- `src/components/metronome/WaveformDisplay.tsx` — live waveform during recording
-- Update `HomePage.tsx` — show recording state
+⚠️ If `autoGainControl` cannot be reliably disabled on Galaxy Z Fold 7, ALL energy-based metrics are at risk. Use `verifyRawAudio()` to confirm settings took effect.
 
-### PCM Capture from AudioWorklet
-
-⚠️ Ideally uses SharedArrayBuffer ring buffer, which requires CORS headers:
-- `Cross-Origin-Opener-Policy: same-origin`
-- `Cross-Origin-Embedder-Policy: require-corp`
-
-If hosting doesn't support these headers: fall back to `MessagePort.postMessage()` (works but more GC pressure).
+### Files (Implemented)
+- `src/hooks/useRecording.ts` — full recording lifecycle (MediaRecorder, no AudioWorklet)
+- `src/utils/mic.ts` — mic selection with BT avoidance + raw audio verification
+- `src/components/metronome/RecordButton.tsx` — fully wired
+- `src/components/metronome/WaveformDisplay.tsx` — static recording indicator
+- `src/audio/engine.ts` — setRecordingBoost() on outputGain (v1 pattern)
+- `src/utils/constants.ts` — RECORDING_GAIN_BOOST = 2.0 (v1's lBst)
+- `src/store/persistence.ts` — schema version migration for stale volume values
 
 ### Recording Flow
 
@@ -1374,70 +1430,67 @@ If hosting doesn't support these headers: fall back to `MessagePort.postMessage(
 
 **Starting:**
 - Tap RECORD while metronome running (or tap RECORD to auto-start metronome)
-- RECORD button turns red with pulsing glow
-- Red header bar: pulsing dot + elapsed time counting up
-- AudioWorklet begins capturing raw PCM (float32 at 48kHz)
-- Samples accumulated into 30-second Float32Array chunks, stored to IDB
+- RECORD button turns red
+- getUserMedia acquires mic (raw constraints, built-in mic preferred over BT)
+- MediaRecorder starts (Opus 256kbps, 1s data chunks)
+- outputGain boosted ×2 to compensate for any residual Android ducking
+- Elapsed timer begins
 
 **During recording:**
 - All controls remain usable (BPM, accent pattern, subdivision)
-- Changes logged in session metadata with timestamp
 - RECORD button becomes STOP RECORDING
-- Thin waveform bar below pattern grid showing live mic level
-- Beat dots flash brighter on detected hits (real-time Mode 1)
-- PCM chunks stream to IndexedDB every 30 seconds (no memory growth)
+- Static recording indicator in waveform area (no live metering — would require AudioContext connection, triggering ducking)
+- BT earbud tip shown once if BT detected
 
 **Stopping:**
-1. Tap STOP RECORDING → mic stream closes, final PCM chunk saved
-2. "Analyzing..." overlay (spinner + progress stages for long sessions)
-3. Auto-navigate to session detail Score tab
+1. Tap STOP RECORDING → recorder.stop() → wait for final data
+2. Combine MediaRecorder chunks into single Opus/WebM blob
+3. decodeAudioData() → Float32 PCM for analysis
+4. Save to IDB: session record + PCM blob + compressed playback blob
+5. Restore outputGain to normal (remove boost)
+6. Stop metronome, navigate to Progress page
 
 **Rules:**
 - No pause/resume. One session = one continuous take.
 - Maximum 30 minutes. Warning at 25:00: "Recording will auto-stop at 30:00."
-- Failure mid-recording: save completed segments, show "Recording interrupted — [X] min saved."
-- Always record at full 48kHz. Never compromise analysis quality.
-
-**Visual reference:** `poly-pro-recording-state.jsx`
+- Always captures at 48kHz (via Opus at 256kbps). Analysis precision preserved.
 
 ### Post-Analysis Audio Handling
 
 After post-processing completes, the user's retention policy determines what happens:
 
 **Options (set in Settings > Recording):**
-1. **Compress to Opus** (default) — raw PCM → Opus/WebM (~2-3MB per 5 min). Keeps playback. Loses re-analysis.
-2. **Keep raw PCM** — full 48kHz retained for N days (7/14/30/60/90). After retention expires, auto-compresses.
+1. **Compress to Opus** (default) — keep the playback blob, delete the PCM blob. (~2-3MB per 5 min)
+2. **Keep raw PCM** — retain decoded PCM for N days (7/14/30/60/90). Enables re-analysis.
 3. **Delete audio** — discard all audio immediately after analysis. Metrics saved. No playback.
-
-**Per-session override:** After analysis, banner: "Audio: Compressed | [Keep Raw] [Delete]"
 
 **What persists forever regardless of audio retention:** Session metadata, onset array, deviation array, all computed metrics, spectral features, classification labels, headlines, analysis parameters. (~50-300KB per session)
 
 ### 🧪 USER TEST GATE — Ask user to test:
-- [ ] Record 30 seconds — stop → analyzing overlay → session detail appears
-- [ ] Record 5 minutes — no memory warning, no crash
-- [ ] BT earbuds connected — click plays through BT, mic uses built-in (no HFP switch)
-- [ ] Close app mid-recording → reopen → completed segments preserved
-- [ ] Recording header bar shows elapsed time and hit count
+- [ ] Metronome plays at full volume (clear, loud clicks at default 80%)
+- [ ] Volume slider works (drag 0→100%, hear the change)
+- [ ] Tap RECORD → metronome stays loud (recording boost active)
+- [ ] Tap STOP → session appears in Progress page with correct BPM/meter
+- [ ] BT earbuds connected → click plays through BT, mic uses built-in
+- [ ] 5-minute recording → no crash, no memory warning
 
 ---
 
 ## 13. Phase 5: Onset Detection + Dual-Mode Analysis
 
 ### Goal
-Dual-mode onset detection: real-time for visual feedback, post-processing for all scoring.
+Post-processing onset detection for all scoring and metrics. Real-time feedback deferred.
 
-**⚠️ This phase describes BOTH modes. Real-time is preview only. Post-processing is truth.**
+**⚠️ With the MediaRecorder recording architecture (mic isolated from AudioContext to avoid Android ducking), real-time onset detection during recording is not possible. All onset detection is post-processing.**
 
-### Mode 1: Real-Time (during recording)
+### ~~Mode 1: Real-Time (during recording)~~ — DEFERRED
 
-**Purpose:** Live feedback only (beat dots light up, basic hit indication)
-**Runs in:** AudioWorklet (`analyzer.worklet.ts`), must complete within 2.67ms per block
-**Algorithm:** Simple energy threshold (port from v1 `dO()`)
-**Precision:** ±2-3ms
-**Output:** Approximate onset times for visual feedback only
+**Status:** Deferred. Would require connecting mic to AudioContext, which triggers Android communication mode and ducks metronome audio. May revisit if a future browser API (e.g. MediaStreamTrackProcessor for audio) provides raw frames without AudioContext connection.
 
-### Mode 2: Post-Processing (after recording stops)
+~~**Purpose:** Live feedback only (beat dots light up, basic hit indication)~~
+~~**Runs in:** AudioWorklet (`analyzer.worklet.ts`), must complete within 2.67ms per block~~
+
+### Mode 2: Post-Processing (after recording stops) — PRIMARY
 
 **Purpose:** ALL scoring, ALL metrics, ALL charts, ALL classification
 **Runs in:** Main thread or dedicated Web Worker (no time constraint)
@@ -2119,7 +2172,7 @@ Agent should:
 - **All touch targets ≥ 44x44px**
 - **All charts are Canvas-based** — no SVG charts
 - **No routine code in v2** — routines deferred to post-v2
-- **Recording captures raw PCM** — never rely on MediaRecorder for analysis input
+- **Recording uses MediaRecorder + decodeAudioData** — mic never touches the metronome AudioContext (avoids Android ducking). Analysis runs on decoded Float32 PCM post-recording.
 - **Scoring window scales with tempo** — expressed as % of IOI, not fixed ms
 - **Consistency (σ) is the primary metric** — not mean offset, not accuracy %
 - **Build exactly what the preview files show** — no alternative designs without user approval
@@ -2155,10 +2208,9 @@ If KNN classification accuracy < 70% on phone mic:
 - 30-minute session: estimated 30-60 seconds (may need progress bar with stages)
 - If too slow: consider Web Worker with WASM-compiled FFT, or downsample to 24kHz
 
-### ⚠️ Depends on SharedArrayBuffer Support
-- PCM capture from AudioWorklet ideally uses SharedArrayBuffer ring buffer
-- Requires CORS headers (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`)
-- If hosting doesn't support these headers: fall back to `MessagePort.postMessage()`
+### ~~⚠️ Depends on SharedArrayBuffer Support~~ (RESOLVED)
+- ~~PCM capture from AudioWorklet ideally uses SharedArrayBuffer ring buffer~~
+- **Resolved:** Recording uses MediaRecorder (not AudioWorklet). SharedArrayBuffer is not needed for recording. Phase 5's analyzer worklet uses MessagePort, which is sufficient for onset event posting.
 
 ### May Evolve Post-v2
 - Routine/setlist system (deferred, designed later)
