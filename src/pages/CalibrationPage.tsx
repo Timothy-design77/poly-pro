@@ -9,6 +9,7 @@
  */
 
 import { useCalibration } from '../hooks/useCalibration';
+import { createPortal } from 'react-dom';
 import { CHIRP_COUNT } from '../analysis/calibration';
 
 interface Props {
@@ -21,13 +22,10 @@ export function CalibrationPage({ visible, onClose }: Props) {
 
   if (!visible) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex flex-col"
       style={{ backgroundColor: '#0C0C0E' }}
-      onTouchStart={(e) => e.stopPropagation()}
-      onTouchMove={(e) => e.stopPropagation()}
-      onTouchEnd={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
@@ -70,7 +68,8 @@ export function CalibrationPage({ visible, onClose }: Props) {
           />
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

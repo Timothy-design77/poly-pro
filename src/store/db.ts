@@ -248,8 +248,9 @@ export async function deleteRecording(sessionId: string): Promise<void> {
 
 export async function putHitEvents(record: HitEventsRecord): Promise<void> {
   const db = await getDB();
-  // Store as plain JSON string — IDB handles strings natively, no Blob issues
-  await db.put('recordings', JSON.stringify(record), `hitevents:${record.sessionId}`);
+  const json = JSON.stringify(record);
+  await db.put('recordings', json, `hitevents:${record.sessionId}`);
+  console.log(`Saved hitEvents for ${record.sessionId}: ${record.scoredOnsets.length} scored, ${record.rawOnsets.length} raw (${(json.length / 1024).toFixed(1)}KB)`);
 }
 
 export async function getHitEvents(sessionId: string): Promise<HitEventsRecord | undefined> {

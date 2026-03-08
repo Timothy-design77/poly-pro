@@ -1,12 +1,14 @@
 /**
  * SessionDetailPage — Full-screen overlay with 4 tap-only tabs.
  *
- * Slides in from right. ← back button to exit.
- * Tabs: Score | Timeline | Charts | Tune
- * No horizontal swiping inside — avoids gesture conflicts.
+ * Rendered via React Portal at document.body level — this is critical
+ * because the overlay is opened from ProgressPage which sits inside
+ * SwipeNavigation. Without a portal, touch events bubble through the
+ * React tree to SwipeNavigation and cause page swipes.
  */
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { SessionRecord, HitEventsRecord } from '../store/db';
 import * as db from '../store/db';
 import { ScoreTab } from '../components/session/ScoreTab';
@@ -42,6 +44,11 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     }
     setLoading(true);
     db.getHitEvents(session.id).then((events) => {
+      if (events) {
+        console.log(`Loaded hitEvents for ${session.id}: ${events.scoredOnsets.length} scored, ${events.rawOnsets.length} raw`);
+      } else {
+        console.warn(`No hitEvents found for session ${session.id}`);
+      }
       setHitEvents(events ?? null);
       setLoading(false);
     }).catch((err) => {
@@ -65,13 +72,11 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     hour: '2-digit', minute: '2-digit',
   });
 
-  return (
+  // Portal: render at document.body, outside SwipeNavigation's DOM tree
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex flex-col"
       style={{ backgroundColor: '#0C0C0E' }}
-      onTouchStart={(e) => e.stopPropagation()}
-      onTouchMove={(e) => e.stopPropagation()}
-      onTouchEnd={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
@@ -129,6 +134,7 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
