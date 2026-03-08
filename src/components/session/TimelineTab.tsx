@@ -13,6 +13,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
 import * as db from '../../store/db';
+import { ScoringControls } from './ScoringControls';
 
 interface Props {
   session: SessionRecord;
@@ -304,6 +305,15 @@ export function TimelineTab({ session, hitEvents }: Props) {
           <span className="w-2 h-2 rounded-full bg-danger inline-block" /> &gt;25ms
         </span>
       </div>
+
+      {/* Scoring controls (compact) */}
+      {hitEvents && session.analyzed && (
+        <ScoringControls
+          session={session}
+          hitEvents={hitEvents}
+          compact
+        />
+      )}
     </div>
   );
 }

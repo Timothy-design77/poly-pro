@@ -112,7 +112,7 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-8">
+      <div className="flex-1 overflow-y-auto px-4 pb-20">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <span className="text-text-muted text-sm">Loading analysis…</span>
