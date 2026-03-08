@@ -203,7 +203,10 @@ export function useRecording() {
       const arrayBuffer = await audioBlob.arrayBuffer();
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
       const pcmData = audioBuffer.getChannelData(0); // mono
-      pcmBlob = new Blob([pcmData.buffer], { type: 'application/octet-stream' });
+      // Copy to owned ArrayBuffer — getChannelData may share AudioBuffer's backing store
+      const copy = new Float32Array(pcmData.length);
+      copy.set(pcmData);
+      pcmBlob = new Blob([copy.buffer], { type: 'application/octet-stream' });
     } catch (err) {
       console.error('Failed to decode audio to PCM:', err);
       // Fall back to saving the compressed blob directly

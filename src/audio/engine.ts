@@ -33,6 +33,13 @@ import {
 
 type BeatCallback = (event: BeatEvent) => void;
 
+/** Convert linear slider (0–1) to perceptual gain using quadratic curve.
+ *  Human hearing is logarithmic — linear sliders feel like they "barely change".
+ *  vol²  gives: 25%→6%, 50%→25%, 75%→56%, 100%→100% of max gain. */
+function perceptualGain(vol: number): number {
+  return vol * vol * MASTER_GAIN_MULTIPLIER;
+}
+
 class AudioEngine {
   private audioCtx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -116,7 +123,7 @@ class AudioEngine {
 
     this.masterGain = this.audioCtx.createGain();
     const vol = useMetronomeStore.getState().volume;
-    this.masterGain.gain.value = vol * MASTER_GAIN_MULTIPLIER;
+    this.masterGain.gain.value = perceptualGain(vol);
 
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.outputGain);
@@ -174,7 +181,7 @@ class AudioEngine {
     }
 
     if (this.masterGain) {
-      this.masterGain.gain.value = useMetronomeStore.getState().volume * MASTER_GAIN_MULTIPLIER;
+      this.masterGain.gain.value = perceptualGain(useMetronomeStore.getState().volume);
     }
 
     this.schedule();
@@ -252,7 +259,7 @@ class AudioEngine {
     const settings = useSettingsStore.getState();
 
     if (this.masterGain) {
-      this.masterGain.gain.value = useMetronomeStore.getState().volume * MASTER_GAIN_MULTIPLIER;
+      this.masterGain.gain.value = perceptualGain(useMetronomeStore.getState().volume);
     }
 
     const now = ctx.currentTime;
