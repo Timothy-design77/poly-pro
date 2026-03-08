@@ -14,15 +14,25 @@ export function App() {
   const loadSessions = useSessionStore((s) => s.loadFromDB);
 
   useEffect(() => {
+    // Timeout guard: if IDB is blocked by old SW/tab, don't hang forever
+    const timeout = setTimeout(() => {
+      console.warn('App init timed out after 5s — proceeding without IDB');
+      setReady(true);
+    }, 5000);
+
     Promise.all([loadProjects(), loadSessions(), hydrateStores()])
       .then(() => {
+        clearTimeout(timeout);
         startPersistence();
         setReady(true);
       })
       .catch((err) => {
+        clearTimeout(timeout);
         console.error('Failed to load data:', err);
         setReady(true);
       });
+
+    return () => clearTimeout(timeout);
   }, [loadProjects, loadSessions]);
 
   if (!ready) {

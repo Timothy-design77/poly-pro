@@ -164,6 +164,19 @@ function getDB(): Promise<IDBPDatabase> {
           }
         }
       },
+      blocked() {
+        // Old connection is blocking the upgrade.
+        // This happens when old SW or stale tab holds v1 open.
+        console.warn('IDB upgrade blocked by old connection. Will retry after timeout.');
+      },
+      blocking() {
+        // THIS connection is blocking a newer version.
+        console.warn('IDB: this connection is blocking a newer version.');
+      },
+      terminated() {
+        console.warn('IDB connection terminated unexpectedly');
+        dbPromise = null;
+      },
     });
   }
   return dbPromise;
