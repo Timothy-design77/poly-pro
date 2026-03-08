@@ -142,9 +142,6 @@ export function useRecording() {
 
       workletNode.port.postMessage({ type: 'start' });
 
-      // Boost metronome volume to compensate for any residual Android ducking
-      audioEngine.setRecordingBoost(true);
-
       isRecordingRef.current = true;
       startTimeRef.current = Date.now();
 
@@ -176,7 +173,6 @@ export function useRecording() {
     } catch (err) {
       console.error('Failed to start recording:', err);
       cleanupRecording();
-      audioEngine.setRecordingBoost(false);
       setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
     }
   }, [cleanupRecording]);
@@ -198,7 +194,6 @@ export function useRecording() {
 
     // Cleanup
     cleanupRecording();
-    audioEngine.setRecordingBoost(false);
     audioEngine.stop();
     useMetronomeStore.getState().setPlaying(false);
 
