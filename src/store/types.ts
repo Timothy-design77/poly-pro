@@ -99,6 +99,8 @@ export interface SettingsState {
 
   // Calibration
   latencyOffset: number;
+  lastCalibratedAt: string | null;
+  calibrationConsistency: number | null;
 
   // Actions
   setClickSound: (id: string) => void;
@@ -107,6 +109,8 @@ export interface SettingsState {
   setHapticEnabled: (enabled: boolean) => void;
   setVibrationIntensity: (intensity: number) => void;
   setLatencyOffset: (offset: number) => void;
+  setLastCalibratedAt: (date: string) => void;
+  setCalibrationConsistency: (value: number) => void;
   setSensitivity: (value: number) => void;
   setScoringWindowPct: (value: number) => void;
   setFlamMergePct: (value: number) => void;

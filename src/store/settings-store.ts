@@ -25,6 +25,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   // Calibration
   latencyOffset: 0,
+  lastCalibratedAt: null,
+  calibrationConsistency: null,
 
   // ─── Actions ───
 
@@ -35,6 +37,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setVibrationIntensity: (intensity) =>
     set({ vibrationIntensity: Math.max(0, Math.min(1, intensity)) }),
   setLatencyOffset: (offset) => set({ latencyOffset: offset }),
+  setLastCalibratedAt: (date) => set({ lastCalibratedAt: date }),
+  setCalibrationConsistency: (value) => set({ calibrationConsistency: value }),
   setSensitivity: (value) => set({ sensitivity: Math.max(0, Math.min(1, value)) }),
 
   // Detection setters — changing any slider switches preset to 'Custom'

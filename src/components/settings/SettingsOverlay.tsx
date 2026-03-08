@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { SoundSettings } from './SoundSettings';
 import { VibrationSettings } from './VibrationSettings';
 import { DetectionSettings } from './DetectionSettings';
+import { CalibrationSettings } from './CalibrationSettings';
 import { useSettingsStore } from '../../store/settings-store';
 
 interface SectionProps {
@@ -145,7 +146,7 @@ export function SettingsContent() {
         <VibrationSettings />
       </CollapsibleSection>
 
-      {/* Section 5: Calibration (stub) */}
+      {/* Section 5: Calibration */}
       <CollapsibleSection
         title="Calibration"
         icon={
@@ -156,7 +157,7 @@ export function SettingsContent() {
           </svg>
         }
       >
-        <div className="text-sm text-text-muted py-2">Coming in Phase 6</div>
+        <CalibrationSettings />
       </CollapsibleSection>
 
       {/* Section 6: Data (stub) */}

@@ -84,6 +84,9 @@ interface PersistedSettings {
   accentThreshold: number;
   highPassHz: number;
   detectionPreset: string;
+  // Calibration (Phase 6)
+  lastCalibratedAt: string | null;
+  calibrationConsistency: number | null;
 }
 
 function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): PersistedSettings {
@@ -101,6 +104,8 @@ function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): Pers
     accentThreshold: state.accentThreshold,
     highPassHz: state.highPassHz,
     detectionPreset: state.detectionPreset,
+    lastCalibratedAt: state.lastCalibratedAt,
+    calibrationConsistency: state.calibrationConsistency,
   };
 }
 
