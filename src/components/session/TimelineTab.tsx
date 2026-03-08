@@ -184,24 +184,63 @@ export function TimelineTab({ session, hitEvents }: Props) {
     render();
   }, [render]);
 
-  // Touch scroll
+  // Touch: single-finger pan + two-finger pinch-to-zoom
+  const pinchStartDistRef = useRef(0);
+  const pinchStartZoomRef = useRef(1);
+  const pinchCenterRef = useRef(0);
+
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 1) {
       touchStartRef.current = e.touches[0].clientX;
       scrollStartRef.current = scrollX;
+    } else if (e.touches.length === 2) {
+      // Pinch start
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDistRef.current = Math.sqrt(dx * dx + dy * dy);
+      pinchStartZoomRef.current = zoom;
+      // Center of pinch relative to container
+      const rect = containerRef.current?.getBoundingClientRect();
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      pinchCenterRef.current = rect ? cx - rect.left + scrollX : 0;
+      touchStartRef.current = null; // cancel pan
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // Pinch zoom
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (pinchStartDistRef.current > 0) {
+        const scale = dist / pinchStartDistRef.current;
+        const newZoom = Math.max(1, Math.min(16, pinchStartZoomRef.current * scale));
+        const newTotalWidth = containerWidth * newZoom;
+
+        // Keep pinch center point stable
+        const ratio = newZoom / pinchStartZoomRef.current;
+        const newScrollX = pinchCenterRef.current * ratio - (pinchCenterRef.current - scrollStartRef.current);
+        const maxScroll = Math.max(0, newTotalWidth - containerWidth);
+
+        setZoom(newZoom);
+        setScrollX(Math.max(0, Math.min(maxScroll, newScrollX)));
+      }
+      e.preventDefault();
+      return;
+    }
+
+    // Single-finger pan
     if (touchStartRef.current === null || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - touchStartRef.current;
+    const dxPan = e.touches[0].clientX - touchStartRef.current;
     const maxScroll = Math.max(0, totalWidth - containerWidth);
-    setScrollX(Math.max(0, Math.min(maxScroll, scrollStartRef.current - dx)));
+    setScrollX(Math.max(0, Math.min(maxScroll, scrollStartRef.current - dxPan)));
     e.preventDefault();
   };
 
   const handleTouchEnd = () => {
     touchStartRef.current = null;
+    pinchStartDistRef.current = 0;
   };
 
   if (!session.hasRecording) {
@@ -214,20 +253,26 @@ export function TimelineTab({ session, hitEvents }: Props) {
 
   return (
     <div className="space-y-3">
-      {/* Zoom buttons */}
+      {/* Zoom buttons (quick-access; pinch-to-zoom also works) */}
       <div className="flex gap-1.5">
         {ZOOM_LEVELS.map((z) => (
           <button
             key={z}
             onClick={() => { setZoom(z); setScrollX(0); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold touch-manipulation
-              ${zoom === z
+              ${Math.abs(zoom - z) < 0.5
                 ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
                 : 'bg-bg-raised text-text-muted'}`}
           >
             {z}×
           </button>
         ))}
+        {/* Show current zoom if not near a preset */}
+        {!ZOOM_LEVELS.some((z) => Math.abs(zoom - z) < 0.5) && (
+          <span className="px-2 py-1.5 text-xs font-mono text-text-muted">
+            {zoom.toFixed(1)}×
+          </span>
+        )}
       </div>
 
       {/* Timeline canvas */}
