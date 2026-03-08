@@ -6,15 +6,17 @@ import { ProgressPage } from './pages/ProgressPage';
 import { SettingsContent } from './components/settings/SettingsOverlay';
 import { useProjectStore } from './store/project-store';
 import { useSessionStore } from './store/session-store';
+import { useInstrumentStore } from './store/instrument-store';
 import { hydrateStores, startPersistence } from './store/persistence';
 
 export function App() {
   const [ready, setReady] = useState(false);
   const loadProjects = useProjectStore((s) => s.loadFromDB);
   const loadSessions = useSessionStore((s) => s.loadFromDB);
+  const loadInstruments = useInstrumentStore((s) => s.loadFromDB);
 
   useEffect(() => {
-    Promise.all([loadProjects(), loadSessions(), hydrateStores()])
+    Promise.all([loadProjects(), loadSessions(), loadInstruments(), hydrateStores()])
       .then(() => {
         startPersistence();
         setReady(true);

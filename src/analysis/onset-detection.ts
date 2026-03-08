@@ -21,6 +21,7 @@ import type {
   AnalysisProgress,
   SpectralFeatures,
 } from './types';
+import { extractAllFeatures } from './features';
 
 type ProgressCallback = (progress: AnalysisProgress) => void;
 
@@ -460,6 +461,7 @@ export async function runOnsetDetection(
   onsets: DetectedOnset[];
   noiseFloor: number;
   autoLatencyMs: number;
+  spectralFeatures: SpectralFeatures[];
 }> {
   const sampleRate = config.sampleRate;
   const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -508,12 +510,20 @@ export async function runOnsetDetection(
   onProgress?.({ stage: 'flam-analysis', progress: 1 });
   await yieldToMain();
 
-  // Stage 6: Spectral features (Phase 8 — no-op for now)
+  // Stage 6: Spectral feature extraction (Phase 8)
+  onProgress?.({ stage: 'spectral-features', progress: 0 });
+  const spectralFeatures = await extractAllFeatures(
+    processedPcm,
+    sampleRate,
+    finalOnsets,
+    onProgress,
+  );
   onProgress?.({ stage: 'spectral-features', progress: 1 });
 
   return {
     onsets: finalOnsets,
     noiseFloor,
     autoLatencyMs,
+    spectralFeatures,
   };
 }

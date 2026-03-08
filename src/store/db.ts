@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'polypro';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export interface PolyProDB {
   settings: { key: string; value: unknown };
@@ -121,6 +121,19 @@ export interface HitEventsRecord {
     matchedBeatIndex: number;
     scored: boolean;
     measurePosition: number;
+    /** Spectral features (Phase 8) */
+    spectralFeatures?: {
+      centroid: number;
+      bandwidth: number;
+      rolloff: number;
+      zeroCrossingRate: number;
+      bandEnergy: [number, number, number, number, number];
+      attackTime: number;
+    } | null;
+    /** Instrument classification (Phase 8) */
+    instrumentLabel?: string;
+    instrumentConfidence?: number;
+    instrumentCandidates?: Array<{ label: string; score: number }>;
   }>;
   /** Raw detected onsets (for re-analysis) */
   rawOnsets: Array<{
@@ -153,6 +166,9 @@ function getDB(): Promise<IDBPDatabase> {
         }
         if (!db.objectStoreNames.contains('recordings')) {
           db.createObjectStore('recordings');
+        }
+        if (!db.objectStoreNames.contains('instrumentProfiles')) {
+          db.createObjectStore('instrumentProfiles', { keyPath: 'name' });
         }
       },
     });
@@ -277,4 +293,53 @@ export async function getHitEvents(sessionId: string): Promise<HitEventsRecord |
 export async function deleteHitEvents(sessionId: string): Promise<void> {
   const db = await getDB();
   await db.delete('recordings', `hitevents:${sessionId}`);
+}
+
+// ─── Instrument Profiles ───
+
+/** IDB record for an instrument profile */
+export interface InstrumentProfileRecord {
+  /** Instrument name (key) */
+  name: string;
+  /** Training samples: features + label */
+  samples: Array<{
+    features: {
+      centroid: number;
+      bandwidth: number;
+      rolloff: number;
+      zeroCrossingRate: number;
+      bandEnergy: [number, number, number, number, number];
+      attackTime: number;
+    };
+    label: string;
+  }>;
+  /** Cross-validation accuracy (0–1) */
+  accuracy: number;
+  /** ISO timestamp of last training */
+  lastTrained: string;
+}
+
+export async function getAllInstrumentProfiles(): Promise<InstrumentProfileRecord[]> {
+  const db = await getDB();
+  return db.getAll('instrumentProfiles');
+}
+
+export async function getInstrumentProfile(name: string): Promise<InstrumentProfileRecord | undefined> {
+  const db = await getDB();
+  return db.get('instrumentProfiles', name);
+}
+
+export async function putInstrumentProfile(profile: InstrumentProfileRecord): Promise<void> {
+  const db = await getDB();
+  await db.put('instrumentProfiles', profile);
+}
+
+export async function deleteInstrumentProfile(name: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('instrumentProfiles', name);
+}
+
+export async function clearAllInstrumentProfiles(): Promise<void> {
+  const db = await getDB();
+  await db.clear('instrumentProfiles');
 }

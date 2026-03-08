@@ -37,8 +37,14 @@ export interface ScoredOnset {
   scored: boolean;
   /** Position within measure (0–1 fraction) */
   measurePosition: number;
-  /** Spectral features (for future instrument classification) */
+  /** Spectral features (for instrument classification) */
   spectralFeatures: SpectralFeatures | null;
+  /** Classified instrument label (Phase 8) */
+  instrumentLabel?: string;
+  /** Classification confidence (0–1) */
+  instrumentConfidence?: number;
+  /** Top 3 instrument candidates with scores */
+  instrumentCandidates?: Array<{ label: string; score: number }>;
 }
 
 /** Spectral features extracted per onset (Phase 8 classification input) */

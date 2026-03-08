@@ -120,6 +120,18 @@ export async function analyzeSession(
   analysis.noiseFloor = detectionResult.noiseFloor;
   analysis.autoLatencyMs = detectionResult.autoLatencyMs;
 
+  // Attach spectral features to scored onsets (Phase 8)
+  // Map features from detection order to scored onsets by matching onset times
+  if (detectionResult.spectralFeatures.length > 0) {
+    const featureMap = new Map<number, typeof detectionResult.spectralFeatures[0]>();
+    for (let i = 0; i < detectionResult.onsets.length; i++) {
+      featureMap.set(detectionResult.onsets[i].time, detectionResult.spectralFeatures[i]);
+    }
+    for (const scored of analysis.scoredOnsets) {
+      scored.spectralFeatures = featureMap.get(scored.time) ?? null;
+    }
+  }
+
   return analysis;
 }
 

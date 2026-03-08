@@ -3,6 +3,7 @@ import { SoundSettings } from './SoundSettings';
 import { VibrationSettings } from './VibrationSettings';
 import { DetectionSettings } from './DetectionSettings';
 import { CalibrationSettings } from './CalibrationSettings';
+import { InstrumentSettings } from './InstrumentSettings';
 import { useSettingsStore } from '../../store/settings-store';
 import { HelpTip } from '../ui/HelpTip';
 
@@ -170,7 +171,22 @@ export function SettingsContent() {
         <CalibrationSettings />
       </CollapsibleSection>
 
-      {/* Section 6: Data */}
+      {/* Section 6: Instruments */}
+      <CollapsibleSection
+        title="Instruments"
+        help="Train the classifier to recognize your kit. Once trained, each drum hit in your recordings will be labeled with its instrument type, enabling per-instrument timing stats."
+        icon={
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
+          </svg>
+        }
+      >
+        <InstrumentSettings />
+      </CollapsibleSection>
+
+      {/* Section 7: Data */}
       <CollapsibleSection
         title="Data"
         help="Export, import, and manage your practice data. Clear sessions, back up to file, or restore from a previous backup."

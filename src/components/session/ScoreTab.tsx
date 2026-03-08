@@ -5,9 +5,11 @@
  * stats grid (with drift), "How was this computed?" breakdown.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
 import { HelpTip } from '../ui/HelpTip';
+import { computeInstrumentMetrics, INSTRUMENT_INFO } from '../../analysis/classification';
+import type { ClassificationResult, InstrumentMetrics } from '../../analysis/classification';
 
 interface Props {
   session: SessionRecord;
@@ -16,8 +18,31 @@ interface Props {
   onNavigateChart?: (chartId: string) => void;
 }
 
-export function ScoreTab({ session, hitEvents: _hitEvents, onNavigateChart }: Props) {
+export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [expandedInstrument, setExpandedInstrument] = useState<string | null>(null);
+
+  // Compute per-instrument metrics from hitEvents
+  const instrumentMetrics = useMemo(() => {
+    if (!hitEvents?.scoredOnsets) return [];
+
+    const hasClassification = hitEvents.scoredOnsets.some((o) => o.instrumentLabel);
+    if (!hasClassification) return [];
+
+    const classifications: ClassificationResult[] = hitEvents.scoredOnsets
+      .filter((o) => o.scored)
+      .map((o) => ({
+        label: (o.instrumentLabel as ClassificationResult['label']) ?? 'Unknown',
+        confidence: o.instrumentConfidence ?? 0,
+        topCandidates: (o.instrumentCandidates ?? []) as ClassificationResult['topCandidates'],
+      }));
+
+    const deltas = hitEvents.scoredOnsets
+      .filter((o) => o.scored)
+      .map((o) => o.delta);
+
+    return computeInstrumentMetrics(classifications, deltas);
+  }, [hitEvents]);
 
   if (!session.analyzed) {
     return (
@@ -133,6 +158,32 @@ export function ScoreTab({ session, hitEvents: _hitEvents, onNavigateChart }: Pr
         </div>
       </div>
 
+      {/* Per-instrument breakdown (Phase 8) */}
+      {instrumentMetrics.length > 0 && (
+        <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
+          <div className="flex items-center gap-1 mb-2">
+            <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">
+              Per Instrument
+            </p>
+            <HelpTip text="Timing breakdown by instrument. Only instruments with ≥10 high-confidence hits (≥75% classification confidence) get their own row." />
+          </div>
+          <div className="space-y-1">
+            {instrumentMetrics.map((m) => (
+              <InstrumentRow
+                key={m.name}
+                metrics={m}
+                expanded={expandedInstrument === m.name}
+                onToggle={() =>
+                  setExpandedInstrument(
+                    expandedInstrument === m.name ? null : m.name,
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* How was this computed? */}
       <button
         onClick={() => setShowBreakdown(!showBreakdown)}
@@ -203,4 +254,99 @@ function computeBaseDisplay(sigma: number): string {
   else if (sigma <= 50) base = 40 + (50 - sigma) * 1.33;
   else base = Math.max(10, 40 - (sigma - 50));
   return Math.round(base) + '%';
+}
+
+function InstrumentRow({
+  metrics,
+  expanded,
+  onToggle,
+}: {
+  metrics: InstrumentMetrics;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const info = metrics.name !== 'Unknown'
+    ? INSTRUMENT_INFO[metrics.name as keyof typeof INSTRUMENT_INFO]
+    : { icon: '❓', color: '#8B8B94' };
+
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 py-1.5 px-1 rounded-sm hover:bg-bg-raised transition-colors text-left min-h-[44px]"
+      >
+        {/* Icon + name */}
+        <span className="text-sm w-6 text-center">{info.icon}</span>
+        <span className="text-text-primary text-xs flex-shrink-0 w-14">{metrics.name}</span>
+
+        {/* Hit count */}
+        <span className="text-text-muted text-[10px] font-mono w-10 text-right">
+          {metrics.hitCount}
+        </span>
+
+        {/* Mean offset */}
+        <span className="text-text-secondary text-[10px] font-mono w-16 text-right">
+          {metrics.meanOffset > 0 ? '+' : ''}
+          {metrics.meanOffset.toFixed(1)}ms
+        </span>
+
+        {/* σ */}
+        <span className="text-text-primary text-[10px] font-mono w-16 text-right font-semibold">
+          σ {metrics.sigma.toFixed(1)}
+        </span>
+
+        {/* Mini distribution bar */}
+        <div className="flex-1 h-3 ml-1">
+          <MiniDistBar deltas={metrics.deltas} color={info.color} />
+        </div>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="ml-8 mt-1 mb-2 text-[10px] text-text-muted space-y-0.5 pl-1 border-l border-border-subtle">
+          <p>Hits: {metrics.hitCount}</p>
+          <p>Mean: {metrics.meanOffset > 0 ? '+' : ''}{metrics.meanOffset.toFixed(2)}ms</p>
+          <p>σ: {metrics.sigma.toFixed(2)}ms</p>
+          <p>
+            {metrics.meanOffset > 3 ? 'Tends late' :
+             metrics.meanOffset < -3 ? 'Tends early' : 'Well centered'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Mini histogram bar showing distribution of deviations */
+function MiniDistBar({ deltas, color }: { deltas: number[]; color: string }) {
+  if (deltas.length === 0) return null;
+
+  // Create 7 bins from -scoringWindow to +scoringWindow
+  const maxDev = Math.max(50, ...deltas.map(Math.abs));
+  const bins = new Array(7).fill(0);
+  const binWidth = (maxDev * 2) / 7;
+
+  for (const d of deltas) {
+    const binIdx = Math.floor((d + maxDev) / binWidth);
+    const clamped = Math.max(0, Math.min(6, binIdx));
+    bins[clamped]++;
+  }
+
+  const maxBin = Math.max(1, ...bins);
+
+  return (
+    <div className="flex items-end gap-[1px] h-full">
+      {bins.map((count, i) => (
+        <div
+          key={i}
+          className="flex-1 rounded-[1px]"
+          style={{
+            height: `${Math.max(1, (count / maxBin) * 100)}%`,
+            backgroundColor: color,
+            opacity: count > 0 ? 0.6 : 0.1,
+          }}
+        />
+      ))}
+    </div>
+  );
 }

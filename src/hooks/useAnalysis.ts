@@ -14,6 +14,7 @@ import type { AnalysisProgress, SessionAnalysis } from '../analysis/types';
 import type { ScheduledBeat } from '../audio/types';
 import { useSessionStore } from '../store/session-store';
 import { useSettingsStore } from '../store/settings-store';
+import { useInstrumentStore } from '../store/instrument-store';
 import * as db from '../store/db';
 
 export interface AnalysisState {
@@ -100,6 +101,28 @@ export function useAnalysis() {
 
         if (abortRef.current) return null;
 
+        // Run instrument classification if profiles are available (Phase 8)
+        const instrumentStore = useInstrumentStore.getState();
+        if (instrumentStore.isClassifierReady()) {
+          const featuresForClassification = result.scoredOnsets
+            .map((o) => o.spectralFeatures)
+            .filter((f): f is NonNullable<typeof f> => f !== null);
+
+          if (featuresForClassification.length > 0) {
+            const classifications = instrumentStore.classifyOnsets(featuresForClassification);
+            let classIdx = 0;
+            for (const onset of result.scoredOnsets) {
+              if (onset.spectralFeatures !== null && classIdx < classifications.length) {
+                const c = classifications[classIdx];
+                onset.instrumentLabel = c.label;
+                onset.instrumentConfidence = c.confidence;
+                onset.instrumentCandidates = c.topCandidates;
+                classIdx++;
+              }
+            }
+          }
+        }
+
         // Save analysis results to session record
         await useSessionStore.getState().updateSession(sessionId, {
           analyzed: true,
@@ -126,6 +149,7 @@ export function useAnalysis() {
         });
 
         // Save hit events (onset data) separately
+        // Include spectral features + instrument classification if available
         await db.putHitEvents({
           sessionId,
           scoredOnsets: result.scoredOnsets.map((o) => ({
@@ -137,6 +161,10 @@ export function useAnalysis() {
             matchedBeatIndex: o.matchedBeatIndex,
             scored: o.scored,
             measurePosition: o.measurePosition,
+            spectralFeatures: o.spectralFeatures ?? null,
+            instrumentLabel: o.instrumentLabel,
+            instrumentConfidence: o.instrumentConfidence,
+            instrumentCandidates: o.instrumentCandidates,
           })),
           rawOnsets: result.rawOnsets.map((o) => ({
             time: o.time,
