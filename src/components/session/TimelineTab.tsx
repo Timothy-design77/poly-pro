@@ -24,6 +24,13 @@ interface Props {
 
 const ZOOM_LEVELS = [1, 2, 4, 8];
 
+function formatTime(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${String(sec).padStart(2, '0')}`;
+}
+
 export function TimelineTab({ session, hitEvents }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -35,6 +42,16 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const scrollStartRef = useRef(0);
   /** Live-scored onsets from ScoringControls — overrides hitEvents when sliders are adjusted */
   const [liveOnsets, setLiveOnsets] = useState<ScoredOnset[] | null>(null);
+
+  // ─── Playback state ───
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackPos, setPlaybackPos] = useState(0); // 0–1 fraction of duration
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const playStartTimeRef = useRef(0); // AudioContext time when play started
+  const playOffsetRef = useRef(0);    // offset into the buffer (for resume)
+  const animFrameRef = useRef(0);
 
   const handleScoringResult = useCallback((result: SessionAnalysis) => {
     setLiveOnsets(result.scoredOnsets);
@@ -50,31 +67,134 @@ export function TimelineTab({ session, hitEvents }: Props) {
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  // Load waveform data (downsample from PCM)
+  // Load waveform data (downsample from PCM) + prepare AudioBuffer for playback
   useEffect(() => {
     if (!session.hasRecording) return;
-    db.getRecording(session.id).then((blob) => {
+    db.getRecording(session.id).then(async (blob) => {
       if (!blob) return;
-      blob.arrayBuffer().then((buf) => {
-        const pcm = new Float32Array(buf);
-        // Downsample to ~2000 points for overview
-        const targetPoints = 2000;
-        const step = Math.max(1, Math.floor(pcm.length / targetPoints));
-        const downsampled = new Float32Array(Math.ceil(pcm.length / step));
-        for (let i = 0; i < downsampled.length; i++) {
-          let max = 0;
-          const start = i * step;
-          const end = Math.min(start + step, pcm.length);
-          for (let j = start; j < end; j++) {
-            const abs = Math.abs(pcm[j]);
-            if (abs > max) max = abs;
-          }
-          downsampled[i] = max;
+      const buf = await blob.arrayBuffer();
+      const pcm = new Float32Array(buf);
+
+      // Downsample for waveform display
+      const targetPoints = 2000;
+      const step = Math.max(1, Math.floor(pcm.length / targetPoints));
+      const downsampled = new Float32Array(Math.ceil(pcm.length / step));
+      for (let i = 0; i < downsampled.length; i++) {
+        let max = 0;
+        const start = i * step;
+        const end = Math.min(start + step, pcm.length);
+        for (let j = start; j < end; j++) {
+          const abs = Math.abs(pcm[j]);
+          if (abs > max) max = abs;
         }
-        setWaveform(downsampled);
-      });
+        downsampled[i] = max;
+      }
+      setWaveform(downsampled);
+
+      // Create AudioBuffer for playback
+      try {
+        const { audioEngine: eng } = await import('../../audio/engine');
+        const ctx = await eng.initContext();
+        const audioBuf = ctx.createBuffer(1, pcm.length, 48000);
+        audioBuf.getChannelData(0).set(pcm);
+        audioBufferRef.current = audioBuf;
+      } catch (err) {
+        console.warn('Failed to create playback buffer:', err);
+      }
     });
   }, [session.id, session.hasRecording]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopPlayback();
+    };
+  }, []);
+
+  // ─── Playback controls ───
+
+  const stopPlayback = useCallback(() => {
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.stop(); } catch {}
+      sourceNodeRef.current = null;
+    }
+    if (gainNodeRef.current) {
+      try { gainNodeRef.current.disconnect(); } catch {}
+      gainNodeRef.current = null;
+    }
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = 0;
+    }
+    setIsPlaying(false);
+  }, []);
+
+  const startPlayback = useCallback(async () => {
+    if (!audioBufferRef.current) return;
+    stopPlayback();
+
+    const { audioEngine: eng } = await import('../../audio/engine');
+    const ctx = await eng.initContext();
+    const source = ctx.createBufferSource();
+    source.buffer = audioBufferRef.current;
+
+    const gain = ctx.createGain();
+    gain.gain.value = 4.0; // boost mic recording
+    source.connect(gain);
+    gain.connect(ctx.destination);
+
+    const offset = playOffsetRef.current;
+    playStartTimeRef.current = ctx.currentTime;
+    source.start(0, offset);
+    sourceNodeRef.current = source;
+    gainNodeRef.current = gain;
+    setIsPlaying(true);
+
+    source.onended = () => {
+      setIsPlaying(false);
+      setPlaybackPos(0);
+      playOffsetRef.current = 0;
+      sourceNodeRef.current = null;
+    };
+
+    // Animation loop: update playhead position
+    const durationS = session.durationMs / 1000;
+    const animate = () => {
+      if (!sourceNodeRef.current) return;
+      const elapsed = ctx.currentTime - playStartTimeRef.current + offset;
+      const pos = Math.min(1, elapsed / durationS);
+      setPlaybackPos(pos);
+
+      // Auto-scroll to follow playhead
+      const cw = containerRef.current?.clientWidth ?? 350;
+      const tw = cw * zoom;
+      const playheadX = pos * tw;
+      setScrollX((prev) => {
+        if (playheadX < prev || playheadX > prev + cw) {
+          return Math.max(0, playheadX - cw * 0.3);
+        }
+        return prev;
+      });
+
+      if (pos < 1) {
+        animFrameRef.current = requestAnimationFrame(animate);
+      }
+    };
+    animFrameRef.current = requestAnimationFrame(animate);
+  }, [stopPlayback, session.durationMs, zoom]);
+
+  const togglePlayback = useCallback(async () => {
+    if (isPlaying) {
+      const { audioEngine: eng } = await import('../../audio/engine');
+      const ctx = eng.getContext();
+      if (ctx) {
+        playOffsetRef.current += ctx.currentTime - playStartTimeRef.current;
+      }
+      stopPlayback();
+    } else {
+      startPlayback();
+    }
+  }, [isPlaying, stopPlayback, startPlayback]);
 
   const canvasHeight = 200;
   const totalWidth = containerWidth * zoom;
@@ -285,19 +405,73 @@ export function TimelineTab({ session, hitEvents }: Props) {
         <HelpTip text="Zoom into the timeline to see individual hits and their timing deviations. Pinch with two fingers or tap a zoom level. Drag to scroll." />
       </div>
 
-      {/* Timeline canvas */}
+      {/* Transport controls */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={togglePlayback}
+          disabled={!audioBufferRef.current}
+          className={`w-[40px] h-[40px] rounded-lg flex items-center justify-center
+                      shrink-0 touch-manipulation
+                      ${isPlaying
+                        ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
+                        : 'bg-bg-raised text-text-secondary active:bg-[rgba(255,255,255,0.08)]'}
+                      ${!audioBufferRef.current ? 'opacity-30' : ''}`}
+        >
+          {isPlaying ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="4" width="5" height="16" rx="1" />
+              <rect x="14" y="4" width="5" height="16" rx="1" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="6 3 20 12 6 21" />
+            </svg>
+          )}
+        </button>
+
+        {/* Time display */}
+        <span className="text-xs font-mono text-text-muted">
+          {formatTime(playbackPos * session.durationMs)} / {formatTime(session.durationMs)}
+        </span>
+
+        {/* Reset to start */}
+        {playbackPos > 0 && !isPlaying && (
+          <button
+            onClick={() => { playOffsetRef.current = 0; setPlaybackPos(0); }}
+            className="text-xs text-text-muted touch-manipulation active:text-text-secondary"
+          >
+            ↺ Start
+          </button>
+        )}
+      </div>
+
+      {/* Timeline canvas with playhead */}
       <div
         ref={containerRef}
-        className="overflow-hidden rounded-lg border border-border-subtle"
+        className="overflow-hidden rounded-lg border border-border-subtle relative"
         style={{ touchAction: 'none' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth }}>
+        <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth, position: 'relative' }}>
           <canvas
             ref={canvasRef}
             style={{ width: totalWidth, height: canvasHeight }}
+          />
+          {/* Playhead line */}
+          <div
+            style={{
+              position: 'absolute',
+              left: `${playbackPos * 100}%`,
+              top: 0,
+              bottom: 0,
+              width: 2,
+              backgroundColor: 'rgba(255,255,255,0.9)',
+              pointerEvents: 'none',
+              transition: isPlaying ? 'none' : 'left 0.1s ease',
+              boxShadow: '0 0 4px rgba(255,255,255,0.4)',
+            }}
           />
         </div>
       </div>
