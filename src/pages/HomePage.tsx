@@ -38,32 +38,28 @@ export function HomePage() {
   const recording = useRecording();
   const analysis = useAnalysis();
 
-  // Handle recording toggle: on stop → run analysis → navigate
+  // Handle recording toggle: toggleRecording uses a ref internally (always current).
+  // If it returns a RecordingResult, recording just stopped → run analysis → navigate.
   const handleRecordToggle = useCallback(async () => {
-    if (recording.isRecording) {
-      const result = await recording.stopRecording();
-      if (result) {
-        // Run post-processing analysis
-        const analysisResult = await analysis.analyze(result.sessionId, {
-          bpm: result.bpm,
-          meterNumerator: result.meterNumerator,
-          meterDenominator: result.meterDenominator,
-          subdivision: result.subdivision,
-          durationMs: result.durationMs,
-          scheduledBeats: result.scheduledBeats,
-          recordingStartTime: result.recordingStartTime,
-          recordingEndTime: result.recordingEndTime,
-        });
-        // Navigate to Progress page after analysis (or on error)
-        useNavStore.getState().navigateTo(PAGE_PROGRESS);
-        if (!analysisResult) {
-          console.warn('Analysis produced no result');
-        }
+    const result = await recording.toggleRecording();
+    if (result) {
+      // Recording stopped — run post-processing analysis
+      const analysisResult = await analysis.analyze(result.sessionId, {
+        bpm: result.bpm,
+        meterNumerator: result.meterNumerator,
+        meterDenominator: result.meterDenominator,
+        subdivision: result.subdivision,
+        durationMs: result.durationMs,
+        scheduledBeats: result.scheduledBeats,
+        recordingStartTime: result.recordingStartTime,
+        recordingEndTime: result.recordingEndTime,
+      });
+      useNavStore.getState().navigateTo(PAGE_PROGRESS);
+      if (!analysisResult) {
+        console.warn('Analysis produced no result');
       }
-    } else {
-      await recording.startRecording();
     }
-  }, [recording.isRecording, recording.stopRecording, recording.startRecording, analysis.analyze]);
+  }, [recording.toggleRecording, analysis.analyze]);
 
   // Session timer — ticks every second while playing
   const [elapsed, setElapsed] = useState(0);
