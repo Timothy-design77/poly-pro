@@ -33,11 +33,11 @@ import {
 
 type BeatCallback = (event: BeatEvent) => void;
 
-/** Convert linear slider (0–1) to perceptual gain using quadratic curve.
- *  Human hearing is logarithmic — linear sliders feel like they "barely change".
- *  vol²  gives: 25%→6%, 50%→25%, 75%→56%, 100%→100% of max gain. */
+/** Convert linear slider (0–1) to perceptual gain.
+ *  vol^1.5 gives: 25%→12%, 50%→35%, 80%→72%, 100%→100% of max gain.
+ *  Gentler than quadratic — keeps default 80% loud while making low end responsive. */
 function perceptualGain(vol: number): number {
-  return vol * vol * MASTER_GAIN_MULTIPLIER;
+  return Math.pow(vol, 1.5) * MASTER_GAIN_MULTIPLIER;
 }
 
 class AudioEngine {
