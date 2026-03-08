@@ -248,17 +248,24 @@ export async function deleteRecording(sessionId: string): Promise<void> {
 
 export async function putHitEvents(record: HitEventsRecord): Promise<void> {
   const db = await getDB();
-  const serialized = JSON.stringify(record);
-  const blob = new Blob([serialized], { type: 'application/json' });
-  await db.put('recordings', blob, `hitevents:${record.sessionId}`);
+  // Store as plain JSON string — IDB handles strings natively, no Blob issues
+  await db.put('recordings', JSON.stringify(record), `hitevents:${record.sessionId}`);
 }
 
 export async function getHitEvents(sessionId: string): Promise<HitEventsRecord | undefined> {
   const db = await getDB();
-  const blob: Blob | undefined = await db.get('recordings', `hitevents:${sessionId}`);
-  if (!blob) return undefined;
+  const stored = await db.get('recordings', `hitevents:${sessionId}`);
+  if (!stored) return undefined;
   try {
-    const text = await blob.text();
+    // Handle both string (new) and Blob (legacy) formats
+    let text: string;
+    if (typeof stored === 'string') {
+      text = stored;
+    } else if (stored instanceof Blob) {
+      text = await stored.text();
+    } else {
+      return undefined;
+    }
     return JSON.parse(text) as HitEventsRecord;
   } catch {
     return undefined;

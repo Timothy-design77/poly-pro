@@ -44,7 +44,11 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     db.getHitEvents(session.id).then((events) => {
       setHitEvents(events ?? null);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch((err) => {
+      console.error('Failed to load hit events:', err);
+      setHitEvents(null);
+      setLoading(false);
+    });
   }, [session?.id, visible]);
 
   // Reset to score tab when opening a new session
@@ -65,6 +69,9 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     <div
       className="fixed inset-0 z-50 flex flex-col"
       style={{ backgroundColor: '#0C0C0E' }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">

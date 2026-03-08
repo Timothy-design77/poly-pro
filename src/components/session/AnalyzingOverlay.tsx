@@ -38,6 +38,9 @@ export default function AnalyzingOverlay({ visible, progress }: Props) {
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center"
       style={{ backgroundColor: 'rgba(12, 12, 14, 0.95)' }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
     >
       {/* Spinner */}
       <div className="relative mb-8">

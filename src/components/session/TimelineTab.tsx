@@ -204,10 +204,10 @@ export function TimelineTab({ session, hitEvents }: Props) {
     touchStartRef.current = null;
   };
 
-  if (!session.analyzed) {
+  if (!session.hasRecording) {
     return (
       <div className="flex items-center justify-center h-32">
-        <p className="text-text-muted text-sm">Session not analyzed</p>
+        <p className="text-text-muted text-sm">No recording for this session</p>
       </div>
     );
   }

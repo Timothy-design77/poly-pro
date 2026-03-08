@@ -16,6 +16,15 @@ interface Props {
 export function ScoreTab({ session }: Props) {
   const [showBreakdown, setShowBreakdown] = useState(false);
 
+  if (!session.analyzed) {
+    return (
+      <div className="flex flex-col items-center justify-center h-40 gap-2">
+        <p className="text-text-muted text-sm">This session hasn't been analyzed</p>
+        <p className="text-text-muted text-xs">Record a new session to see detailed scores</p>
+      </div>
+    );
+  }
+
   const score = session.score ?? 0;
   const sigma = session.sigma ?? 0;
   const sigmaLevel = session.sigmaLevel ?? 'Beginner';

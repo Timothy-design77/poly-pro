@@ -29,10 +29,14 @@ export function ChartsTab({ session, hitEvents }: Props) {
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  if (!hitEvents || !session.analyzed) {
+  if (!hitEvents) {
     return (
       <div className="flex items-center justify-center h-32">
-        <p className="text-text-muted text-sm">No analysis data available</p>
+        <p className="text-text-muted text-sm text-center">
+          {session.analyzed
+            ? 'Onset data not found — try recording a new session'
+            : 'Record a session to see charts'}
+        </p>
       </div>
     );
   }

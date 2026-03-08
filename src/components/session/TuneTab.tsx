@@ -82,12 +82,17 @@ export function TuneTab({ session, hitEvents }: Props) {
   if (!hitEvents || !session.analyzed) {
     return (
       <div className="flex items-center justify-center h-32">
-        <p className="text-text-muted text-sm">
-          {session.hasRecording ? 'Raw audio expired — showing original analysis.' : 'No analysis data'}
+        <p className="text-text-muted text-sm text-center">
+          {!session.analyzed
+            ? 'Record a session to tune analysis parameters'
+            : 'Onset data not found — try recording a new session'}
         </p>
       </div>
     );
   }
+
+  // Check if raw audio still exists (for re-analysis)
+  // If not, sliders are informational only
 
   const originalScore = session.score ?? 0;
   const liveScore = liveResult?.score ?? originalScore;
