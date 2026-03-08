@@ -85,7 +85,7 @@ export function DetectionSettings() {
       <SliderRow
         label="Noise Gate"
         value={noiseGate}
-        min={0.01}
+        min={0.005}
         max={0.30}
         step={0.005}
         format={(v) => v.toFixed(3)}

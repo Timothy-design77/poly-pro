@@ -164,8 +164,8 @@ export function estimateNoiseFloor(
   }
 
   const rms = Math.sqrt(sumSq / samples);
-  // Set noise gate at 3× the noise floor RMS
-  return Math.max(rms * 3, 0.005);
+  // Set noise gate at 2× the noise floor RMS
+  return Math.max(rms * 2, 0.003);
 }
 
 // ─── Stage 2: Auto-Latency Detection ───

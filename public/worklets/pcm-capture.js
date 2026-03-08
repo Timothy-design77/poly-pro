@@ -24,7 +24,7 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
     this._energyPos = 0;
     this._lastOnsetBlock = -100; // Cooldown tracking (block count)
     this._cooldownBlocks = 15;   // ~40ms cooldown at 128-sample blocks (2.67ms each)
-    this._noiseFloor = 0.005;    // Will be calibrated from first ~100 blocks
+    this._noiseFloor = 0.003;    // Will be calibrated from first ~100 blocks
     this._calibrationBlocks = 0;
     this._calibrationSum = 0;
     this._isCalibrated = false;
@@ -86,7 +86,7 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
         if (this._calibrationBlocks >= 100) {
           const avgNoise = this._calibrationSum / this._calibrationBlocks;
           // Set floor at 3x average noise
-          this._noiseFloor = Math.max(avgNoise * 3, 0.005);
+          this._noiseFloor = Math.max(avgNoise * 2, 0.003);
           this._isCalibrated = true;
         }
       }
@@ -112,9 +112,9 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
 
         // Onset: current energy significantly above recent average AND noise floor
         // Threshold: 2.5x the recent average, minimum noise floor
-        const threshold = Math.max(recentAvg * 2.5, this._noiseFloor);
+        const threshold = Math.max(recentAvg * 1.8, this._noiseFloor);
 
-        if (rms > threshold && peak > this._noiseFloor * 2) {
+        if (rms > threshold && peak > this._noiseFloor) {
           this._lastOnsetBlock = this._blockCount;
 
           // Post onset event with approximate time
