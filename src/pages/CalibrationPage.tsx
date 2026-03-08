@@ -9,6 +9,7 @@
  */
 
 import { useCalibration } from '../hooks/useCalibration';
+import { CHIRP_COUNT } from '../analysis/calibration';
 
 interface Props {
   visible: boolean;
@@ -44,7 +45,7 @@ export function CalibrationPage({ visible, onClose }: Props) {
         )}
 
         {cal.step === 'measuring' && (
-          <MeasuringStep progress={cal.chirpProgress} total={5} />
+          <MeasuringStep progress={cal.chirpProgress} total={CHIRP_COUNT} />
         )}
 
         {cal.step === 'results' && (
@@ -91,7 +92,7 @@ function SetupStep({ onStart }: { onStart: () => void }) {
       </h2>
 
       <p className="text-sm text-text-secondary mb-2 leading-relaxed">
-        Your phone will play short chirp sounds and measure system latency. This takes about 6 seconds.
+        Your phone will play short chirp sounds and measure system latency. This takes about 12 seconds.
       </p>
 
       <p className="text-xs text-text-muted mb-8 leading-relaxed">
@@ -221,7 +222,7 @@ function ResultsStep({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-text-muted">Chirps Detected</span>
-          <span className="text-xs font-mono text-text-secondary">{accepted}/5</span>
+          <span className="text-xs font-mono text-text-secondary">{accepted}/{CHIRP_COUNT}</span>
         </div>
       </div>
 

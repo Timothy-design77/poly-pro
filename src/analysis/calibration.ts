@@ -18,7 +18,7 @@
 const CHIRP_DURATION_S = 0.020; // 20ms — longer = sharper correlation peak
 const CHIRP_FREQ_START = 200;   // Hz
 const CHIRP_FREQ_END = 4000;    // Hz
-const CHIRP_COUNT = 5;
+const CHIRP_COUNT = 10;
 const CHIRP_INTERVAL_S = 1.0;   // 1 second between chirps
 const NOISE_FLOOR_WAIT_S = 0.5;
 
@@ -193,7 +193,7 @@ export function computeCalibrationResult(
     }
   }
 
-  if (valid.length < 2) {
+  if (valid.length < 4) {
     return {
       offsetMs: 0,
       consistencyMs: Infinity,
@@ -203,11 +203,12 @@ export function computeCalibrationResult(
     };
   }
 
-  // Sort and trim top/bottom if we have enough
+  // Sort and trim top/bottom — with 10 points, trim 2 from each end
   valid.sort((a, b) => a - b);
   let trimmed = valid;
-  if (valid.length >= 4) {
-    trimmed = valid.slice(1, -1);
+  if (valid.length >= 6) {
+    const trimCount = Math.floor(valid.length * 0.2); // trim 20% from each end
+    trimmed = valid.slice(trimCount, valid.length - trimCount);
   }
 
   // Median
