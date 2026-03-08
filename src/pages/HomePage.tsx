@@ -18,6 +18,7 @@ import { GroupingPicker } from '../components/metronome/GroupingPicker';
 import { BeatGrid } from '../components/metronome/BeatGrid';
 import { TrainerConfig, useTrainerBadge } from '../components/metronome/TrainerConfig';
 import { PracticeModes, usePracticeBadge } from '../components/metronome/PracticeModes';
+import { HelpTip } from '../components/ui/HelpTip';
 import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
 import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
@@ -132,17 +133,21 @@ export function HomePage() {
         </div>
 
         {/* Dial */}
-        <div ref={dialContainerRef} className="flex items-center justify-center pt-1">
+        <div ref={dialContainerRef} className="flex items-center justify-center pt-1 relative">
           <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
+          <div className="absolute top-1 right-0">
+            <HelpTip text="Drag around the dial to adjust BPM. Tap the number to type a specific BPM. The ring pulses with the beat when playing." />
+          </div>
         </div>
 
         {/* Controls */}
         <div className="flex flex-col gap-2 pt-6">
           <BpmControl />
           <PlayButton />
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
             <TapTempo />
+            <HelpTip text="Record: captures your playing via mic and analyzes timing after you stop. Tap Tempo: tap rhythmically to set the BPM. Needs 3+ taps." />
           </div>
 
           {/* Live waveform during recording */}
@@ -159,7 +164,8 @@ export function HomePage() {
         {/* ─── Collapsible sections ─── */}
         <div className="mt-4 space-y-2">
           {/* Meter & Subdivision */}
-          <CollapsibleCard title="Meter & Subdivision" badge={meterBadge} defaultOpen>
+          <CollapsibleCard title="Meter & Subdivision" badge={meterBadge} defaultOpen
+            help="Set the time signature and subdivision. The metronome subdivides each beat into smaller pulses (8ths, triplets, 16ths).">
             <div className="space-y-4">
               <MeterControl />
               <SubdivisionPicker />
@@ -168,22 +174,26 @@ export function HomePage() {
           </CollapsibleCard>
 
           {/* Pattern Grid */}
-          <CollapsibleCard title="Pattern" defaultOpen>
+          <CollapsibleCard title="Pattern" defaultOpen
+            help="Tap cells to set accent levels for each beat. 6 levels: OFF, GHOST, SOFT, MED, LOUD, ACCENT. Long-press a cell to change its sound.">
             <BeatGrid />
           </CollapsibleCard>
 
           {/* Polyrhythm */}
-          <CollapsibleCard title="Polyrhythm" badge={polyBadge}>
+          <CollapsibleCard title="Polyrhythm" badge={polyBadge}
+            help="Add extra tracks with different beat counts to create polyrhythmic patterns (e.g. 4 against 3). Each track plays its beats evenly across the measure.">
             <PolyrhythmControl />
           </CollapsibleCard>
 
           {/* Trainer */}
-          <CollapsibleCard title="Trainer" badge={trainerBadge}>
+          <CollapsibleCard title="Trainer" badge={trainerBadge}
+            help="Automatically increase BPM after a set number of bars. Great for building speed gradually. Set start BPM, end BPM, step size, and bars per step.">
             <TrainerConfig />
           </CollapsibleCard>
 
           {/* Practice Modes */}
-          <CollapsibleCard title="Practice Modes" badge={practiceBadge}>
+          <CollapsibleCard title="Practice Modes" badge={practiceBadge}
+            help="Count-in plays click-only bars before starting. Gap click randomly mutes beats. Random mute silences entire measures. Play/Mute cycles structured silence for internalization.">
             <PracticeModes />
           </CollapsibleCard>
         </div>

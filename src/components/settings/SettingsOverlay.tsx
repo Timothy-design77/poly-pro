@@ -4,15 +4,17 @@ import { VibrationSettings } from './VibrationSettings';
 import { DetectionSettings } from './DetectionSettings';
 import { CalibrationSettings } from './CalibrationSettings';
 import { useSettingsStore } from '../../store/settings-store';
+import { HelpTip } from '../ui/HelpTip';
 
 interface SectionProps {
   title: string;
   icon: ReactNode;
   defaultOpen?: boolean;
+  help?: string;
   children: ReactNode;
 }
 
-function CollapsibleSection({ title, icon, defaultOpen = false, children }: SectionProps) {
+function CollapsibleSection({ title, icon, defaultOpen = false, help, children }: SectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
@@ -22,7 +24,10 @@ function CollapsibleSection({ title, icon, defaultOpen = false, children }: Sect
         className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-bg-raised transition-all"
       >
         <span className="text-text-muted">{icon}</span>
-        <span className="text-sm font-semibold text-text-primary flex-1">{title}</span>
+        <span className="text-sm font-semibold text-text-primary flex-1 flex items-center gap-1.5">
+          {title}
+          {help && <HelpTip text={help} />}
+        </span>
         <svg
           width="16" height="16" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2" strokeLinecap="round"
@@ -92,6 +97,7 @@ export function SettingsContent() {
       <CollapsibleSection
         title="Sounds"
         defaultOpen
+        help="Choose click sounds for each accent level. Pick from built-in kits or individual samples. Preview by tapping the play icon."
         icon={
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -106,6 +112,7 @@ export function SettingsContent() {
       {/* Section 2: Recording */}
       <CollapsibleSection
         title="Recording"
+        help="Controls for mic recording during practice. Recordings are stored locally and analyzed for timing accuracy after each session."
         icon={
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -118,9 +125,10 @@ export function SettingsContent() {
         <RecordingSettings />
       </CollapsibleSection>
 
-      {/* Section 3: Detection (stub) */}
+      {/* Section 3: Detection */}
       <CollapsibleSection
         title="Detection"
+        help="Default parameters for onset detection. These apply to new recordings. Existing sessions can be re-tuned from the session detail Tune tab."
         icon={
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -135,6 +143,7 @@ export function SettingsContent() {
       {/* Section 4: Vibration */}
       <CollapsibleSection
         title="Vibration"
+        help="Haptic feedback on beats. Useful when playing loud — you can feel the beat even if you can't hear the click."
         icon={
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -149,6 +158,7 @@ export function SettingsContent() {
       {/* Section 5: Calibration */}
       <CollapsibleSection
         title="Calibration"
+        help="Measures your device's audio latency using chirp sounds. This offset is subtracted from all onset times so your scores reflect your actual timing, not device delay."
         icon={
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -160,9 +170,10 @@ export function SettingsContent() {
         <CalibrationSettings />
       </CollapsibleSection>
 
-      {/* Section 6: Data (stub) */}
+      {/* Section 6: Data */}
       <CollapsibleSection
         title="Data"
+        help="Export, import, and manage your practice data. Clear sessions, back up to file, or restore from a previous backup."
         icon={
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round">

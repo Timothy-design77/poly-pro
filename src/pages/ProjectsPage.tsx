@@ -3,6 +3,7 @@ import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
 import { ProjectCreateSheet } from '../components/projects/ProjectCreateSheet';
 import { Modal } from '../components/ui/Modal';
+import { HelpTip } from '../components/ui/HelpTip';
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -57,7 +58,10 @@ export function ProjectsPage() {
 
   return (
     <div className="h-full flex flex-col px-4 py-4 overflow-y-auto">
-      <h1 className="text-lg font-semibold text-text-primary mb-1">Projects</h1>
+      <h1 className="text-lg font-semibold text-text-primary mb-1 flex items-center gap-2">
+        Projects
+        <HelpTip text="Organize your practice into projects with BPM goals. Each project tracks its own sessions, progress, and metronome settings. Tap a project to switch to it. Long-press to edit. Swipe left to delete." />
+      </h1>
       <p className="text-xs text-text-secondary mb-4">Tap to switch · hold to edit</p>
 
       {/* Project cards */}

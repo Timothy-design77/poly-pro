@@ -1,30 +1,27 @@
 import { useState, type ReactNode } from 'react';
+import { HelpTip } from './HelpTip';
 
 interface CollapsibleCardProps {
   title: string;
-  /** Short summary shown in the header when collapsed (e.g. "4/4 · 8ths") */
   badge?: string;
   defaultOpen?: boolean;
+  help?: string;
   children: ReactNode;
 }
 
-/**
- * Thin header bar that expands into a roomy card.
- * Same UX pattern as Settings sections.
- */
-export function CollapsibleCard({ title, badge, defaultOpen = false, children }: CollapsibleCardProps) {
+export function CollapsibleCard({ title, badge, defaultOpen = false, help, children }: CollapsibleCardProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
     <div className="border border-border-subtle rounded-xl overflow-hidden">
-      {/* Header — always visible, tap to toggle */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center gap-3 px-4 py-3 bg-bg-surface
                    active:bg-bg-raised transition-colors text-left"
       >
-        <span className="text-xs font-bold text-text-secondary uppercase tracking-wider flex-1">
+        <span className="text-xs font-bold text-text-secondary uppercase tracking-wider flex-1 flex items-center gap-1.5">
           {title}
+          {help && <HelpTip text={help} />}
         </span>
         {badge && !isOpen && (
           <span className="font-mono text-[11px] text-text-muted">{badge}</span>
@@ -38,7 +35,6 @@ export function CollapsibleCard({ title, badge, defaultOpen = false, children }:
         </svg>
       </button>
 
-      {/* Content — roomy padding, big touch targets */}
       {isOpen && (
         <div className="px-4 py-3 border-t border-border-subtle bg-bg-primary">
           {children}
