@@ -5,7 +5,7 @@ import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
 import { getPreferredMicStream, hasBtAudioOutput } from '../utils/mic';
 import * as db from '../store/db';
-import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
+import type { ScheduledBeat } from '../audio/types';
 
 const MAX_RECORDING_MS = 30 * 60 * 1000;
 const WARNING_MS = 25 * 60 * 1000;
@@ -17,6 +17,21 @@ export interface RecordingState {
   warning: string | null;
   btTip: string | null;
   isRawAudio: boolean;
+  /** Real-time onset count from Mode 1 (visual feedback only) */
+  realtimeOnsetCount: number;
+}
+
+/** Returned after recording stops — enough info to trigger analysis */
+export interface RecordingResult {
+  sessionId: string;
+  bpm: number;
+  meterNumerator: number;
+  meterDenominator: number;
+  subdivision: number;
+  durationMs: number;
+  scheduledBeats: ScheduledBeat[];
+  recordingStartTime: number;
+  recordingEndTime: number;
 }
 
 /**
@@ -24,16 +39,11 @@ export interface RecordingState {
  *
  * Mic → createMediaStreamSource → AudioWorkletNode → raw Float32 PCM (48kHz)
  *
- * The mic connects to the SAME AudioContext as the metronome. This does NOT
- * trigger Android call mode / BT HFP switch because we force the built-in
- * mic via explicit deviceId (see mic.ts). The BT earbuds stay on A2DP for
- * high-quality output while the phone mic handles input.
- *
- * Benefits over MediaRecorder:
- * - True raw Float32 PCM at 48kHz (no Opus encode/decode round-trip)
- * - Real-time mic level metering for waveform display
- * - Real-time onset detection possible (Phase 5 Mode 1)
- * - No 173MB decodeAudioData() memory spike after 30-min recording
+ * Phase 5 additions:
+ * - Captures scheduledBeats from engine for grid alignment
+ * - Tracks AudioContext recording start/end times
+ * - Receives real-time onset detections from worklet (Mode 1)
+ * - Returns RecordingResult for analysis pipeline
  */
 export function useRecording() {
   const [state, setState] = useState<RecordingState>({
@@ -43,6 +53,7 @@ export function useRecording() {
     warning: null,
     btTip: null,
     isRawAudio: false,
+    realtimeOnsetCount: 0,
   });
 
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -53,6 +64,14 @@ export function useRecording() {
   const startTimeRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isRecordingRef = useRef(false);
+
+  // Phase 5: capture engine state for analysis
+  const recordingStartCtxTimeRef = useRef(0);
+  const scheduledBeatsStartIdxRef = useRef(0);
+  const realtimeOnsetCountRef = useRef(0);
+
+  // Callback for real-time onset events (Mode 1 visual feedback)
+  const onRealtimeOnsetRef = useRef<((time: number, peak: number) => void) | null>(null);
 
   useEffect(() => {
     return () => {
@@ -126,7 +145,12 @@ export function useRecording() {
       workletNode.connect(silentGain);
       silentGain.connect(ctx.destination);
 
-      // Listen for PCM chunks and mic levels from worklet
+      // Phase 5: capture AudioContext time and scheduledBeats index at recording start
+      recordingStartCtxTimeRef.current = ctx.currentTime;
+      scheduledBeatsStartIdxRef.current = audioEngine.scheduledBeats.length;
+      realtimeOnsetCountRef.current = 0;
+
+      // Listen for PCM chunks, mic levels, and onset events from worklet
       pcmChunksRef.current = [];
       workletNode.port.onmessage = (e) => {
         const msg = e.data;
@@ -137,6 +161,15 @@ export function useRecording() {
           pcmChunksRef.current.push(arr);
         } else if (msg.type === 'level') {
           setState((s) => ({ ...s, micLevel: msg.peak }));
+        } else if (msg.type === 'onset') {
+          // Mode 1: real-time onset detected in worklet
+          realtimeOnsetCountRef.current++;
+          setState((s) => ({
+            ...s,
+            realtimeOnsetCount: realtimeOnsetCountRef.current,
+          }));
+          // Notify external callback (e.g., for beat dot flash)
+          onRealtimeOnsetRef.current?.(msg.time, msg.peak);
         }
       };
 
@@ -152,6 +185,7 @@ export function useRecording() {
         warning: null,
         btTip,
         isRawAudio: true,
+        realtimeOnsetCount: 0,
       });
 
       // Elapsed timer
@@ -173,14 +207,28 @@ export function useRecording() {
     } catch (err) {
       console.error('Failed to start recording:', err);
       cleanupRecording();
-      setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
+      setState({
+        isRecording: false, elapsed: 0, micLevel: 0,
+        warning: null, btTip: null, isRawAudio: false,
+        realtimeOnsetCount: 0,
+      });
     }
   }, [cleanupRecording]);
 
-  const stopRecording = useCallback(async () => {
-    if (!isRecordingRef.current) return;
+  const stopRecording = useCallback(async (): Promise<RecordingResult | null> => {
+    if (!isRecordingRef.current) return null;
 
     const durationMs = Date.now() - startTimeRef.current;
+
+    // Phase 5: capture AudioContext time at recording end
+    const ctx = audioEngine.getContext();
+    const recordingEndTime = ctx?.currentTime ?? 0;
+    const recordingStartTime = recordingStartCtxTimeRef.current;
+
+    // Phase 5: snapshot scheduledBeats from engine (beats during recording only)
+    const allBeats = audioEngine.scheduledBeats;
+    const startIdx = scheduledBeatsStartIdxRef.current;
+    const scheduledBeats = allBeats.slice(startIdx);
 
     // Tell worklet to stop and flush remaining samples
     if (workletNodeRef.current) {
@@ -192,6 +240,13 @@ export function useRecording() {
     const chunks = pcmChunksRef.current;
     pcmChunksRef.current = [];
 
+    // Snapshot metronome state BEFORE stopping (engine reads might change)
+    const metronome = useMetronomeStore.getState();
+    const sessionBpm = metronome.bpm;
+    const sessionMeterNum = metronome.meterNumerator;
+    const sessionMeterDen = metronome.meterDenominator;
+    const sessionSubdivision = metronome.subdivision;
+
     // Cleanup
     cleanupRecording();
     audioEngine.stop();
@@ -199,8 +254,12 @@ export function useRecording() {
 
     if (chunks.length === 0) {
       console.warn('No audio captured');
-      setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
-      return;
+      setState({
+        isRecording: false, elapsed: 0, micLevel: 0,
+        warning: null, btTip: null, isRawAudio: false,
+        realtimeOnsetCount: 0,
+      });
+      return null;
     }
 
     // Combine float32 chunks into single buffer
@@ -215,7 +274,6 @@ export function useRecording() {
     const pcmBlob = new Blob([combined.buffer], { type: 'application/octet-stream' });
 
     // Build session record
-    const metronome = useMetronomeStore.getState();
     const activeProjectId = useProjectStore.getState().activeProjectId;
     const sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -223,15 +281,16 @@ export function useRecording() {
       id: sessionId,
       date: new Date().toISOString(),
       projectId: activeProjectId,
-      bpm: metronome.bpm,
-      meter: `${metronome.meterNumerator}/${metronome.meterDenominator}`,
-      subdivision: metronome.subdivision,
+      bpm: sessionBpm,
+      meter: `${sessionMeterNum}/${sessionMeterDen}`,
+      subdivision: sessionSubdivision,
       durationMs,
       totalHits: 0,
       avgDelta: 0,
       stdDev: 0,
       perfectPct: 0,
       hasRecording: true,
+      analyzed: false,
     };
 
     // Save to IDB — raw PCM for analysis + playback
@@ -253,24 +312,48 @@ export function useRecording() {
       }
     }
 
-    setState({ isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false });
-    useNavStore.getState().navigateTo(PAGE_PROGRESS);
+    setState({
+      isRecording: false, elapsed: 0, micLevel: 0,
+      warning: null, btTip: null, isRawAudio: false,
+      realtimeOnsetCount: 0,
+    });
 
-    return sessionId;
+    // Return analysis params (caller handles navigation + analysis trigger)
+    return {
+      sessionId,
+      bpm: sessionBpm,
+      meterNumerator: sessionMeterNum,
+      meterDenominator: sessionMeterDen,
+      subdivision: sessionSubdivision,
+      durationMs,
+      scheduledBeats,
+      recordingStartTime,
+      recordingEndTime,
+    };
   }, [cleanupRecording]);
 
-  const toggleRecording = useCallback(async () => {
+  const toggleRecording = useCallback(async (): Promise<RecordingResult | null> => {
     if (isRecordingRef.current) {
-      await stopRecording();
+      return stopRecording();
     } else {
       await startRecording();
+      return null;
     }
   }, [startRecording, stopRecording]);
+
+  /** Register callback for real-time onset events (Mode 1 visual feedback) */
+  const setOnRealtimeOnset = useCallback(
+    (cb: ((time: number, peak: number) => void) | null) => {
+      onRealtimeOnsetRef.current = cb;
+    },
+    [],
+  );
 
   return {
     ...state,
     startRecording,
     stopRecording,
     toggleRecording,
+    setOnRealtimeOnset,
   };
 }

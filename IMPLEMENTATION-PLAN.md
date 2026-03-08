@@ -17,6 +17,7 @@
 **Phase 2: COMPLETE** — advanced metronome features, trainer, practice modes, polyrhythm.
 **Phase 3: COMPLETE** — projects, presets, sessions, IndexedDB persistence.
 **Phase 4: COMPLETE** — recording system with raw PCM capture via AudioWorklet, BT stays on A2DP.
+**Phase 5: IN PROGRESS** — onset detection + dual-mode analysis core built, awaiting user test.
 
 ### What's Built (as of commit c3621d7)
 
@@ -193,6 +194,27 @@
 - [x] BT stays on A2DP/ANC during recording, built-in mic used
 - [x] Sessions save, playback works
 - [x] AudioWorklet captures raw PCM, no processing on input
+
+**Phase 5 — Onset Detection + Analysis (src/analysis/):**
+- Analysis type system: DetectedOnset, ScoredOnset, GridBeat, SessionAnalysis, SpectralFeatures
+- Beat grid generator: gridFromScheduledBeats (uses engine-captured beat times) + gridFromParams (fallback)
+- Spectral flux onset detection (Mode 2 post-processing):
+  - Stage 1: Noise floor estimation (first 500ms)
+  - Stage 2: Auto-latency detection (stub for Phase 6)
+  - Stage 3: Coarse onset detection (spectral flux, 256-sample window, adaptive threshold)
+  - Stage 4: Fine onset refinement (32-sample window, quadratic peak interpolation, ±0.5ms)
+  - Stage 5: Flam analysis (merge double-peaks within tempo-scaled window)
+  - Stage 6: Spectral feature extraction (stub for Phase 8)
+- Scoring engine: grid alignment (greedy nearest-match), σ-based score formula, tempo-scaled windows
+- Headline generation: auto-generated plain-English insights from metrics
+- Real-time onset detection (Mode 1): energy threshold in AudioWorklet for visual feedback
+- Analysis orchestrator: ties pipeline together, runs after recording stops
+- useAnalysis hook: manages analysis lifecycle + progress state
+- AnalyzingOverlay component: full-screen overlay with spinner + stage labels + progress bar
+- Recording hook updated: captures scheduledBeats + AudioContext times for grid alignment
+- IDB schema bumped to v2: hitEvents store for onset data (scored + raw onsets)
+- Session records extended with analysis fields (score, sigma, sigmaLevel, headlines, etc.)
+- ProgressPage updated: session cards show score, σ, sigma level, first headline
 
 ### What's Next: Phase 5
 

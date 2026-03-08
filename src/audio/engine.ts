@@ -227,6 +227,11 @@ class AudioEngine {
     return this.isRunning;
   }
 
+  /** Get the current AudioContext (or null if not initialized) */
+  getContext(): AudioContext | null {
+    return this.audioCtx;
+  }
+
   // ─── Core Scheduler ───
 
   private schedule = (): void => {

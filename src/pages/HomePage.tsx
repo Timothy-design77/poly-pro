@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
 import { useWakeLock } from '../hooks/useWakeLock';
@@ -9,6 +9,7 @@ import { TapTempo } from '../components/metronome/TapTempo';
 import { RecordButton } from '../components/metronome/RecordButton';
 import { WaveformDisplay } from '../components/metronome/WaveformDisplay';
 import { useRecording } from '../hooks/useRecording';
+import { useAnalysis } from '../hooks/useAnalysis';
 import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
 import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
@@ -18,6 +19,8 @@ import { BeatGrid } from '../components/metronome/BeatGrid';
 import { TrainerConfig, useTrainerBadge } from '../components/metronome/TrainerConfig';
 import { PracticeModes, usePracticeBadge } from '../components/metronome/PracticeModes';
 import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
+import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
+import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
 
 export function HomePage() {
   const bpm = useMetronomeStore((s) => s.bpm);
@@ -33,6 +36,34 @@ export function HomePage() {
   const [dialSize, setDialSize] = useState(200);
 
   const recording = useRecording();
+  const analysis = useAnalysis();
+
+  // Handle recording toggle: on stop → run analysis → navigate
+  const handleRecordToggle = useCallback(async () => {
+    if (recording.isRecording) {
+      const result = await recording.stopRecording();
+      if (result) {
+        // Run post-processing analysis
+        const analysisResult = await analysis.analyze(result.sessionId, {
+          bpm: result.bpm,
+          meterNumerator: result.meterNumerator,
+          meterDenominator: result.meterDenominator,
+          subdivision: result.subdivision,
+          durationMs: result.durationMs,
+          scheduledBeats: result.scheduledBeats,
+          recordingStartTime: result.recordingStartTime,
+          recordingEndTime: result.recordingEndTime,
+        });
+        // Navigate to Progress page after analysis (or on error)
+        useNavStore.getState().navigateTo(PAGE_PROGRESS);
+        if (!analysisResult) {
+          console.warn('Analysis produced no result');
+        }
+      }
+    } else {
+      await recording.startRecording();
+    }
+  }, [recording.isRecording, recording.stopRecording, recording.startRecording, analysis.analyze]);
 
   // Session timer — ticks every second while playing
   const [elapsed, setElapsed] = useState(0);
@@ -114,7 +145,7 @@ export function HomePage() {
           <BpmControl />
           <PlayButton />
           <div className="flex gap-2">
-            <RecordButton isRecording={recording.isRecording} onToggle={recording.toggleRecording} />
+            <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
             <TapTempo />
           </div>
 
@@ -175,6 +206,12 @@ export function HomePage() {
         max={300}
         step={0.5}
         label="BPM"
+      />
+
+      {/* Analysis overlay — shown after recording stops */}
+      <AnalyzingOverlay
+        visible={analysis.isAnalyzing}
+        progress={analysis.progress}
       />
     </div>
   );

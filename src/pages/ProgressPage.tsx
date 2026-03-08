@@ -31,7 +31,7 @@ export function ProgressPage() {
 
   const totalTime = sessions.reduce((acc, s) => acc + s.durationMs, 0);
   const bestPct = sessions.length > 0
-    ? Math.max(...sessions.map((s) => s.perfectPct))
+    ? Math.max(...sessions.map((s) => s.analyzed ? (s.score ?? s.perfectPct) : s.perfectPct))
     : 0;
 
   // Streak: consecutive days with sessions
@@ -93,24 +93,27 @@ export function ProgressPage() {
       {/* Hero chart placeholder */}
       <div className="bg-bg-surface rounded-[10px] border border-border-subtle p-4 mb-3 shrink-0">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-text-secondary">Accuracy</span>
+          <span className="text-xs font-semibold text-text-secondary">Score</span>
         </div>
         {sessions.length > 0 ? (
           <div className="h-32 flex items-end gap-[2px]">
-            {sessions.slice(0, 20).reverse().map((s) => (
-              <div
-                key={s.id}
-                className="flex-1 rounded-t"
-                style={{
-                  height: `${Math.max(4, s.perfectPct)}%`,
-                  backgroundColor: s.perfectPct >= 85
-                    ? 'rgba(74,222,128,0.5)'
-                    : s.perfectPct >= 70
-                      ? 'rgba(251,191,36,0.5)'
-                      : 'rgba(248,113,113,0.4)',
-                }}
-              />
-            ))}
+            {sessions.slice(0, 20).reverse().map((s) => {
+              const score = s.analyzed ? (s.score ?? 0) : s.perfectPct;
+              return (
+                <div
+                  key={s.id}
+                  className="flex-1 rounded-t"
+                  style={{
+                    height: `${Math.max(4, score)}%`,
+                    backgroundColor: score >= 85
+                      ? 'rgba(74,222,128,0.5)'
+                      : score >= 70
+                        ? 'rgba(251,191,36,0.5)'
+                        : 'rgba(248,113,113,0.4)',
+                  }}
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="h-32 flex items-end justify-center">
@@ -192,57 +195,81 @@ export function ProgressPage() {
           <div className="space-y-1.5">
             {sessions.map((s) => {
               const isPlaying = playingSessionId === s.id;
+              const score = s.analyzed ? (s.score ?? 0) : s.perfectPct;
+              const sigmaLabel = s.analyzed && s.sigmaLevel ? s.sigmaLevel : null;
+              const sigma = s.analyzed && s.sigma !== undefined ? s.sigma : null;
+              const headline = s.analyzed && s.headlines?.length ? s.headlines[0] : null;
               return (
                 <div
                   key={s.id}
-                  className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5
-                             flex items-center gap-3"
+                  className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5"
                 >
-                  {/* Play button */}
-                  {s.hasRecording && (
-                    <button
-                      onClick={() => play(s.id)}
-                      className={`w-[36px] h-[36px] rounded-lg flex items-center justify-center
-                                  shrink-0 touch-manipulation
-                        ${isPlaying
-                          ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
-                          : 'bg-bg-raised text-text-muted active:bg-[rgba(255,255,255,0.08)]'}`}
-                    >
-                      {isPlaying ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                          <rect x="5" y="4" width="5" height="16" rx="1" />
-                          <rect x="14" y="4" width="5" height="16" rx="1" />
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                          <polygon points="6 3 20 12 6 21" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {/* Play button */}
+                    {s.hasRecording && (
+                      <button
+                        onClick={() => play(s.id)}
+                        className={`w-[36px] h-[36px] rounded-lg flex items-center justify-center
+                                    shrink-0 touch-manipulation
+                          ${isPlaying
+                            ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
+                            : 'bg-bg-raised text-text-muted active:bg-[rgba(255,255,255,0.08)]'}`}
+                      >
+                        {isPlaying ? (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="5" y="4" width="5" height="16" rx="1" />
+                            <rect x="14" y="4" width="5" height="16" rx="1" />
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="6 3 20 12 6 21" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-text-secondary">{formatDate(s.date)}</span>
-                      <span className="font-mono text-xs text-text-primary font-bold">{s.bpm} BPM</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-text-secondary">{formatDate(s.date)}</span>
+                        <span className="font-mono text-xs text-text-primary font-bold">{s.bpm} BPM</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-text-muted">{s.meter}</span>
+                        {s.analyzed ? (
+                          <>
+                            <span className="text-[10px] text-text-muted">{s.totalScored ?? s.totalHits} hits</span>
+                            {sigma !== null && (
+                              <span className="text-[10px] font-mono text-text-muted">σ {sigma.toFixed(1)}ms</span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[10px] text-text-muted">{s.totalHits} hits</span>
+                          </>
+                        )}
+                        {s.durationMs > 0 && (
+                          <span className="text-[10px] text-text-muted">
+                            {Math.floor(s.durationMs / 60000)}:{String(Math.floor((s.durationMs / 1000) % 60)).padStart(2, '0')}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-text-muted">{s.meter}</span>
-                      <span className="text-[10px] text-text-muted">{s.totalHits} hits</span>
-                      {s.durationMs > 0 && (
-                        <span className="text-[10px] text-text-muted">
-                          {Math.floor(s.durationMs / 60000)}:{String(Math.floor((s.durationMs / 1000) % 60)).padStart(2, '0')}
-                        </span>
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className={`font-mono text-xs font-bold
+                        ${score >= 85 ? 'text-success'
+                          : score >= 70 ? 'text-warning'
+                          : 'text-danger'}`}
+                      >
+                        {Math.round(score)}%
+                      </span>
+                      {sigmaLabel && (
+                        <span className="text-[9px] text-text-muted">{sigmaLabel}</span>
                       )}
                     </div>
                   </div>
-                  <span className={`font-mono text-xs font-bold
-                    ${s.perfectPct >= 85 ? 'text-success'
-                      : s.perfectPct >= 70 ? 'text-warning'
-                      : 'text-danger'}`}
-                  >
-                    {Math.round(s.perfectPct)}%
-                  </span>
+                  {headline && (
+                    <p className="text-[10px] text-text-muted mt-1 ml-[48px] truncate">{headline}</p>
+                  )}
                 </div>
               );
             })}

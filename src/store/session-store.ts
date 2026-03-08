@@ -8,6 +8,7 @@ interface SessionState {
 
   loadFromDB: () => Promise<void>;
   addSession: (session: SessionRecord) => Promise<void>;
+  updateSession: (id: string, updates: Partial<SessionRecord>) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   getSessionsForProject: (projectId: string) => SessionRecord[];
 }
@@ -30,9 +31,21 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }));
   },
 
+  updateSession: async (id, updates) => {
+    const { sessions } = get();
+    const existing = sessions.find((s) => s.id === id);
+    if (!existing) return;
+    const updated = { ...existing, ...updates };
+    await db.putSession(updated);
+    set((s) => ({
+      sessions: s.sessions.map((ses) => (ses.id === id ? updated : ses)),
+    }));
+  },
+
   deleteSession: async (id) => {
     await db.deleteSession(id);
     await db.deleteRecording(id);
+    await db.deleteHitEvents(id);
     set((s) => ({
       sessions: s.sessions.filter((ses) => ses.id !== id),
     }));

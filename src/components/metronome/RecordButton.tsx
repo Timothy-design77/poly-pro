@@ -1,6 +1,6 @@
 interface RecordButtonProps {
   isRecording: boolean;
-  onToggle: () => void;
+  onToggle: () => void | Promise<void>;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'polypro';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface PolyProDB {
   settings: { key: string; value: unknown };
@@ -9,6 +9,7 @@ export interface PolyProDB {
   projects: { key: string; value: ProjectRecord };
   sessions: { key: string; value: SessionRecord };
   recordings: { key: string; value: Blob };
+  hitEvents: { key: string; value: HitEventsRecord };
 }
 
 export interface MetronomeSnapshot {
@@ -88,6 +89,46 @@ export interface SessionRecord {
   stdDev: number;
   perfectPct: number;
   hasRecording: boolean;
+  // Phase 5 analysis fields (populated after post-processing)
+  analyzed?: boolean;
+  score?: number;
+  sigma?: number;
+  meanOffset?: number;
+  hitRate?: number;
+  goodPct?: number;
+  totalDetected?: number;
+  totalScored?: number;
+  totalExpected?: number;
+  scoringWindowMs?: number;
+  flamMergeMs?: number;
+  noiseFloor?: number;
+  autoLatencyMs?: number;
+  sigmaLevel?: string;
+  fatigueRatio?: number;
+  headlines?: string[];
+}
+
+/** Onset data stored separately from session metadata (can be large) */
+export interface HitEventsRecord {
+  sessionId: string;
+  /** Scored onsets with deviations (serializable) */
+  scoredOnsets: Array<{
+    time: number;
+    delta: number;
+    absDelta: number;
+    peak: number;
+    matchedBeatTime: number;
+    matchedBeatIndex: number;
+    scored: boolean;
+    measurePosition: number;
+  }>;
+  /** Raw detected onsets (for re-analysis) */
+  rawOnsets: Array<{
+    time: number;
+    peak: number;
+    flux: number;
+    isFlam: boolean;
+  }>;
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -95,23 +136,32 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains('settings')) {
-          db.createObjectStore('settings');
+      upgrade(db, oldVersion) {
+        // v1 stores
+        if (oldVersion < 1) {
+          if (!db.objectStoreNames.contains('settings')) {
+            db.createObjectStore('settings');
+          }
+          if (!db.objectStoreNames.contains('presets')) {
+            db.createObjectStore('presets', { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains('projects')) {
+            db.createObjectStore('projects', { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains('sessions')) {
+            const store = db.createObjectStore('sessions', { keyPath: 'id' });
+            store.createIndex('projectId', 'projectId');
+            store.createIndex('date', 'date');
+          }
+          if (!db.objectStoreNames.contains('recordings')) {
+            db.createObjectStore('recordings');
+          }
         }
-        if (!db.objectStoreNames.contains('presets')) {
-          db.createObjectStore('presets', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('projects')) {
-          db.createObjectStore('projects', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('sessions')) {
-          const store = db.createObjectStore('sessions', { keyPath: 'id' });
-          store.createIndex('projectId', 'projectId');
-          store.createIndex('date', 'date');
-        }
-        if (!db.objectStoreNames.contains('recordings')) {
-          db.createObjectStore('recordings');
+        // v2: hitEvents store for onset data
+        if (oldVersion < 2) {
+          if (!db.objectStoreNames.contains('hitEvents')) {
+            db.createObjectStore('hitEvents', { keyPath: 'sessionId' });
+          }
         }
       },
     });
@@ -202,4 +252,21 @@ export async function getRecording(sessionId: string): Promise<Blob | undefined>
 export async function deleteRecording(sessionId: string): Promise<void> {
   const db = await getDB();
   await db.delete('recordings', sessionId);
+}
+
+// ─── Hit Events ───
+
+export async function putHitEvents(record: HitEventsRecord): Promise<void> {
+  const db = await getDB();
+  await db.put('hitEvents', record);
+}
+
+export async function getHitEvents(sessionId: string): Promise<HitEventsRecord | undefined> {
+  const db = await getDB();
+  return db.get('hitEvents', sessionId);
+}
+
+export async function deleteHitEvents(sessionId: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('hitEvents', sessionId);
 }
