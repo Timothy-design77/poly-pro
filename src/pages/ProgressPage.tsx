@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
 import { usePlayback } from '../hooks/usePlayback';
+import { SessionDetailPage } from './SessionDetailPage';
+import type { SessionRecord } from '../store/db';
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -21,6 +24,7 @@ function formatDate(dateStr: string): string {
 }
 
 export function ProgressPage() {
+  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
   const activeProject = useProjectStore((s) => {
     return s.projects.find((p) => p.id === s.activeProjectId) || null;
   });
@@ -202,13 +206,15 @@ export function ProgressPage() {
               return (
                 <div
                   key={s.id}
-                  className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5"
+                  className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5
+                             touch-manipulation active:bg-bg-raised cursor-pointer"
+                  onClick={() => setSelectedSession(s)}
                 >
                   <div className="flex items-center gap-3">
                     {/* Play button */}
                     {s.hasRecording && (
                       <button
-                        onClick={() => play(s.id)}
+                        onClick={(e) => { e.stopPropagation(); play(s.id); }}
                         className={`w-[36px] h-[36px] rounded-lg flex items-center justify-center
                                     shrink-0 touch-manipulation
                           ${isPlaying
@@ -279,6 +285,13 @@ export function ProgressPage() {
 
       {/* Bottom padding */}
       <div className="h-[60px] shrink-0" />
+
+      {/* Session detail overlay */}
+      <SessionDetailPage
+        session={selectedSession}
+        visible={selectedSession !== null}
+        onClose={() => setSelectedSession(null)}
+      />
     </div>
   );
 }

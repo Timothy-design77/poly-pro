@@ -18,7 +18,8 @@
 **Phase 3: COMPLETE** — projects, presets, sessions, IndexedDB persistence.
 **Phase 4: COMPLETE** — recording system with raw PCM capture via AudioWorklet, BT stays on A2DP.
 **Phase 5: COMPLETE** — onset detection (dual-mode), spectral flux pipeline, scoring engine, analyzing overlay, detection settings UI.
-**Phase 6: IN PROGRESS** — latency calibration core built, awaiting user test.
+**Phase 6: COMPLETE** — latency calibration (loopback chirp test, 10 chirps, split offset model).
+**Phase 7: IN PROGRESS** — analytics + session detail built, awaiting user test.
 
 ### What's Built (as of commit c3621d7)
 
