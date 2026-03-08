@@ -104,7 +104,8 @@ export interface SessionRecord {
   autoLatencyMs?: number;
   sigmaLevel?: string;
   fatigueRatio?: number;
-  headlines?: string[];
+  maxDrift?: number;
+  headlines?: Array<{ text: string; link?: string }> | string[];
 }
 
 /** Onset data stored separately from session metadata (can be large) */

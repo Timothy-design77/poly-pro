@@ -148,6 +148,7 @@ function emptyAnalysis(bpm: number, durationMs: number): SessionAnalysis {
     rawOnsets: [],
     sigmaLevel: 'Beginner',
     fatigueRatio: 1,
-    headlines: ['Session too short for analysis'],
+    maxDrift: 0,
+    headlines: [{ text: 'Session too short for analysis' }],
   };
 }

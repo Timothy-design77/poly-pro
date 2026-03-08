@@ -7,7 +7,7 @@
  * React tree to SwipeNavigation and cause page swipes.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionRecord, HitEventsRecord } from '../store/db';
 import * as db from '../store/db';
@@ -36,6 +36,13 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('score');
   const [hitEvents, setHitEvents] = useState<HitEventsRecord | null>(null);
   const [loading, setLoading] = useState(false);
+  /** Which chart section to auto-open when navigating from headline */
+  const [openChart, setOpenChart] = useState<string | null>(null);
+
+  const handleNavigateChart = useCallback((chartId: string) => {
+    setOpenChart(chartId);
+    setActiveTab('charts');
+  }, []);
 
   // Load hit events when session changes
   useEffect(() => {
@@ -122,13 +129,13 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
         ) : (
           <>
             {activeTab === 'score' && (
-              <ScoreTab session={session} hitEvents={hitEvents} />
+              <ScoreTab session={session} hitEvents={hitEvents} onNavigateChart={handleNavigateChart} />
             )}
             {activeTab === 'timeline' && (
               <TimelineTab session={session} hitEvents={hitEvents} />
             )}
             {activeTab === 'charts' && (
-              <ChartsTab session={session} hitEvents={hitEvents} />
+              <ChartsTab session={session} hitEvents={hitEvents} autoOpenSection={openChart} />
             )}
             {activeTab === 'tune' && (
               <TuneTab session={session} hitEvents={hitEvents} />

@@ -219,15 +219,17 @@ export function TimelineTab({ session, hitEvents }: Props) {
     const waveMid = canvasHeight * 0.35;
     const onsetY = canvasHeight * 0.75;
 
-    // ─── Beat grid lines ───
-    if (hitEvents) {
-      // Reconstruct grid positions from scored onsets
-      const bpm = session.bpm;
-      const sub = session.subdivision || 1;
-      const meterNum = parseInt(session.meter.split('/')[0]) || 4;
-      const beatsPerMeasure = meterNum * sub;
-      const ioi = 60 / bpm / sub;
+    // ─── Beat grid lines + scoring window zones ───
+    const bpm = session.bpm;
+    const sub = session.subdivision || 1;
+    const meterNum = parseInt(session.meter.split('/')[0]) || 4;
+    const beatsPerMeasure = meterNum * sub;
+    const ioi = 60 / bpm / sub;
+    // Scoring window in seconds (default 5% of IOI)
+    const scoringWindowS = ioi * 0.05;
+    const scoringWindowPx = (scoringWindowS / durationS) * totalWidth;
 
+    {
       let t = 0;
       let beatIdx = 0;
       while (t < durationS) {
@@ -235,6 +237,13 @@ export function TimelineTab({ session, hitEvents }: Props) {
         const isDownbeat = beatIdx % beatsPerMeasure === 0;
         const isMainBeat = beatIdx % sub === 0;
 
+        // Green scoring window zone (only for main beats at higher zoom)
+        if (isMainBeat && scoringWindowPx > 1) {
+          ctx.fillStyle = 'rgba(74,222,128,0.06)';
+          ctx.fillRect(x - scoringWindowPx, 0, scoringWindowPx * 2, canvasHeight);
+        }
+
+        // Grid line
         ctx.strokeStyle = isDownbeat
           ? 'rgba(255,255,255,0.25)'
           : isMainBeat
@@ -297,6 +306,24 @@ export function TimelineTab({ session, hitEvents }: Props) {
         ctx.moveTo(x, onsetY);
         ctx.lineTo(x, onsetY + 20);
         ctx.stroke();
+
+        // Dashed deviation connector (onset → matched beat grid)
+        if (onset.scored && zoom >= 2) {
+          const gridX = (onset.matchedBeatTime / durationS) * totalWidth;
+          const absDev = Math.abs(onset.delta);
+          ctx.strokeStyle = absDev < 10
+            ? 'rgba(74,222,128,0.4)'
+            : absDev < 25
+              ? 'rgba(251,191,36,0.3)'
+              : 'rgba(248,113,113,0.3)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]);
+          ctx.beginPath();
+          ctx.moveTo(x, onsetY - 6);
+          ctx.lineTo(gridX, onsetY - 14);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
 
         // Deviation label at high zoom
         if (zoom >= 4 && onset.scored) {

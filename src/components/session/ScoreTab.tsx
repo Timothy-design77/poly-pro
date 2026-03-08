@@ -1,8 +1,8 @@
 /**
  * ScoreTab — default tab in session detail.
  *
- * Score hero, σ badge, metadata, headlines, stats grid,
- * "How was this computed?" expandable breakdown.
+ * Score hero, σ badge, metadata, tappable headlines (→ chart tab),
+ * stats grid (with drift), "How was this computed?" breakdown.
  */
 
 import { useState } from 'react';
@@ -12,9 +12,11 @@ import { HelpTip } from '../ui/HelpTip';
 interface Props {
   session: SessionRecord;
   hitEvents: HitEventsRecord | null;
+  /** Callback to switch to charts tab and open a specific section */
+  onNavigateChart?: (chartId: string) => void;
 }
 
-export function ScoreTab({ session }: Props) {
+export function ScoreTab({ session, hitEvents: _hitEvents, onNavigateChart }: Props) {
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   if (!session.analyzed) {
@@ -29,12 +31,17 @@ export function ScoreTab({ session }: Props) {
   const score = session.score ?? 0;
   const sigma = session.sigma ?? 0;
   const sigmaLevel = session.sigmaLevel ?? 'Beginner';
-  const headlines = session.headlines ?? [];
+  const rawHeadlines = session.headlines ?? [];
+  // Normalize headlines: handle both old string[] and new HeadlineItem[] format
+  const headlines = rawHeadlines.map((h) =>
+    typeof h === 'string' ? { text: h } : h
+  );
   const meanOffset = session.meanOffset ?? 0;
   const hitRate = session.hitRate ?? 0;
   const perfectPct = session.perfectPct ?? 0;
   const goodPct = session.goodPct ?? 0;
   const fatigueRatio = session.fatigueRatio ?? 1;
+  const maxDrift = session.maxDrift ?? 0;
   const totalScored = session.totalScored ?? session.totalHits;
   const totalExpected = session.totalExpected ?? 0;
   const scoringWindowMs = session.scoringWindowMs ?? 0;
@@ -80,16 +87,23 @@ export function ScoreTab({ session }: Props) {
         <MetaItem label="Duration" value={`${durationMin}:${String(durationSec).padStart(2, '0')}`} />
       </div>
 
-      {/* Headlines */}
+      {/* Tappable headlines → jump to chart */}
       {headlines.length > 0 && (
         <div className="space-y-1.5">
           {headlines.map((h, i) => (
-            <div
+            <button
               key={i}
-              className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2"
+              onClick={() => h.link && onNavigateChart?.(h.link)}
+              className={`w-full text-left bg-bg-surface rounded-lg border border-border-subtle px-3 py-2
+                ${h.link ? 'active:bg-bg-raised touch-manipulation' : ''}`}
             >
-              <p className="text-xs text-text-secondary">{h}</p>
-            </div>
+              <p className="text-xs text-text-secondary">
+                {h.text}
+                {h.link && (
+                  <span className="text-text-muted ml-1">→</span>
+                )}
+              </p>
+            </button>
           ))}
         </div>
       )}
@@ -99,20 +113,23 @@ export function ScoreTab({ session }: Props) {
         <div className="grid grid-cols-2 gap-2">
           <StatRow label="Mean Offset" value={`${meanOffset > 0 ? '+' : ''}${meanOffset.toFixed(1)}ms`}
             sub={Math.abs(meanOffset) < 5 ? 'centered' : meanOffset > 0 ? 'late' : 'early'}
-            help="Average timing deviation from the beat grid. Positive = late, negative = early. Near zero after calibration means you're centered." />
+            help="Average timing deviation from the beat grid. Positive = late, negative = early." />
           <StatRow label="Hit Rate" value={`${Math.round(hitRate * 100)}%`}
-            help="Percentage of expected beats where a hit was detected within the scoring window. Missed beats lower your score." />
+            help="Percentage of expected beats where a hit was detected within the scoring window." />
           <StatRow label="Perfect" value={`${Math.round(perfectPct)}%`}
             sub={`within ±${scoringWindowMs.toFixed(0)}ms`}
-            help="Percentage of your scored hits that landed within the scoring window — the tightest accuracy zone." />
+            help="Percentage of your scored hits that landed within the scoring window." />
           <StatRow label="Good" value={`${Math.round(goodPct)}%`}
             sub={`within ±${(scoringWindowMs * 1.5).toFixed(0)}ms`}
-            help="Percentage of scored hits within 1.5× the scoring window — slightly more forgiving than 'Perfect'." />
+            help="Percentage of scored hits within 1.5× the scoring window." />
           <StatRow label="Fatigue" value={fatigueRatio.toFixed(2) + '×'}
             sub={fatigueRatio > 1.4 ? 'timing degraded' : fatigueRatio < 0.8 ? 'improved' : 'stable'}
-            help="Compares your timing in the last quarter vs first quarter. >1.0× means timing got looser. <1.0× means you warmed up and improved." />
+            help="Compares your timing in the last quarter vs first quarter. >1.0× means timing got looser." />
+          <StatRow label="Max Drift" value={`${maxDrift > 0 ? '+' : ''}${maxDrift.toFixed(1)}ms`}
+            sub={Math.abs(maxDrift) < 10 ? 'minimal' : maxDrift > 0 ? 'drifted late' : 'drifted early'}
+            help="Largest smoothed timing drift during the session. Shows if you gradually speed up or slow down." />
           <StatRow label="Consistency" value={`σ ${sigma.toFixed(1)}ms`}
-            help="Standard deviation of timing deviations — the primary metric. Lower is better. Not affected by being consistently early/late." />
+            help="Standard deviation of timing deviations — the primary metric. Lower is better." />
         </div>
       </div>
 

@@ -114,8 +114,17 @@ export interface SessionAnalysis {
   sigmaLevel: SigmaLevel;
   /** Fatigue ratio: last-quarter σ / first-quarter σ */
   fatigueRatio: number;
-  /** Auto-generated text headlines */
-  headlines: string[];
+  /** Maximum drift from 0 in ms (smoothed running average) */
+  maxDrift: number;
+  /** Auto-generated text headlines with chart link tags */
+  headlines: HeadlineItem[];
+}
+
+/** Headline with optional chart tab link */
+export interface HeadlineItem {
+  text: string;
+  /** Which chart tab/section to jump to when tapped */
+  link?: 'distribution' | 'fatigue' | 'per-beat' | 'drift' | 'push-pull';
 }
 
 /** Sigma quality level */
@@ -142,14 +151,20 @@ export interface AnalysisConfig {
   scoringWindowPct: number;
   /** Flam merge as percentage of subdivision IOI (default 45%) */
   flamMergePct: number;
-  /** Noise gate energy threshold (default 0.05) */
+  /** Noise gate energy threshold (default 0.01) */
   noiseGate: number;
   /** Accent threshold multiplier (default 1.5) */
   accentThreshold: number;
   /** High-pass filter cutoff in Hz (0 = disabled) */
   highPassHz: number;
+  /** Band-pass center frequency in Hz (0 = off) */
+  bandPassHz: number;
   /** Manual latency offset in ms */
   latencyOffsetMs: number;
+  /** Manual bias correction in ms (-50 to +50) */
+  biasCorrection: number;
+  /** Input gain multiplier (0.5-3.0) */
+  inputGain: number;
   /** Sample rate of the recording */
   sampleRate: number;
 }
@@ -160,7 +175,10 @@ export const DEFAULT_ANALYSIS_CONFIG: AnalysisConfig = {
   noiseGate: 0.01,
   accentThreshold: 1.5,
   highPassHz: 0,
+  bandPassHz: 0,
   latencyOffsetMs: 0,
+  biasCorrection: 0,
+  inputGain: 1.0,
   sampleRate: 48000,
 };
 

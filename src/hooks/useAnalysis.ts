@@ -121,6 +121,7 @@ export function useAnalysis() {
           autoLatencyMs: result.autoLatencyMs,
           sigmaLevel: result.sigmaLevel,
           fatigueRatio: result.fatigueRatio,
+          maxDrift: result.maxDrift,
           headlines: result.headlines,
         });
 

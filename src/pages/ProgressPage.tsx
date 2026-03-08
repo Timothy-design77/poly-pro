@@ -202,7 +202,9 @@ export function ProgressPage() {
               const score = s.analyzed ? (s.score ?? 0) : s.perfectPct;
               const sigmaLabel = s.analyzed && s.sigmaLevel ? s.sigmaLevel : null;
               const sigma = s.analyzed && s.sigma !== undefined ? s.sigma : null;
-              const headline = s.analyzed && s.headlines?.length ? s.headlines[0] : null;
+              const headline = s.analyzed && s.headlines?.length
+                ? (typeof s.headlines[0] === 'string' ? s.headlines[0] : (s.headlines[0] as any).text)
+                : null;
               return (
                 <div
                   key={s.id}

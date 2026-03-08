@@ -198,49 +198,108 @@ function computeSigma(values: number[]): number {
   return Math.sqrt(variance);
 }
 
+// ─── Drift Computation ───
+
+/**
+ * Compute max drift — the largest smoothed running average offset from 0.
+ */
+function computeMaxDrift(scoredOnsets: ScoredOnset[]): number {
+  const scored = scoredOnsets.filter((o) => o.scored);
+  if (scored.length < 10) return 0;
+
+  const windowSize = Math.min(10, Math.max(3, Math.floor(scored.length / 10)));
+  let maxDrift = 0;
+
+  for (let i = 0; i <= scored.length - windowSize; i++) {
+    const window = scored.slice(i, i + windowSize);
+    const avg = window.reduce((s, o) => s + o.delta, 0) / window.length;
+    if (Math.abs(avg) > Math.abs(maxDrift)) maxDrift = avg;
+  }
+
+  return maxDrift;
+}
+
 // ─── Headline Generation ───
+
+import type { HeadlineItem } from './types';
 
 function generateHeadlines(
   analysis: Omit<SessionAnalysis, 'headlines'>,
-): string[] {
-  const headlines: string[] = [];
+): HeadlineItem[] {
+  const headlines: HeadlineItem[] = [];
 
-  // Primary: sigma level
+  // 1. Personal best check — σ quality level
   if (analysis.sigma <= 10) {
-    headlines.push(`Professional-level consistency: σ = ${analysis.sigma.toFixed(1)}ms`);
+    headlines.push({
+      text: `Professional-level consistency: σ = ${analysis.sigma.toFixed(1)}ms`,
+      link: 'distribution',
+    });
   } else if (analysis.sigma <= 20) {
-    headlines.push(`Tight timing: σ = ${analysis.sigma.toFixed(1)}ms`);
+    headlines.push({
+      text: `Tight timing: σ = ${analysis.sigma.toFixed(1)}ms`,
+      link: 'distribution',
+    });
   }
 
-  // Fatigue
+  // 2. Fatigue
   if (analysis.fatigueRatio > 1.4) {
     const degradePct = Math.round((analysis.fatigueRatio - 1) * 100);
-    headlines.push(`Timing degraded ${degradePct}% toward session end`);
+    headlines.push({
+      text: `Timing degraded ${degradePct}% toward session end`,
+      link: 'fatigue',
+    });
   } else if (analysis.fatigueRatio < 0.8 && analysis.totalScored > 20) {
-    headlines.push('Timing improved as session progressed');
+    headlines.push({
+      text: 'Timing improved as session progressed',
+      link: 'fatigue',
+    });
   }
 
-  // Systematic bias
+  // 3. Systematic bias
   if (Math.abs(analysis.meanOffset) > 15) {
     const dir = analysis.meanOffset > 0 ? 'late' : 'early';
-    headlines.push(
-      `Systematic ${dir} bias: ${Math.abs(analysis.meanOffset).toFixed(1)}ms average`,
-    );
+    headlines.push({
+      text: `Systematic ${dir} bias: ${Math.abs(analysis.meanOffset).toFixed(1)}ms average`,
+      link: 'push-pull',
+    });
   } else if (Math.abs(analysis.meanOffset) < 5 && analysis.totalScored > 10) {
-    headlines.push('Excellent center — minimal timing bias');
+    headlines.push({
+      text: 'Excellent center — minimal timing bias',
+      link: 'distribution',
+    });
   }
 
-  // Hit rate
+  // 4. Drift
+  if (Math.abs(analysis.maxDrift) > 30) {
+    const dir = analysis.maxDrift > 0 ? 'late' : 'early';
+    headlines.push({
+      text: `Tempo drifted ${Math.abs(analysis.maxDrift).toFixed(0)}ms ${dir} during session`,
+      link: 'drift',
+    });
+  }
+
+  // 5. Hit rate
   if (analysis.hitRate < 0.90 && analysis.totalExpected > 10) {
     const missed = analysis.totalExpected - analysis.totalScored;
-    headlines.push(
-      `Missed ${missed} beats — ${Math.round(analysis.hitRate * 100)}% hit rate`,
-    );
+    headlines.push({
+      text: `Missed ${missed} beats — ${Math.round(analysis.hitRate * 100)}% hit rate`,
+      link: 'per-beat',
+    });
   }
 
-  // Perfect percentage
+  // 6. Perfect percentage
   if (analysis.perfectPct > 90) {
-    headlines.push(`${Math.round(analysis.perfectPct)}% of hits within scoring window`);
+    headlines.push({
+      text: `${Math.round(analysis.perfectPct)}% of hits within scoring window`,
+      link: 'distribution',
+    });
+  }
+
+  // 7. First session at this tempo
+  if (analysis.totalScored > 0 && analysis.totalScored < 50) {
+    headlines.push({
+      text: `First session at ${analysis.bpm} BPM — baseline established`,
+    });
   }
 
   // Limit to 4 headlines max
@@ -337,6 +396,9 @@ export function computeSessionAnalysis(
   // Fatigue
   const fatigueRatio = computeFatigueRatio(scoredOnsets);
 
+  // Drift
+  const maxDrift = computeMaxDrift(scoredOnsets);
+
   onProgress?.({ stage: 'grid-scoring', progress: 1 });
 
   const noiseFloor = 0; // Already computed upstream, passed through
@@ -363,7 +425,8 @@ export function computeSessionAnalysis(
     rawOnsets,
     sigmaLevel: getSigmaLevel(sigma),
     fatigueRatio,
-    headlines: [] as string[],
+    maxDrift,
+    headlines: [] as HeadlineItem[],
   };
 
   // Generate headlines

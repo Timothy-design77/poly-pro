@@ -82,6 +82,41 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
       ctx.fill();
       ctx.globalAlpha = 1;
 
+      // ─── Breakdown point marker ───
+      // Find where σ first exceeds 1.3× the session average (fatigue onset)
+      const avgSigma = points.reduce((s, p) => s + p.sigma, 0) / points.length;
+      const breakdownThreshold = avgSigma * 1.3;
+      let breakdownPoint: typeof points[0] | null = null;
+      for (let i = Math.floor(points.length * 0.3); i < points.length; i++) {
+        if (points[i].sigma > breakdownThreshold) {
+          breakdownPoint = points[i];
+          break;
+        }
+      }
+      if (breakdownPoint) {
+        const bx = pad.left + (breakdownPoint.time / maxTime) * chartW;
+        const by = pad.top + chartH - (breakdownPoint.sigma / maxSigma) * chartH;
+        // Vertical dashed line
+        ctx.strokeStyle = 'rgba(248,113,113,0.4)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(bx, pad.top);
+        ctx.lineTo(bx, pad.top + chartH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Circle marker
+        ctx.fillStyle = '#F87171';
+        ctx.beginPath();
+        ctx.arc(bx, by, 4, 0, Math.PI * 2);
+        ctx.fill();
+        // Label
+        ctx.fillStyle = '#F87171';
+        ctx.font = '8px "DM Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('breakdown', bx, pad.top - 2);
+      }
+
       // Y axis labels
       ctx.fillStyle = '#4A4A52';
       ctx.font = '9px "JetBrains Mono", monospace';
