@@ -63,7 +63,7 @@ class AudioEngine {
 
   private soundsLoaded = false;
   private isRunning = false;
-  private recordingBoost = 1.0; // multiplied with master gain during recording
+  private recordingBoost = 1.0; // multiplied with outputGain during recording (v1 pattern)
   private _warmedUp = false;
   private _warmUpPromise: Promise<void> | null = null;
 
@@ -116,7 +116,7 @@ class AudioEngine {
 
     this.masterGain = this.audioCtx.createGain();
     const vol = useMetronomeStore.getState().volume;
-    this.masterGain.gain.value = vol * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+    this.masterGain.gain.value = vol * MASTER_GAIN_MULTIPLIER;
 
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.outputGain);
@@ -174,7 +174,7 @@ class AudioEngine {
     }
 
     if (this.masterGain) {
-      this.masterGain.gain.value = useMetronomeStore.getState().volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+      this.masterGain.gain.value = useMetronomeStore.getState().volume * MASTER_GAIN_MULTIPLIER;
     }
 
     this.schedule();
@@ -225,10 +225,20 @@ class AudioEngine {
    * Boost metronome volume to compensate for Android's getUserMedia ducking.
    * Call with true when recording starts, false when it stops.
    */
+  /**
+   * V1-proven: boost outputGain (AFTER compressor, speakers only).
+   * Recording taps upstream from masterGain, so boost doesn't affect recorded levels.
+   * Default: oG = 4.0. During recording: oG = 4.0 * lBst (default 2x = 8.0).
+   */
   setRecordingBoost(active: boolean): void {
     this.recordingBoost = active ? RECORDING_GAIN_BOOST : 1.0;
-    if (this.masterGain) {
-      this.masterGain.gain.value = useMetronomeStore.getState().volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+    if (this.outputGain && this.audioCtx) {
+      // Use setTargetAtTime for smooth transition (v1 uses .02 time constant)
+      this.outputGain.gain.setTargetAtTime(
+        OUTPUT_GAIN * this.recordingBoost,
+        this.audioCtx.currentTime,
+        0.02
+      );
     }
   }
 
@@ -242,7 +252,7 @@ class AudioEngine {
     const settings = useSettingsStore.getState();
 
     if (this.masterGain) {
-      this.masterGain.gain.value = useMetronomeStore.getState().volume * MASTER_GAIN_MULTIPLIER * this.recordingBoost;
+      this.masterGain.gain.value = useMetronomeStore.getState().volume * MASTER_GAIN_MULTIPLIER;
     }
 
     const now = ctx.currentTime;
@@ -536,6 +546,11 @@ class AudioEngine {
     this.beatCallbacks.add(callback);
     return () => this.beatCallbacks.delete(callback);
   }
+
+  // ─── Accessors for recording hook ───
+
+  getAudioCtx(): AudioContext | null { return this.audioCtx; }
+  getMasterGain(): GainNode | null { return this.masterGain; }
 
   // ─── Cleanup ───
 
