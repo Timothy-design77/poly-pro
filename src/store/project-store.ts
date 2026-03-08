@@ -33,7 +33,6 @@ function captureSnapshot(): MetronomeSnapshot {
     playMuteCycleMuteBars: m.playMuteCycleMuteBars,
     clickSound: s.clickSound,
     accentSound: s.accentSound,
-    clickVolume: s.clickVolume,
     accentSoundThreshold: s.accentSoundThreshold,
     hapticEnabled: s.hapticEnabled,
     vibrationIntensity: s.vibrationIntensity,
@@ -68,7 +67,6 @@ function restoreSnapshot(snap: MetronomeSnapshot): void {
   useSettingsStore.setState({
     clickSound: snap.clickSound,
     accentSound: snap.accentSound,
-    clickVolume: snap.clickVolume,
     accentSoundThreshold: snap.accentSoundThreshold,
     hapticEnabled: snap.hapticEnabled,
     vibrationIntensity: snap.vibrationIntensity,

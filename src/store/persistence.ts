@@ -17,6 +17,7 @@ const SETTINGS_KEY = 'settings-state';
 // (exclude transient fields like playing, currentBeats, playStartTime, currentBar)
 
 interface PersistedMetronome {
+  _schemaVersion?: number; // Added in v2 — used to detect stale data from broken audio era
   bpm: number;
   meterNumerator: number;
   meterDenominator: number;
@@ -39,8 +40,12 @@ interface PersistedMetronome {
   playMuteCycleMuteBars: number;
 }
 
+// Current schema version — bump when persisted shape changes
+const SCHEMA_VERSION = 2;
+
 function pickMetronome(state: ReturnType<typeof useMetronomeStore.getState>): PersistedMetronome {
   return {
+    _schemaVersion: SCHEMA_VERSION,
     bpm: state.bpm,
     meterNumerator: state.meterNumerator,
     meterDenominator: state.meterDenominator,
@@ -67,7 +72,6 @@ function pickMetronome(state: ReturnType<typeof useMetronomeStore.getState>): Pe
 interface PersistedSettings {
   clickSound: string;
   accentSound: string;
-  clickVolume: number;
   accentSoundThreshold: number;
   hapticEnabled: boolean;
   vibrationIntensity: number;
@@ -81,7 +85,6 @@ function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): Pers
   return {
     clickSound: state.clickSound,
     accentSound: state.accentSound,
-    clickVolume: state.clickVolume,
     accentSoundThreshold: state.accentSoundThreshold,
     hapticEnabled: state.hapticEnabled,
     vibrationIntensity: state.vibrationIntensity,
@@ -156,7 +159,6 @@ function saveActiveProjectSnapshot() {
       playMuteCycleMuteBars: m.playMuteCycleMuteBars,
       clickSound: s.clickSound,
       accentSound: s.accentSound,
-      clickVolume: s.clickVolume,
       accentSoundThreshold: s.accentSoundThreshold,
       hapticEnabled: s.hapticEnabled,
       vibrationIntensity: s.vibrationIntensity,
@@ -180,6 +182,13 @@ export async function hydrateStores(): Promise<void> {
   ]);
 
   if (metronomeData) {
+    // If data is from before schema v2 (the broken audio era), reset volume to safe default
+    if (!metronomeData._schemaVersion || metronomeData._schemaVersion < SCHEMA_VERSION) {
+      console.info('Persistence: upgrading from schema v%d → v%d, resetting volume to default',
+        metronomeData._schemaVersion ?? 1, SCHEMA_VERSION);
+      metronomeData.volume = 0.8; // DEFAULT_VOLUME
+    }
+
     // Apply persisted state (only the fields we saved — don't touch transient state)
     useMetronomeStore.setState(metronomeData);
     // Rebuild track-0 to match persisted meter/subdivision/grouping

@@ -81,7 +81,6 @@ export interface SettingsState {
   // Sound
   clickSound: string;
   accentSound: string;
-  clickVolume: number;
   /** Volume level at or above which the accent sound is used instead of normal */
   accentSoundThreshold: number;
 
@@ -106,7 +105,6 @@ export interface SettingsState {
   // Actions
   setClickSound: (id: string) => void;
   setAccentSound: (id: string) => void;
-  setClickVolume: (vol: number) => void;
   setAccentSoundThreshold: (level: number) => void;
   setHapticEnabled: (enabled: boolean) => void;
   setVibrationIntensity: (intensity: number) => void;

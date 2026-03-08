@@ -34,7 +34,7 @@ export const COMPRESSOR_ATTACK = 0.002;
 export const COMPRESSOR_RELEASE = 0.05;
 export const OUTPUT_GAIN = 4.0;
 export const MASTER_GAIN_MULTIPLIER = 8.0;
-export const RECORDING_GAIN_BOOST = 3.0;
+export const RECORDING_GAIN_BOOST = 2.0; // v1's lBst=2 — outputGain goes 4.0→8.0 during recording
 
 // ─── Meter Defaults ───
 export const DEFAULT_METER_NUMERATOR = 4;

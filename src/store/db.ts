@@ -36,7 +36,7 @@ export interface MetronomeSnapshot {
   // Settings
   clickSound: string;
   accentSound: string;
-  clickVolume: number;
+  clickVolume?: number; // DEPRECATED — volume is now only in metronomeStore.volume. Kept optional for IDB backward compat.
   accentSoundThreshold: number;
   hapticEnabled: boolean;
   vibrationIntensity: number;
