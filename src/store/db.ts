@@ -148,29 +148,55 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains('settings')) {
-          db.createObjectStore('settings');
+    dbPromise = new Promise<IDBPDatabase>((resolve, reject) => {
+      // Timeout: if the upgrade is blocked for >3s, delete and retry
+      let blocked = false;
+      const timeout = setTimeout(() => {
+        if (blocked) {
+          console.warn('[db] IDB upgrade blocked for 3s — deleting old DB and retrying');
+          dbPromise = null;
+          indexedDB.deleteDatabase(DB_NAME);
+          // Retry after delete
+          setTimeout(() => {
+            getDB().then(resolve, reject);
+          }, 200);
         }
-        if (!db.objectStoreNames.contains('presets')) {
-          db.createObjectStore('presets', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('projects')) {
-          db.createObjectStore('projects', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('sessions')) {
-          const store = db.createObjectStore('sessions', { keyPath: 'id' });
-          store.createIndex('projectId', 'projectId');
-          store.createIndex('date', 'date');
-        }
-        if (!db.objectStoreNames.contains('recordings')) {
-          db.createObjectStore('recordings');
-        }
-        if (!db.objectStoreNames.contains('instrumentProfiles')) {
-          db.createObjectStore('instrumentProfiles', { keyPath: 'name' });
-        }
-      },
+      }, 3000);
+
+      openDB(DB_NAME, DB_VERSION, {
+        upgrade(db) {
+          if (!db.objectStoreNames.contains('settings')) {
+            db.createObjectStore('settings');
+          }
+          if (!db.objectStoreNames.contains('presets')) {
+            db.createObjectStore('presets', { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains('projects')) {
+            db.createObjectStore('projects', { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains('sessions')) {
+            const store = db.createObjectStore('sessions', { keyPath: 'id' });
+            store.createIndex('projectId', 'projectId');
+            store.createIndex('date', 'date');
+          }
+          if (!db.objectStoreNames.contains('recordings')) {
+            db.createObjectStore('recordings');
+          }
+          if (!db.objectStoreNames.contains('instrumentProfiles')) {
+            db.createObjectStore('instrumentProfiles', { keyPath: 'name' });
+          }
+        },
+        blocked(currentVersion, blockedVersion) {
+          blocked = true;
+          console.warn(`[db] IDB upgrade blocked: v${currentVersion} → v${blockedVersion}. Old connection still open.`);
+        },
+      }).then((db) => {
+        clearTimeout(timeout);
+        resolve(db);
+      }).catch((err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
     });
   }
   return dbPromise;

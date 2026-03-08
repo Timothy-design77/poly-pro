@@ -16,16 +16,27 @@ export function App() {
   const loadInstruments = useInstrumentStore((s) => s.loadFromDB);
 
   useEffect(() => {
+    // Safety timeout: if DB is blocked (e.g. stale SW holding v2 connection),
+    // force the app to load after 5 seconds rather than hang forever.
+    const safetyTimer = setTimeout(() => {
+      setReady((prev) => {
+        if (!prev) console.warn('[app] Startup timeout — forcing load (DB may be blocked)');
+        return true;
+      });
+    }, 5000);
+
     Promise.all([loadProjects(), loadSessions(), loadInstruments(), hydrateStores()])
       .then(() => {
+        clearTimeout(safetyTimer);
         startPersistence();
         setReady(true);
       })
       .catch((err) => {
+        clearTimeout(safetyTimer);
         console.error('Failed to load data:', err);
         setReady(true);
       });
-  }, [loadProjects, loadSessions]);
+  }, [loadProjects, loadSessions, loadInstruments]);
 
   if (!ready) {
     return (
