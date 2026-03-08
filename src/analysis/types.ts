@@ -164,6 +164,54 @@ export const DEFAULT_ANALYSIS_CONFIG: AnalysisConfig = {
   sampleRate: 48000,
 };
 
+// ─── Detection Presets ───
+
+export type DetectionPresetName = 'Standard' | 'Strict' | 'Forgiving' | 'Noisy Room' | 'Custom';
+
+export interface DetectionPreset {
+  name: DetectionPresetName;
+  scoringWindowPct: number;
+  flamMergePct: number;
+  noiseGate: number;
+  highPassHz: number;
+  description: string;
+}
+
+export const DETECTION_PRESETS: DetectionPreset[] = [
+  {
+    name: 'Standard',
+    scoringWindowPct: 5,
+    flamMergePct: 45,
+    noiseGate: 0.05,
+    highPassHz: 0,
+    description: 'Default — balanced for most rooms',
+  },
+  {
+    name: 'Strict',
+    scoringWindowPct: 2,
+    flamMergePct: 25,
+    noiseGate: 0.10,
+    highPassHz: 0,
+    description: 'Advanced players, quiet rooms',
+  },
+  {
+    name: 'Forgiving',
+    scoringWindowPct: 8,
+    flamMergePct: 60,
+    noiseGate: 0.03,
+    highPassHz: 0,
+    description: 'Beginners — wider scoring window',
+  },
+  {
+    name: 'Noisy Room',
+    scoringWindowPct: 6,
+    flamMergePct: 45,
+    noiseGate: 0.15,
+    highPassHz: 150,
+    description: 'High gate, 150Hz high-pass filter',
+  },
+];
+
 // ─── Analysis Progress ───
 
 export type AnalysisStage =

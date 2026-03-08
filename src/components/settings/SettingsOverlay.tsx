@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { SoundSettings } from './SoundSettings';
 import { VibrationSettings } from './VibrationSettings';
+import { DetectionSettings } from './DetectionSettings';
 import { useSettingsStore } from '../../store/settings-store';
 
 interface SectionProps {
@@ -127,7 +128,7 @@ export function SettingsContent() {
           </svg>
         }
       >
-        <div className="text-sm text-text-muted py-2">Coming in Phase 5</div>
+        <DetectionSettings />
       </CollapsibleSection>
 
       {/* Section 4: Vibration */}

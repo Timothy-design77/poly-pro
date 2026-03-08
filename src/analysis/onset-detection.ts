@@ -6,10 +6,10 @@
  *
  * Pipeline stages:
  *   1. Noise floor estimation (first 500ms of silence)
- *   2. Auto-latency detection (click bleed cross-correlation) — STUB for now
- *   3. Coarse onset detection (spectral flux, 256-sample window)
+ *   2. Auto-latency detection (click bleed cross-correlation) — STUB for Phase 6
+ *   3. Coarse onset detection (spectral flux, 256-sample window, 128-sample hop)
  *   4. Fine onset refinement (32-sample window, quadratic peak interpolation)
- *   5. Flam analysis (merge double-peaks)
+ *   5. Flam analysis (merge double-peaks within tempo-scaled window)
  *   6. Spectral feature extraction (deferred to Phase 8)
  *
  * All processing at native sample rate (48kHz).
@@ -24,33 +24,86 @@ import type {
 
 type ProgressCallback = (progress: AnalysisProgress) => void;
 
-// ─── FFT Helpers (real-only, radix-2 via DFT for simplicity) ───
+// ─── Radix-2 Cooley-Tukey FFT ───
 
 /**
- * Compute magnitude spectrum of a real signal frame.
- * Uses a basic DFT approach — sufficient for our 256/1024-point windows.
- * If performance becomes an issue, swap for WASM FFT later.
+ * In-place radix-2 FFT. N must be a power of 2.
+ * real[] and imag[] are modified in place.
  */
-function magnitudeSpectrum(frame: Float32Array, fftSize: number): Float32Array {
-  const N = fftSize;
-  const magnitudes = new Float32Array(N / 2 + 1);
+function fftInPlace(real: Float32Array, imag: Float32Array): void {
+  const N = real.length;
 
-  for (let k = 0; k <= N / 2; k++) {
-    let real = 0;
-    let imag = 0;
-    for (let n = 0; n < N; n++) {
-      const angle = (-2 * Math.PI * k * n) / N;
-      real += frame[n] * Math.cos(angle);
-      imag += frame[n] * Math.sin(angle);
+  // Bit-reversal permutation
+  for (let i = 1, j = 0; i < N; i++) {
+    let bit = N >> 1;
+    while (j & bit) {
+      j ^= bit;
+      bit >>= 1;
     }
-    magnitudes[k] = Math.sqrt(real * real + imag * imag);
+    j ^= bit;
+    if (i < j) {
+      let tmp = real[i]; real[i] = real[j]; real[j] = tmp;
+      tmp = imag[i]; imag[i] = imag[j]; imag[j] = tmp;
+    }
   }
 
+  // Butterfly stages
+  for (let len = 2; len <= N; len <<= 1) {
+    const halfLen = len >> 1;
+    const angle = -2 * Math.PI / len;
+    const wReal = Math.cos(angle);
+    const wImag = Math.sin(angle);
+
+    for (let i = 0; i < N; i += len) {
+      let curReal = 1;
+      let curImag = 0;
+
+      for (let j = 0; j < halfLen; j++) {
+        const a = i + j;
+        const b = a + halfLen;
+
+        const tReal = curReal * real[b] - curImag * imag[b];
+        const tImag = curReal * imag[b] + curImag * real[b];
+
+        real[b] = real[a] - tReal;
+        imag[b] = imag[a] - tImag;
+        real[a] += tReal;
+        imag[a] += tImag;
+
+        const nextReal = curReal * wReal - curImag * wImag;
+        const nextImag = curReal * wImag + curImag * wReal;
+        curReal = nextReal;
+        curImag = nextImag;
+      }
+    }
+  }
+}
+
+/**
+ * Compute magnitude spectrum of a real signal frame using radix-2 FFT.
+ * Returns N/2+1 magnitudes (DC through Nyquist).
+ */
+function magnitudeSpectrum(frame: Float32Array, fftSize: number): Float32Array {
+  const real = new Float32Array(fftSize);
+  const imag = new Float32Array(fftSize);
+
+  // Copy frame into real part (zero-pad if shorter)
+  const copyLen = Math.min(frame.length, fftSize);
+  for (let i = 0; i < copyLen; i++) {
+    real[i] = frame[i];
+  }
+
+  fftInPlace(real, imag);
+
+  const magnitudes = new Float32Array((fftSize >> 1) + 1);
+  for (let k = 0; k <= fftSize >> 1; k++) {
+    magnitudes[k] = Math.sqrt(real[k] * real[k] + imag[k] * imag[k]);
+  }
   return magnitudes;
 }
 
 /**
- * Apply Hann window to a frame.
+ * Apply Hann window in-place to a frame.
  */
 function hannWindow(frame: Float32Array): Float32Array {
   const N = frame.length;
@@ -71,6 +124,28 @@ function rmsEnergy(frame: Float32Array): number {
     sum += frame[i] * frame[i];
   }
   return Math.sqrt(sum / frame.length);
+}
+
+// ─── High-Pass Filter ───
+
+/**
+ * Simple first-order IIR high-pass filter applied in-place.
+ * y[n] = α * (y[n-1] + x[n] - x[n-1])
+ * where α = RC / (RC + dt), RC = 1 / (2π × cutoffHz)
+ */
+export function applyHighPass(pcm: Float32Array, sampleRate: number, cutoffHz: number): Float32Array {
+  if (cutoffHz <= 0) return pcm;
+
+  const dt = 1 / sampleRate;
+  const rc = 1 / (2 * Math.PI * cutoffHz);
+  const alpha = rc / (rc + dt);
+
+  const out = new Float32Array(pcm.length);
+  out[0] = pcm[0];
+  for (let i = 1; i < pcm.length; i++) {
+    out[i] = alpha * (out[i - 1] + pcm[i] - pcm[i - 1]);
+  }
+  return out;
 }
 
 // ─── Stage 1: Noise Floor ───
@@ -111,7 +186,7 @@ export function detectAutoLatency(
  * Spectral flux onset detection.
  *
  * Algorithm:
- * 1. STFT with hop through the recording
+ * 1. STFT with hop through the recording (256-sample window, 128-sample hop)
  * 2. Compute log-compressed spectral flux between consecutive frames
  * 3. Half-wave rectify (keep only increases)
  * 4. Adaptive threshold (median + factor × MAD over a local window)
@@ -121,7 +196,6 @@ export function detectOnsetsCoarse(
   pcm: Float32Array,
   sampleRate: number,
   noiseFloor: number,
-  _config: AnalysisConfig,
   onProgress?: ProgressCallback,
 ): DetectedOnset[] {
   const windowSize = 256;
@@ -156,8 +230,8 @@ export function detectOnsetsCoarse(
 
     prevMag = mag;
 
-    // Progress reporting every ~1000 hops
-    if (onProgress && hop % 1000 === 0) {
+    // Progress + yield every 2000 hops (~500ms of audio)
+    if (onProgress && hop % 2000 === 0) {
       onProgress({
         stage: 'coarse-onset',
         progress: hop / totalHops,
@@ -274,7 +348,6 @@ export function refineOnsets(
     }
 
     if (energies.length < 3 || maxHop === 0 || maxHop === energies.length - 1) {
-      // Can't interpolate at edges, keep coarse time
       refined.push(onset);
       continue;
     }
@@ -284,7 +357,6 @@ export function refineOnsets(
     const e_peak = energies[maxHop];
     const e_next = energies[maxHop + 1];
 
-    // Fractional offset: p = 0.5 * (e_prev - e_next) / (e_prev - 2*e_peak + e_next)
     const denom = e_prev - 2 * e_peak + e_next;
     let fractionalOffset = 0;
     if (Math.abs(denom) > 1e-10) {
@@ -331,7 +403,6 @@ export function analyzeFlams(
 ): DetectedOnset[] {
   if (onsets.length < 2) return [...onsets];
 
-  // Sort by time
   const sorted = [...onsets].sort((a, b) => a.time - b.time);
   const merged: DetectedOnset[] = [];
   let i = 0;
@@ -339,13 +410,11 @@ export function analyzeFlams(
   while (i < sorted.length) {
     const current = sorted[i];
 
-    // Check if next onset is within flam window
     if (i + 1 < sorted.length) {
       const next = sorted[i + 1];
       const gap = next.time - current.time;
 
       if (gap < flamMergeSeconds) {
-        // Merge: keep the louder one's time
         const primary = current.peak >= next.peak ? current : next;
         merged.push({
           time: primary.time,
@@ -353,7 +422,7 @@ export function analyzeFlams(
           flux: Math.max(current.flux, next.flux),
           isFlam: true,
         });
-        i += 2; // Skip both
+        i += 2;
         continue;
       }
     }
@@ -373,12 +442,6 @@ export function extractSpectralFeatures(
   _sampleRate: number,
   _onsetTime: number,
 ): SpectralFeatures | null {
-  // Phase 8 will implement full spectral feature extraction:
-  // - 1024-point FFT centered on onset
-  // - Spectral centroid, bandwidth, rolloff
-  // - Zero-crossing rate
-  // - Energy per band (sub-bass, low, mid, hi-mid, high)
-  // - Attack time, decay profile
   return null;
 }
 
@@ -386,13 +449,6 @@ export function extractSpectralFeatures(
 
 /**
  * Run the complete onset detection pipeline on raw PCM audio.
- *
- * @param pcm - Raw Float32 PCM samples at `sampleRate`
- * @param config - Analysis parameters
- * @param bpm - Session BPM (for tempo-scaled windows)
- * @param subdivision - Subdivision factor
- * @param onProgress - Progress callback
- * @returns Array of detected onsets
  */
 export async function runOnsetDetection(
   pcm: Float32Array,
@@ -406,8 +462,6 @@ export async function runOnsetDetection(
   autoLatencyMs: number;
 }> {
   const sampleRate = config.sampleRate;
-
-  // Yield to main thread between stages to keep UI responsive
   const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
 
   // Stage 1: Noise floor estimation
@@ -423,13 +477,18 @@ export async function runOnsetDetection(
   onProgress?.({ stage: 'latency-detect', progress: 1 });
   await yieldToMain();
 
+  // Apply high-pass filter if configured
+  let processedPcm = pcm;
+  if (config.highPassHz > 0) {
+    processedPcm = applyHighPass(pcm, sampleRate, config.highPassHz);
+  }
+
   // Stage 3: Coarse onset detection
   onProgress?.({ stage: 'coarse-onset', progress: 0 });
   const coarseOnsets = detectOnsetsCoarse(
-    pcm,
+    processedPcm,
     sampleRate,
     effectiveNoiseGate,
-    config,
     onProgress,
   );
   onProgress?.({ stage: 'coarse-onset', progress: 1 });
@@ -437,7 +496,7 @@ export async function runOnsetDetection(
 
   // Stage 4: Fine onset refinement
   onProgress?.({ stage: 'fine-onset', progress: 0 });
-  const refinedOnsets = refineOnsets(pcm, sampleRate, coarseOnsets);
+  const refinedOnsets = refineOnsets(processedPcm, sampleRate, coarseOnsets);
   onProgress?.({ stage: 'fine-onset', progress: 1 });
   await yieldToMain();
 

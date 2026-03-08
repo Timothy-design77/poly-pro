@@ -88,12 +88,14 @@ export interface SettingsState {
   hapticEnabled: boolean;
   vibrationIntensity: number;
 
-  // Detection (stubs for now)
+  // Detection
   sensitivity: number;
-  scoringWindow: number;
-  flamMergeWindow: number;
-  accentThreshold: number;
-  noiseFloor: number;
+  scoringWindowPct: number;    // % of IOI (default 5)
+  flamMergePct: number;        // % of subdivision IOI (default 45)
+  noiseGate: number;           // energy threshold (default 0.05)
+  accentThreshold: number;     // multiplier (default 1.5)
+  highPassHz: number;          // high-pass cutoff, 0 = off
+  detectionPreset: string;     // 'Standard' | 'Strict' | 'Forgiving' | 'Noisy Room' | 'Custom'
 
   // Calibration
   latencyOffset: number;
@@ -106,6 +108,12 @@ export interface SettingsState {
   setVibrationIntensity: (intensity: number) => void;
   setLatencyOffset: (offset: number) => void;
   setSensitivity: (value: number) => void;
+  setScoringWindowPct: (value: number) => void;
+  setFlamMergePct: (value: number) => void;
+  setNoiseGate: (value: number) => void;
+  setAccentThreshold: (value: number) => void;
+  setHighPassHz: (value: number) => void;
+  setDetectionPreset: (name: string) => void;
   resetToDefaults: () => void;
 }
 

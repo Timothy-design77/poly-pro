@@ -77,6 +77,13 @@ interface PersistedSettings {
   vibrationIntensity: number;
   latencyOffset: number;
   sensitivity: number;
+  // Detection (Phase 5)
+  scoringWindowPct: number;
+  flamMergePct: number;
+  noiseGate: number;
+  accentThreshold: number;
+  highPassHz: number;
+  detectionPreset: string;
 }
 
 function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): PersistedSettings {
@@ -88,6 +95,12 @@ function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): Pers
     vibrationIntensity: state.vibrationIntensity,
     latencyOffset: state.latencyOffset,
     sensitivity: state.sensitivity,
+    scoringWindowPct: state.scoringWindowPct,
+    flamMergePct: state.flamMergePct,
+    noiseGate: state.noiseGate,
+    accentThreshold: state.accentThreshold,
+    highPassHz: state.highPassHz,
+    detectionPreset: state.detectionPreset,
   };
 }
 

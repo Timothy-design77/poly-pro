@@ -13,6 +13,7 @@ import { analyzeSession } from '../analysis/index';
 import type { AnalysisProgress, SessionAnalysis } from '../analysis/types';
 import type { ScheduledBeat } from '../audio/types';
 import { useSessionStore } from '../store/session-store';
+import { useSettingsStore } from '../store/settings-store';
 import * as db from '../store/db';
 
 export interface AnalysisState {
@@ -68,6 +69,9 @@ export function useAnalysis() {
           throw new Error('No recording found for session');
         }
 
+        // Read detection config from settings store
+        const settings = useSettingsStore.getState();
+
         // Run analysis
         const result = await analyzeSession({
           pcmBlob,
@@ -79,6 +83,14 @@ export function useAnalysis() {
           scheduledBeats: params.scheduledBeats,
           recordingStartTime: params.recordingStartTime,
           recordingEndTime: params.recordingEndTime,
+          config: {
+            scoringWindowPct: settings.scoringWindowPct,
+            flamMergePct: settings.flamMergePct,
+            noiseGate: settings.noiseGate,
+            accentThreshold: settings.accentThreshold,
+            highPassHz: settings.highPassHz,
+            latencyOffsetMs: settings.latencyOffset,
+          },
           onProgress: (progress) => {
             if (!abortRef.current) {
               setState((s) => ({ ...s, progress }));
