@@ -16,7 +16,7 @@
 **Phase 1: COMPLETE** — metronome engine functional, sample-based sounds, BPM controls wired.
 **Phase 2: COMPLETE** — advanced metronome features, trainer, practice modes, polyrhythm.
 **Phase 3: COMPLETE** — projects, presets, sessions, IndexedDB persistence.
-**Phase 4: IN PROGRESS** — recording system deployed, awaiting user verification of audio volume fix.
+**Phase 4: COMPLETE** — recording system with raw PCM capture via AudioWorklet, BT stays on A2DP.
 
 ### What's Built (as of commit c3621d7)
 
@@ -192,7 +192,8 @@ User needs to test on Galaxy Z Fold 7:
 ### What's Next: Phase 5
 
 Begin onset detection and dual-mode analysis. See Phase 5 section below. Key deliverables:
-- Post-processing spectral flux pipeline on decoded PCM
+- Real-time energy threshold onset detection in AudioWorklet (Mode 1 — now unblocked)
+- Post-processing spectral flux pipeline on raw PCM (Mode 2)
 - Scoring formula (consistency σ as primary metric)
 - Session detail with score, deviations, metrics
 - "Analyzing..." overlay with progress stages
@@ -268,8 +269,8 @@ The v1 codebase is a single `index.html` file with ~1620 lines of minified-style
 | Styling | Tailwind CSS |
 | Deploy | GitHub Pages via GitHub Actions |
 | Font | DM Sans (UI text) + JetBrains Mono (all numbers) |
-| Recording | MediaRecorder (Opus 256kbps) → decodeAudioData → Float32 PCM. Mic never touches AudioContext (avoids Android ducking). See §2 Architecture Decision: Recording. |
-| Analysis | Post-processing spectral flux pipeline on decoded PCM. Real-time onset detection deferred (requires AudioContext mic connection → Android ducking). |
+| Recording | Raw PCM capture at 48kHz from AudioWorklet. Built-in mic forced via deviceId to keep BT on A2DP. See §2 Architecture Decision: Recording. |
+| Analysis | Dual-mode: real-time energy threshold in AudioWorklet for feedback + spectral flux post-processing for scoring |
 | Calibration | Automated loopback chirp test (5 chirps, cross-correlation, ~6 seconds) |
 
 ---
@@ -284,7 +285,7 @@ Zustand (state management — 1KB, no boilerplate, works outside React)
 IndexedDB via `idb` (replaces localStorage — no 5MB cap)
 Tailwind CSS (utility-first styling)
 vite-plugin-pwa (service worker + manifest generation)
-Web Audio API (audio engine) + AudioWorklet (Phase 5: post-recording analysis if needed)
+Web Audio API + AudioWorklet (audio engine + mic capture + Phase 5 analysis)
 Canvas API (charts — custom, no library, no SVG charts)
 ```
 
@@ -350,31 +351,33 @@ This is how v1 works and it's correct. The `25ms` interval and `100ms` lookahead
 
 **NOTE:** No `routineStore` — routines are deferred to post-v2.
 
-### Architecture Decision: Recording (Updated March 2026)
+### Architecture Decision: Recording (Resolved March 2026)
 
-**Decision: Use MediaRecorder (Opus 256kbps) + decodeAudioData, NOT AudioWorklet for mic capture.**
+**Decision: AudioWorklet for raw PCM capture at 48kHz. MediaRecorder eliminated.**
 
-**Why AudioWorklet was rejected:** On Android, calling `createMediaStreamSource()` to connect a mic stream to ANY AudioContext triggers the OS audio focus system to switch from `STREAM_MUSIC` to communication mode. This ducks all audio output by ~50-70%. The metronome becomes nearly inaudible during recording. This is an OS-level behavior, not a Chrome bug — Android assumes any app simultaneously using mic + speaker is making a phone call. No web API can prevent it.
+**Background:** Initial testing suggested `createMediaStreamSource()` triggered Android's communication mode (A2DP → HFP BT switch, audio ducking). This turned out to be wrong. The actual cause was the mic selection code: a "dummy" `getUserMedia({audio: true})` call to unlock device labels was selecting the BT mic as default, triggering the HFP switch. Even stopping that stream immediately didn't undo the BT profile change.
 
-**Why MediaRecorder works:** MediaRecorder captures audio from the getUserMedia stream independently — no AudioContext connection needed. The mic stream is never connected to the metronome's AudioContext. Android never enters communication mode. Metronome stays at full volume.
+**Fix:** Force the built-in phone mic via explicit `deviceId` constraint. Use `enumerateDevices()` without a dummy stream when permission was previously granted (labels already visible). When a dummy stream is needed (first-ever permission), request with `sampleRate: {ideal: 48000}` to steer Chrome away from BT HFP mics (which only support 8/16kHz).
 
-**What about analysis precision?** Opus at 256kbps preserves percussion transients well. Its CELT layer has explicit transient detection using short 2.5ms MDCT blocks. The codec delay (~26.5ms) is constant across all samples, so relative onset timing is preserved exactly. After recording, `decodeAudioData()` converts the entire Opus stream to Float32 PCM at 48kHz — identical to what AudioWorklet would have produced. Scoring windows (±25-50ms) are an order of magnitude wider than any codec timing uncertainty.
+**Result:** AudioWorklet with `createMediaStreamSource()` works perfectly on Galaxy Z Fold 7 with BT earbuds. BT stays on A2DP (ANC preserved), metronome stays at full volume, and we get true raw Float32 PCM.
 
-**Tradeoffs accepted:**
-- No real-time mic level metering during recording (connecting mic to AudioContext would trigger ducking)
-- No live onset detection during recording (Mode 1 from the original plan is deferred — onset detection happens post-recording only)
-- `decodeAudioData()` processes the entire recording at once (memory consideration for 30-min sessions: ~173MB Float32)
+**Benefits of AudioWorklet over MediaRecorder:**
+- True raw Float32 PCM at 48kHz — no Opus encode/decode round-trip
+- Real-time mic level metering for waveform display
+- Real-time onset detection during recording (Phase 5 Mode 1)
+- No 173MB `decodeAudioData()` memory spike after 30-min recordings
+- PCM chunks stream to IDB in 1-second intervals (no memory growth)
 
 **Audio output chain (v1-proven, restored):**
 ```
 clicks → per-beat gain (0.0–1.0)
-       → masterGain (volume × 8.0, default 0.8 → 6.4)
+       → masterGain (volume^1.5 × 8.0, default 0.8 → ~5.7)
        → compressor (threshold=0dB, knee=3, ratio=2:1, attack=0.002, release=0.05)
        → outputGain (4.0, or 8.0 during recording via ×2.0 boost)
-       → destination (speakers)
+       → destination (speakers / BT A2DP)
 ```
 
-**Recording boost:** outputGain goes from 4.0 → 8.0 during recording (v1's `lBst=2` pattern). This compensates for any residual Android ducking from just having getUserMedia active. The boost is AFTER the compressor and only affects speaker output.
+**Recording boost:** outputGain goes from 4.0 → 8.0 during recording (v1's `lBst=2` pattern). Compensates for any residual Android ducking.
 
 ---
 
@@ -553,9 +556,9 @@ No horizontal overflow, no clipping
 | Persistence | localStorage (5MB cap, sync writes) | IndexedDB with debounced writes (500ms) |
 | Navigation | Swipe-based, no URLs, no back button | 3-page swipe, deep-linkable session detail |
 | Error handling | No error boundaries, native confirm() | Error boundaries per page, custom Modal component |
-| Recording | MediaRecorder compressed blobs | MediaRecorder (Opus 256kbps) → decodeAudioData → Float32 PCM. Mic isolated from AudioContext to avoid Android ducking. |
+| Recording | MediaRecorder compressed blobs | Raw PCM from AudioWorklet (float32, 48kHz). Built-in mic forced to keep BT on A2DP. |
 | Styling | Inline style objects, new on every render | Tailwind utility classes |
-| Analysis | Main thread only, real-time | Post-processing on decoded PCM (spectral flux pipeline). Real-time deferred. |
+| Analysis | Main thread only, real-time | Dual-mode: real-time visual in AudioWorklet + offline post-processing |
 | Sound engine | Synth functions (22 sounds) | Sample-based AudioBuffer (10-12 CC0 samples) |
 
 ---
@@ -834,7 +837,8 @@ poly-pro/
     │   ├── sounds.ts          (AudioBuffer loader + catalog)
     │   ├── types.ts
     │   └── worklets/
-    │       └── analyzer.worklet.ts    (P5: real-time onset detection)
+    │       ├── analyzer.worklet.ts    (P5: real-time onset detection)
+    │       └── pcm-capture.js         (P4: raw PCM capture from mic)
     │
     ├── analysis/
     │   ├── onset-detection.ts    (P5: spectral flux post-processing)
@@ -1381,44 +1385,52 @@ const DB_VERSION = 1;
 ## 12. Phase 4: Recording System
 
 ### Goal
-Mic recording with full metronome volume preserved on Android. Post-recording decode to 48kHz Float32 PCM for analysis. No memory growth.
+Raw PCM mic recording at 48kHz via AudioWorklet. Full metronome volume preserved with BT earbuds (A2DP, not HFP). No memory growth.
 
-### Recording Architecture (UPDATED — see §2 Architecture Decision: Recording)
+### Recording Architecture (FINAL — see §2 Architecture Decision: Recording)
 
 ```
-getUserMedia (raw: no AEC/AGC/NS) → MediaRecorder (Opus 256kbps, 1s chunks)
-  ↓ on stop
-Blob → decodeAudioData() → Float32 PCM at 48kHz → IDB (for analysis)
-                                                  + compressed blob → IDB (for playback)
+getUserMedia (built-in mic forced, raw: no AEC/AGC/NS)
+  → createMediaStreamSource (same AudioContext as metronome)
+  → AudioWorkletNode (pcm-capture.js)
+    ├── Raw Float32 PCM chunks (1s each) → MessagePort → main thread → IDB
+    ├── Real-time peak level → waveform display
+    └── (Phase 5: real-time onset detection)
+  → silentGain(0) → destination (keeps worklet alive, mic not audible)
 
-Metronome AudioContext (completely separate — mic never touches it):
-clicks → per-beat gain → masterGain(vol×8) → compressor(0dB,2:1) → outputGain(4.0 or 8.0) → speakers
+Metronome runs on the SAME AudioContext:
+clicks → per-beat gain → masterGain → compressor → outputGain(4.0 or 8.0) → destination
 ```
 
-**Key: mic stream and metronome AudioContext are fully isolated. This avoids Android's communication mode switch that ducks audio output.**
+**Key: BT stays on A2DP because we force the built-in phone mic via explicit deviceId. The BT mic is never activated, so Android never switches to HFP call mode.**
 
 ### getUserMedia constraints (CRITICAL)
 
 ```javascript
 {
   audio: {
+    deviceId: { exact: builtInMicId },  // MUST specify to avoid BT HFP switch
     echoCancellation: { exact: false },  // MASTER SWITCH on Chrome Android
     autoGainControl: { exact: false },   // disables entire processing pipeline
     noiseSuppression: { exact: false },
+    sampleRate: { ideal: 48000 },
+    channelCount: 1,
   }
 }
 ```
 
-Using `{exact: false}` (not plain `false`) is required to reliably disable processing on Chrome Android. Confirmed by Chrome/WebRTC team.
+### Mic Selection (src/utils/mic.ts — CRITICAL for BT)
 
-⚠️ If `autoGainControl` cannot be reliably disabled on Galaxy Z Fold 7, ALL energy-based metrics are at risk. Use `verifyRawAudio()` to confirm settings took effect.
+1. `enumerateDevices()` first — if permission previously granted, labels are visible. Pick built-in mic by filtering out BT keywords. No dummy stream needed.
+2. Only if labels empty (first-ever visit): request dummy stream with `sampleRate: {ideal: 48000}` (BT HFP mics only support 8/16kHz, so Chrome prefers built-in). Stop immediately, enumerate with labels, then re-request built-in.
+3. Samsung-specific keywords: 'bottom' (primary mic), 'built-in', 'internal', 'camcorder'.
 
 ### Files (Implemented)
-- `src/hooks/useRecording.ts` — full recording lifecycle (MediaRecorder, no AudioWorklet)
-- `src/utils/mic.ts` — mic selection with BT avoidance + raw audio verification
-- `src/components/metronome/RecordButton.tsx` — fully wired
-- `src/components/metronome/WaveformDisplay.tsx` — static recording indicator
-- `src/audio/engine.ts` — setRecordingBoost() on outputGain (v1 pattern)
+- `public/worklets/pcm-capture.js` — AudioWorklet processor (float32 capture + peak metering)
+- `src/hooks/useRecording.ts` — full recording lifecycle (AudioWorklet)
+- `src/hooks/usePlayback.ts` — playback via Web Audio (raw PCM + legacy compressed compat)
+- `src/utils/mic.ts` — built-in mic selection with BT avoidance
+- `src/audio/engine.ts` — setRecordingBoost() on outputGain, perceptual volume curve
 - `src/utils/constants.ts` — RECORDING_GAIN_BOOST = 2.0 (v1's lBst)
 - `src/store/persistence.ts` — schema version migration for stale volume values
 
@@ -1431,64 +1443,65 @@ Using `{exact: false}` (not plain `false`) is required to reliably disable proce
 **Starting:**
 - Tap RECORD while metronome running (or tap RECORD to auto-start metronome)
 - RECORD button turns red
-- getUserMedia acquires mic (raw constraints, built-in mic preferred over BT)
-- MediaRecorder starts (Opus 256kbps, 1s data chunks)
-- outputGain boosted ×2 to compensate for any residual Android ducking
-- Elapsed timer begins
+- getUserMedia acquires built-in mic (explicit deviceId, raw constraints)
+- AudioWorklet loaded, mic → worklet → silentGain → destination
+- outputGain boosted ×2 for any residual ducking
+- Worklet begins streaming Float32 PCM chunks to main thread
+- Real-time mic peak level drives waveform display
 
 **During recording:**
 - All controls remain usable (BPM, accent pattern, subdivision)
 - RECORD button becomes STOP RECORDING
-- Static recording indicator in waveform area (no live metering — would require AudioContext connection, triggering ducking)
-- BT earbud tip shown once if BT detected
+- Waveform bar shows live mic level from worklet
+- BT tip shown if BT detected (shows mic name)
 
 **Stopping:**
-1. Tap STOP RECORDING → recorder.stop() → wait for final data
-2. Combine MediaRecorder chunks into single Opus/WebM blob
-3. decodeAudioData() → Float32 PCM for analysis
-4. Save to IDB: session record + PCM blob + compressed playback blob
-5. Restore outputGain to normal (remove boost)
-6. Stop metronome, navigate to Progress page
+1. Tap STOP RECORDING → worklet.postMessage('stop') → final chunk flushed
+2. Combine Float32 chunks into single buffer
+3. Save to IDB as raw PCM blob
+4. Restore outputGain, stop metronome, navigate to Progress page
 
 **Rules:**
 - No pause/resume. One session = one continuous take.
 - Maximum 30 minutes. Warning at 25:00: "Recording will auto-stop at 30:00."
-- Always captures at 48kHz (via Opus at 256kbps). Analysis precision preserved.
+- Always captures at true 48kHz Float32 (no codec, no compression).
 
 ### Post-Analysis Audio Handling
 
 After post-processing completes, the user's retention policy determines what happens:
 
 **Options (set in Settings > Recording):**
-1. **Compress to Opus** (default) — keep the playback blob, delete the PCM blob. (~2-3MB per 5 min)
-2. **Keep raw PCM** — retain decoded PCM for N days (7/14/30/60/90). Enables re-analysis.
+1. **Compress to Opus** (default) — raw PCM → Opus/WebM (~2-3MB per 5 min). Keeps playback. Loses re-analysis.
+2. **Keep raw PCM** — full 48kHz retained for N days (7/14/30/60/90). Enables re-analysis.
 3. **Delete audio** — discard all audio immediately after analysis. Metrics saved. No playback.
 
-**What persists forever regardless of audio retention:** Session metadata, onset array, deviation array, all computed metrics, spectral features, classification labels, headlines, analysis parameters. (~50-300KB per session)
+**What persists forever regardless of audio retention:** Session metadata, onset array, deviation array, all computed metrics. (~50-300KB per session)
 
-### 🧪 USER TEST GATE — Ask user to test:
-- [ ] Metronome plays at full volume (clear, loud clicks at default 80%)
-- [ ] Volume slider works (drag 0→100%, hear the change)
-- [ ] Tap RECORD → metronome stays loud (recording boost active)
-- [ ] Tap STOP → session appears in Progress page with correct BPM/meter
-- [ ] BT earbuds connected → click plays through BT, mic uses built-in
-- [ ] 5-minute recording → no crash, no memory warning
+### 🧪 USER TEST GATE — PASSED ✅
+- [x] Metronome plays at full volume (clear, loud clicks at default 80%)
+- [x] Volume slider works (perceptual curve, drag 0→100%)
+- [x] Tap RECORD → BT stays on ANC, metronome stays loud
+- [x] Tap STOP → session appears in Progress page
+- [x] Playback works from session list
+- [x] BT earbuds connected → A2DP preserved, built-in mic used
 
 ---
 
 ## 13. Phase 5: Onset Detection + Dual-Mode Analysis
 
 ### Goal
-Post-processing onset detection for all scoring and metrics. Real-time feedback deferred.
+Dual-mode onset detection: real-time for visual feedback, post-processing for all scoring.
 
-**⚠️ With the MediaRecorder recording architecture (mic isolated from AudioContext to avoid Android ducking), real-time onset detection during recording is not possible. All onset detection is post-processing.**
+**⚠️ This phase describes BOTH modes. Real-time is preview only. Post-processing is truth.**
 
-### ~~Mode 1: Real-Time (during recording)~~ — DEFERRED
+### Mode 1: Real-Time (during recording)
 
-**Status:** Deferred. Would require connecting mic to AudioContext, which triggers Android communication mode and ducks metronome audio. May revisit if a future browser API (e.g. MediaStreamTrackProcessor for audio) provides raw frames without AudioContext connection.
-
-~~**Purpose:** Live feedback only (beat dots light up, basic hit indication)~~
-~~**Runs in:** AudioWorklet (`analyzer.worklet.ts`), must complete within 2.67ms per block~~
+**Status:** UNBLOCKED — AudioWorklet capture confirmed working on Galaxy Z Fold 7 with BT.
+**Purpose:** Live feedback only (beat dots light up, basic hit indication)
+**Runs in:** AudioWorklet (`pcm-capture.js` extended, or separate `analyzer.worklet.ts`), must complete within 2.67ms per block
+**Algorithm:** Simple energy threshold (port from v1 `dO()`)
+**Precision:** ±2-3ms
+**Output:** Approximate onset times for visual feedback only
 
 ### Mode 2: Post-Processing (after recording stops) — PRIMARY
 
@@ -2172,7 +2185,7 @@ Agent should:
 - **All touch targets ≥ 44x44px**
 - **All charts are Canvas-based** — no SVG charts
 - **No routine code in v2** — routines deferred to post-v2
-- **Recording uses MediaRecorder + decodeAudioData** — mic never touches the metronome AudioContext (avoids Android ducking). Analysis runs on decoded Float32 PCM post-recording.
+- **Recording captures raw PCM via AudioWorklet** — never rely on MediaRecorder for analysis input. Built-in mic must be forced via deviceId to prevent BT HFP switch.
 - **Scoring window scales with tempo** — expressed as % of IOI, not fixed ms
 - **Consistency (σ) is the primary metric** — not mean offset, not accuracy %
 - **Build exactly what the preview files show** — no alternative designs without user approval

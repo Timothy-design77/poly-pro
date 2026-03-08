@@ -79,50 +79,7 @@ function RecordingSettings() {
 }
 
 /**
- * Debug settings — AudioWorklet recording test toggle.
- */
-function DebugSettings() {
-  const [workletMode, setWorkletMode] = useState(() => {
-    try { return localStorage.getItem('poly-pro-debug-worklet') === '1'; } catch { return false; }
-  });
-
-  const toggle = () => {
-    const next = !workletMode;
-    setWorkletMode(next);
-    try { localStorage.setItem('poly-pro-debug-worklet', next ? '1' : '0'); } catch {}
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-text-primary">AudioWorklet Recording</p>
-          <p className="text-[10px] text-text-muted mt-0.5">
-            Connects mic to AudioContext for raw PCM. Tests if this triggers Android call mode / BT HFP switch.
-          </p>
-        </div>
-        <button
-          onClick={toggle}
-          className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-3
-            ${workletMode ? 'bg-[rgba(255,255,255,0.3)]' : 'bg-bg-raised'}`}
-        >
-          <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform
-            ${workletMode ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
-        </button>
-      </div>
-      <div className={`text-xs font-mono px-2 py-1.5 rounded ${workletMode ? 'bg-[rgba(251,191,36,0.15)] text-[#FBBF24]' : 'bg-bg-raised text-text-muted'}`}>
-        Mode: {workletMode ? 'AudioWorklet (raw PCM)' : 'MediaRecorder (Opus → decode)'}
-      </div>
-      <p className="text-[10px] text-text-muted leading-relaxed">
-        Toggle takes effect on the NEXT recording. If AudioWorklet keeps BT on A2DP and metronome stays loud,
-        it means we can use raw PCM capture permanently with real-time onset detection.
-      </p>
-    </div>
-  );
-}
-
-/**
- * Settings overlay content — 6 collapsible sections + debug.
+ * Settings overlay content — 6 collapsible sections.
  * Phase 1: Sounds + Vibration are functional.
  * Others show "Coming soon" stubs.
  */
@@ -214,21 +171,6 @@ export function SettingsContent() {
         }
       >
         <div className="text-sm text-text-muted py-2">Coming in Phase 10</div>
-      </CollapsibleSection>
-
-      {/* Section 7: Debug — AudioWorklet test */}
-      <CollapsibleSection
-        title="Debug"
-        icon={
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M12 20h.01" />
-            <path d="M8 16V8a4 4 0 0 1 8 0v8" />
-            <path d="M4 12h2M18 12h2" />
-          </svg>
-        }
-      >
-        <DebugSettings />
       </CollapsibleSection>
     </div>
   );
