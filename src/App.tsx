@@ -14,25 +14,23 @@ export function App() {
   const loadSessions = useSessionStore((s) => s.loadFromDB);
 
   useEffect(() => {
-    // Timeout guard: if IDB is blocked by old SW/tab, don't hang forever
-    const timeout = setTimeout(() => {
-      console.warn('App init timed out after 5s — proceeding without IDB');
-      setReady(true);
-    }, 5000);
+    const init = () =>
+      Promise.all([loadProjects(), loadSessions(), hydrateStores()])
+        .then(() => {
+          startPersistence();
+          setReady(true);
+        });
 
-    Promise.all([loadProjects(), loadSessions(), hydrateStores()])
-      .then(() => {
-        clearTimeout(timeout);
-        startPersistence();
-        setReady(true);
-      })
-      .catch((err) => {
-        clearTimeout(timeout);
-        console.error('Failed to load data:', err);
-        setReady(true);
-      });
-
-    return () => clearTimeout(timeout);
+    init().catch((err) => {
+      console.warn('First init attempt failed, retrying in 1s:', err);
+      // Retry once — the blocked upgrade may have resolved after old SW died
+      setTimeout(() => {
+        init().catch((err2) => {
+          console.error('Init retry failed:', err2);
+          setReady(true); // Load anyway with defaults
+        });
+      }, 1000);
+    });
   }, [loadProjects, loadSessions]);
 
   if (!ready) {

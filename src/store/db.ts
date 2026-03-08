@@ -9,7 +9,6 @@ export interface PolyProDB {
   projects: { key: string; value: ProjectRecord };
   sessions: { key: string; value: SessionRecord };
   recordings: { key: string; value: Blob };
-  hitEvents: { key: string; value: HitEventsRecord };
 }
 
 export interface MetronomeSnapshot {
@@ -135,10 +134,15 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion) {
-        // v1 stores
-        if (oldVersion < 1) {
+    dbPromise = new Promise<IDBPDatabase>((resolve, reject) => {
+      // Timeout: if upgrade is blocked by old SW/tab for >3s, reject and retry
+      const timeout = setTimeout(() => {
+        dbPromise = null;
+        reject(new Error('IDB open timed out — old connection may be blocking upgrade'));
+      }, 3000);
+
+      openDB(DB_NAME, DB_VERSION, {
+        upgrade(db) {
           if (!db.objectStoreNames.contains('settings')) {
             db.createObjectStore('settings');
           }
@@ -156,27 +160,18 @@ function getDB(): Promise<IDBPDatabase> {
           if (!db.objectStoreNames.contains('recordings')) {
             db.createObjectStore('recordings');
           }
-        }
-        // v2: hitEvents store for onset data
-        if (oldVersion < 2) {
-          if (!db.objectStoreNames.contains('hitEvents')) {
-            db.createObjectStore('hitEvents', { keyPath: 'sessionId' });
-          }
-        }
-      },
-      blocked() {
-        // Old connection is blocking the upgrade.
-        // This happens when old SW or stale tab holds v1 open.
-        console.warn('IDB upgrade blocked by old connection. Will retry after timeout.');
-      },
-      blocking() {
-        // THIS connection is blocking a newer version.
-        console.warn('IDB: this connection is blocking a newer version.');
-      },
-      terminated() {
-        console.warn('IDB connection terminated unexpectedly');
+        },
+        blocked() {
+          console.warn('IDB upgrade blocked by old connection — will timeout and retry');
+        },
+      }).then((db) => {
+        clearTimeout(timeout);
+        resolve(db);
+      }).catch((err) => {
+        clearTimeout(timeout);
         dbPromise = null;
-      },
+        reject(err);
+      });
     });
   }
   return dbPromise;
@@ -267,19 +262,28 @@ export async function deleteRecording(sessionId: string): Promise<void> {
   await db.delete('recordings', sessionId);
 }
 
-// ─── Hit Events ───
+// ─── Hit Events (stored in recordings store with key prefix) ───
 
 export async function putHitEvents(record: HitEventsRecord): Promise<void> {
   const db = await getDB();
-  await db.put('hitEvents', record);
+  const serialized = JSON.stringify(record);
+  const blob = new Blob([serialized], { type: 'application/json' });
+  await db.put('recordings', blob, `hitevents:${record.sessionId}`);
 }
 
 export async function getHitEvents(sessionId: string): Promise<HitEventsRecord | undefined> {
   const db = await getDB();
-  return db.get('hitEvents', sessionId);
+  const blob: Blob | undefined = await db.get('recordings', `hitevents:${sessionId}`);
+  if (!blob) return undefined;
+  try {
+    const text = await blob.text();
+    return JSON.parse(text) as HitEventsRecord;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function deleteHitEvents(sessionId: string): Promise<void> {
   const db = await getDB();
-  await db.delete('hitEvents', sessionId);
+  await db.delete('recordings', `hitevents:${sessionId}`);
 }
