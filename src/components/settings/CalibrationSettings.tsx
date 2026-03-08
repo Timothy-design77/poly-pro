@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { CalibrationPage } from '../../pages/CalibrationPage';
+import { HelpTip } from '../ui/HelpTip';
 
 export function CalibrationSettings() {
   const calibratedOffset = useSettingsStore((s) => s.calibratedOffset);
@@ -34,7 +35,10 @@ export function CalibrationSettings() {
     <div className="space-y-4">
       {/* Effective offset */}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-text-secondary">Effective Offset</span>
+        <span className="text-xs text-text-secondary flex items-center gap-1">
+          Effective Offset
+          <HelpTip text="Total latency compensation applied during analysis. Calibrated base + your fine-tune adjustment. This is subtracted from every detected onset time." />
+        </span>
         <span className="text-sm font-mono font-bold text-text-primary">
           {calibratedOffset === 0 && !lastCalibratedAt
             ? 'Not calibrated'
@@ -82,7 +86,10 @@ export function CalibrationSettings() {
       {/* Fine-tune slider: ±50ms on top of calibrated value */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-text-secondary">Fine-Tune</span>
+          <span className="text-xs text-text-secondary flex items-center gap-1">
+            Fine-Tune
+            <HelpTip text="Adjust on top of the calibrated value. If your mean offset is consistently off by a few ms, nudge this to center it." />
+          </span>
           <span className="text-xs font-mono text-text-primary">
             {manualAdjustment > 0 ? '+' : ''}{manualAdjustment.toFixed(1)}ms
           </span>

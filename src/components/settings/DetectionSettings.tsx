@@ -8,6 +8,7 @@
 
 import { useSettingsStore } from '../../store/settings-store';
 import { DETECTION_PRESETS } from '../../analysis/types';
+import { HelpTip } from '../ui/HelpTip';
 
 export function DetectionSettings() {
   const scoringWindowPct = useSettingsStore((s) => s.scoringWindowPct);
@@ -28,8 +29,9 @@ export function DetectionSettings() {
     <div className="space-y-4">
       {/* Preset picker */}
       <div>
-        <label className="text-[10px] text-text-muted font-medium uppercase tracking-wider block mb-1.5">
+        <label className="text-[10px] text-text-muted font-medium uppercase tracking-wider flex items-center gap-1 mb-1.5">
           Detection Preset
+          <HelpTip text="Presets configure all detection sliders at once. Choose based on your room and skill level. Adjusting any slider individually switches to 'Custom'." />
         </label>
         <div className="flex flex-wrap gap-1.5">
           {DETECTION_PRESETS.map((p) => (
@@ -68,9 +70,8 @@ export function DetectionSettings() {
         step={0.5}
         format={(v) => `${v}% IOI`}
         onChange={setScoringWindowPct}
+        help="How close to the beat a hit must land to be scored."
       />
-
-      {/* Flam Merge */}
       <SliderRow
         label="Flam Merge"
         value={flamMergePct}
@@ -79,6 +80,7 @@ export function DetectionSettings() {
         step={1}
         format={(v) => `${v}% sub`}
         onChange={setFlamMergePct}
+        help="Two hits closer than this get merged into one."
       />
 
       {/* Noise Gate */}
@@ -90,6 +92,7 @@ export function DetectionSettings() {
         step={0.005}
         format={(v) => v.toFixed(3)}
         onChange={setNoiseGate}
+        help="Sounds below this energy are ignored. Raise for noisy rooms."
       />
 
       {/* Accent Threshold */}
@@ -101,6 +104,7 @@ export function DetectionSettings() {
         step={0.05}
         format={(v) => `${v.toFixed(2)}×`}
         onChange={setAccentThreshold}
+        help="How much louder a hit must be to count as an accent."
       />
 
       {/* High-Pass Cutoff */}
@@ -112,6 +116,7 @@ export function DetectionSettings() {
         step={5}
         format={(v) => v === 0 ? 'Off' : `${v} Hz`}
         onChange={setHighPassHz}
+        help="Filters low-frequency noise before detection. 100-200Hz for noisy rooms."
       />
     </div>
   );
@@ -127,13 +132,17 @@ interface SliderRowProps {
   step: number;
   format: (value: number) => string;
   onChange: (value: number) => void;
+  help?: string;
 }
 
-function SliderRow({ label, value, min, max, step, format, onChange }: SliderRowProps) {
+function SliderRow({ label, value, min, max, step, format, onChange, help }: SliderRowProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-text-secondary">{label}</span>
+        <span className="text-xs text-text-secondary flex items-center gap-1">
+          {label}
+          {help && <HelpTip text={help} />}
+        </span>
         <span className="text-xs font-mono text-text-primary">{format(value)}</span>
       </div>
       <input

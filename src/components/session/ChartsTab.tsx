@@ -10,6 +10,7 @@ import { FatigueChart } from '../analytics/FatigueChart';
 import { PerBeatChart } from '../analytics/PerBeatChart';
 import { DriftChart } from '../analytics/DriftChart';
 import { PushPullChart } from '../analytics/PushPullChart';
+import { HelpTip } from '../ui/HelpTip';
 
 interface Props {
   session: SessionRecord;
@@ -43,23 +44,28 @@ export function ChartsTab({ session, hitEvents }: Props) {
 
   return (
     <div ref={containerRef} className="space-y-2">
-      <ChartSection title="Timing Distribution" defaultOpen>
+      <ChartSection title="Timing Distribution" defaultOpen
+        help="Shows the shape of your timing spread. A tight bell curve centered on zero = great consistency. Wide or skewed = room for improvement.">
         <DistributionChart hitEvents={hitEvents} width={chartWidth} height={180} />
       </ChartSection>
 
-      <ChartSection title="Fatigue Curve">
+      <ChartSection title="Fatigue Curve"
+        help="Tracks your σ (consistency) over the course of the session. Rising line = timing degrading as you tire. Flat or falling = stamina is solid.">
         <FatigueChart hitEvents={hitEvents} width={chartWidth} height={160} durationMs={session.durationMs} />
       </ChartSection>
 
-      <ChartSection title="Per-Beat Timing">
+      <ChartSection title="Per-Beat Timing"
+        help="Shows which beats in the measure you play tightest (green bars) vs loosest (red bars). White dots show mean offset — if a dot is high, you're consistently late on that beat.">
         <PerBeatChart hitEvents={hitEvents} width={chartWidth} height={160} />
       </ChartSection>
 
-      <ChartSection title="Drift">
+      <ChartSection title="Drift"
+        help="Shows if your timing drifts systematically over the session. Line above zero = drifting late. Below zero = drifting early. Flat near zero = rock solid.">
         <DriftChart hitEvents={hitEvents} width={chartWidth} height={160} durationMs={session.durationMs} />
       </ChartSection>
 
-      <ChartSection title="Push/Pull Profile">
+      <ChartSection title="Push/Pull Profile"
+        help="Mean offset per beat position. Amber bars = you tend to play that beat late (pushing). Blue bars = you play it early (pulling). Good players often have a slight push/pull pattern — it's called 'feel'.">
         <PushPullChart hitEvents={hitEvents} width={chartWidth} height={160} />
       </ChartSection>
     </div>
@@ -69,10 +75,12 @@ export function ChartsTab({ session, hitEvents }: Props) {
 function ChartSection({
   title,
   defaultOpen = false,
+  help,
   children,
 }: {
   title: string;
   defaultOpen?: boolean;
+  help?: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -83,7 +91,10 @@ function ChartSection({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-3 py-2.5 touch-manipulation"
       >
-        <span className="text-xs font-semibold text-text-secondary">{title}</span>
+        <span className="text-xs font-semibold text-text-secondary flex items-center gap-1.5">
+          {title}
+          {help && <HelpTip text={help} />}
+        </span>
         <svg
           width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2" strokeLinecap="round"

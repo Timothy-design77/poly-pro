@@ -15,6 +15,7 @@ import { ScoreTab } from '../components/session/ScoreTab';
 import { TimelineTab } from '../components/session/TimelineTab';
 import { ChartsTab } from '../components/session/ChartsTab';
 import { TuneTab } from '../components/session/TuneTab';
+import { HelpTip } from '../components/ui/HelpTip';
 
 type TabId = 'score' | 'timeline' | 'charts' | 'tune';
 
@@ -24,11 +25,11 @@ interface Props {
   onClose: () => void;
 }
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'score', label: 'Score' },
-  { id: 'timeline', label: 'Timeline' },
-  { id: 'charts', label: 'Charts' },
-  { id: 'tune', label: 'Tune' },
+const TABS: { id: TabId; label: string; help: string }[] = [
+  { id: 'score', label: 'Score', help: 'Overall session score, consistency metrics, and auto-generated insights about your playing.' },
+  { id: 'timeline', label: 'Timeline', help: 'DAW-style view of your recording with onset markers, metronome grid, and scoring controls.' },
+  { id: 'charts', label: 'Charts', help: 'Detailed charts showing timing distribution, fatigue, per-beat analysis, drift, and push/pull patterns.' },
+  { id: 'tune', label: 'Tune', help: 'Adjust analysis parameters and see how they affect your score in real-time. Changes don\'t affect saved data.' },
 ];
 
 export function SessionDetailPage({ session, visible, onClose }: Props) {
@@ -86,8 +87,9 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
         >
           ← Back
         </button>
-        <span className="text-sm text-text-muted">
+        <span className="text-sm text-text-muted flex items-center gap-1.5">
           {dateStr} {timeStr}
+          <HelpTip text={TABS.find((t) => t.id === activeTab)?.help ?? ''} />
         </span>
         <div className="w-12" />
       </div>

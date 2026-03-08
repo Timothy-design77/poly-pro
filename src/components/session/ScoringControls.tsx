@@ -11,6 +11,7 @@ import type { SessionAnalysis, AnalysisConfig } from '../../analysis/types';
 import { DEFAULT_ANALYSIS_CONFIG } from '../../analysis/types';
 import { rescoreSession } from '../../analysis/reanalysis';
 import { useSettingsStore } from '../../store/settings-store';
+import { HelpTip } from '../ui/HelpTip';
 
 interface Props {
   session: SessionRecord;
@@ -89,7 +90,10 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
       {/* Live score preview */}
       <div className="bg-bg-surface rounded-xl border border-border-subtle p-3 flex items-center justify-between">
         <div>
-          <p className="text-[10px] text-text-muted">Live Score</p>
+          <p className="text-[10px] text-text-muted flex items-center gap-1">
+            Live Score
+            <HelpTip text="Score updates in real-time as you adjust parameters below. Based on consistency (σ) — how tight your timing spread is." />
+          </p>
           <span className="text-2xl font-bold font-mono" style={{ color: scoreColor }}>
             {Math.round(liveScore)}%
           </span>
@@ -100,7 +104,10 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
           )}
         </div>
         <div className="text-right">
-          <p className="text-[10px] text-text-muted">σ</p>
+          <p className="text-[10px] text-text-muted flex items-center gap-1 justify-end">
+            σ
+            <HelpTip text="Standard deviation of your timing deviations in milliseconds. Lower = more consistent. Being consistently early or late doesn't affect σ." />
+          </p>
           <span className="text-sm font-mono text-text-secondary">
             {liveSigma.toFixed(1)}ms
           </span>
@@ -125,6 +132,7 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
           format={(v) => `${v}% IOI (±${scoringMs.toFixed(0)}ms)`}
           defaultValue={DEFAULT_ANALYSIS_CONFIG.scoringWindowPct}
           onChange={(v) => updateConfig({ scoringWindowPct: v })}
+          help="How close to the beat a hit must land to count as 'scored'. Expressed as a percentage of the time between beats (IOI). Wider = more forgiving."
         />
 
         <TuneSlider
@@ -134,6 +142,7 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
           format={(v) => `${v}% sub (${flamMs.toFixed(0)}ms)`}
           defaultValue={DEFAULT_ANALYSIS_CONFIG.flamMergePct}
           onChange={(v) => updateConfig({ flamMergePct: v })}
+          help="When two hits land very close together (a 'flam'), they get merged into one. This sets how close they must be to merge. Higher = more aggressive merging."
         />
 
         <TuneSlider
@@ -143,6 +152,7 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
           format={(v) => v.toFixed(3)}
           defaultValue={DEFAULT_ANALYSIS_CONFIG.noiseGate}
           onChange={(v) => updateConfig({ noiseGate: v })}
+          help="Minimum energy threshold for a sound to be detected as a hit. Raise this if background noise is triggering false hits. Lower it to catch quieter strokes."
         />
       </div>
 
@@ -172,6 +182,7 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
                 format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}ms`}
                 defaultValue={settings.calibratedOffset + settings.manualAdjustment}
                 onChange={(v) => updateConfig({ latencyOffsetMs: v })}
+                help="Compensates for the delay between playing a sound and it reaching the mic. Set by calibration, but you can fine-tune here."
               />
 
               <TuneSlider
@@ -181,6 +192,7 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
                 format={(v) => `${v.toFixed(2)}×`}
                 defaultValue={DEFAULT_ANALYSIS_CONFIG.accentThreshold}
                 onChange={(v) => updateConfig({ accentThreshold: v })}
+                help="How much louder a hit must be compared to average to be considered an accented stroke. Higher = stricter accent detection."
               />
 
               <TuneSlider
@@ -190,6 +202,7 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
                 format={(v) => v === 0 ? 'Off' : `${v} Hz`}
                 defaultValue={0}
                 onChange={(v) => updateConfig({ highPassHz: v })}
+                help="Filters out low-frequency rumble (air conditioning, traffic, foot taps). Set to 100-200Hz for noisy rooms. Off = no filtering."
               />
             </div>
           )}
@@ -221,15 +234,19 @@ interface TuneSliderProps {
   format: (value: number) => string;
   defaultValue: number;
   onChange: (value: number) => void;
+  help?: string;
 }
 
-function TuneSlider({ label, value, min, max, step, format, defaultValue, onChange }: TuneSliderProps) {
+function TuneSlider({ label, value, min, max, step, format, defaultValue, onChange, help }: TuneSliderProps) {
   const isModified = Math.abs(value - defaultValue) > step * 0.5;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-text-secondary">{label}</span>
+        <span className="text-xs text-text-secondary flex items-center gap-1">
+          {label}
+          {help && <HelpTip text={help} />}
+        </span>
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-mono text-text-primary">{format(value)}</span>
           {isModified && (

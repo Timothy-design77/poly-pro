@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
+import { HelpTip } from '../ui/HelpTip';
 
 interface Props {
   session: SessionRecord;
@@ -48,22 +49,26 @@ export function ScoreTab({ session }: Props) {
     <div className="space-y-4">
       {/* Score hero */}
       <div className="flex flex-col items-center py-4">
-        <span
-          className="text-5xl font-bold font-mono"
-          style={{ color: scoreColor }}
-        >
-          {Math.round(score)}%
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-5xl font-bold font-mono"
+            style={{ color: scoreColor }}
+          >
+            {Math.round(score)}%
+          </span>
+          <HelpTip text="Overall score based on timing consistency (σ). Higher = tighter timing. Hit rate, mean offset, and calibration bonuses also factor in." />
+        </div>
 
         {/* σ badge */}
         <div
-          className="mt-2 px-3 py-1 rounded-full"
+          className="mt-2 px-3 py-1 rounded-full flex items-center gap-1.5"
           style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
         >
           <span className="text-xs font-mono text-text-secondary">
             σ {sigma.toFixed(1)}ms
           </span>
-          <span className="text-xs text-text-muted ml-2">{sigmaLevel}</span>
+          <span className="text-xs text-text-muted">{sigmaLevel}</span>
+          <HelpTip text="σ (sigma) measures how consistent your timing is — the spread of your hit deviations. Professional: ≤10ms, Advanced: ≤20ms, Intermediate: ≤35ms, Developing: ≤50ms." />
         </div>
       </div>
 
@@ -93,15 +98,21 @@ export function ScoreTab({ session }: Props) {
       <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
         <div className="grid grid-cols-2 gap-2">
           <StatRow label="Mean Offset" value={`${meanOffset > 0 ? '+' : ''}${meanOffset.toFixed(1)}ms`}
-            sub={Math.abs(meanOffset) < 5 ? 'centered' : meanOffset > 0 ? 'late' : 'early'} />
-          <StatRow label="Hit Rate" value={`${Math.round(hitRate * 100)}%`} />
+            sub={Math.abs(meanOffset) < 5 ? 'centered' : meanOffset > 0 ? 'late' : 'early'}
+            help="Average timing deviation from the beat grid. Positive = late, negative = early. Near zero after calibration means you're centered." />
+          <StatRow label="Hit Rate" value={`${Math.round(hitRate * 100)}%`}
+            help="Percentage of expected beats where a hit was detected within the scoring window. Missed beats lower your score." />
           <StatRow label="Perfect" value={`${Math.round(perfectPct)}%`}
-            sub={`within ±${scoringWindowMs.toFixed(0)}ms`} />
+            sub={`within ±${scoringWindowMs.toFixed(0)}ms`}
+            help="Percentage of your scored hits that landed within the scoring window — the tightest accuracy zone." />
           <StatRow label="Good" value={`${Math.round(goodPct)}%`}
-            sub={`within ±${(scoringWindowMs * 1.5).toFixed(0)}ms`} />
+            sub={`within ±${(scoringWindowMs * 1.5).toFixed(0)}ms`}
+            help="Percentage of scored hits within 1.5× the scoring window — slightly more forgiving than 'Perfect'." />
           <StatRow label="Fatigue" value={fatigueRatio.toFixed(2) + '×'}
-            sub={fatigueRatio > 1.4 ? 'timing degraded' : fatigueRatio < 0.8 ? 'improved' : 'stable'} />
-          <StatRow label="Consistency" value={`σ ${sigma.toFixed(1)}ms`} />
+            sub={fatigueRatio > 1.4 ? 'timing degraded' : fatigueRatio < 0.8 ? 'improved' : 'stable'}
+            help="Compares your timing in the last quarter vs first quarter. >1.0× means timing got looser. <1.0× means you warmed up and improved." />
+          <StatRow label="Consistency" value={`σ ${sigma.toFixed(1)}ms`}
+            help="Standard deviation of timing deviations — the primary metric. Lower is better. Not affected by being consistently early/late." />
         </div>
       </div>
 
@@ -154,10 +165,13 @@ function MetaItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatRow({ label, value, sub, help }: { label: string; value: string; sub?: string; help?: string }) {
   return (
     <div className="px-2 py-1.5">
-      <p className="text-[10px] text-text-muted">{label}</p>
+      <p className="text-[10px] text-text-muted flex items-center gap-1">
+        {label}
+        {help && <HelpTip text={help} />}
+      </p>
       <p className="text-sm font-mono font-semibold text-text-primary">{value}</p>
       {sub && <p className="text-[9px] text-text-muted">{sub}</p>}
     </div>

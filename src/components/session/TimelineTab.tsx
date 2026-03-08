@@ -15,6 +15,7 @@ import type { SessionRecord, HitEventsRecord } from '../../store/db';
 import type { SessionAnalysis, ScoredOnset } from '../../analysis/types';
 import * as db from '../../store/db';
 import { ScoringControls } from './ScoringControls';
+import { HelpTip } from '../ui/HelpTip';
 
 interface Props {
   session: SessionRecord;
@@ -263,7 +264,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
   return (
     <div className="space-y-3">
       {/* Zoom buttons (quick-access; pinch-to-zoom also works) */}
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 items-center">
         {ZOOM_LEVELS.map((z) => (
           <button
             key={z}
@@ -276,12 +277,12 @@ export function TimelineTab({ session, hitEvents }: Props) {
             {z}×
           </button>
         ))}
-        {/* Show current zoom if not near a preset */}
         {!ZOOM_LEVELS.some((z) => Math.abs(zoom - z) < 0.5) && (
           <span className="px-2 py-1.5 text-xs font-mono text-text-muted">
             {zoom.toFixed(1)}×
           </span>
         )}
+        <HelpTip text="Zoom into the timeline to see individual hits and their timing deviations. Pinch with two fingers or tap a zoom level. Drag to scroll." />
       </div>
 
       {/* Timeline canvas */}
@@ -312,14 +313,15 @@ export function TimelineTab({ session, hitEvents }: Props) {
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-danger inline-block" /> &gt;25ms
         </span>
+        <HelpTip text="Triangles show where your hits landed. Green = within 10ms of the beat (tight). Amber = 10–25ms off. Red = more than 25ms off. Vertical white lines are the metronome grid." />
       </div>
 
-      {/* Scoring controls (compact) — adjustments update timeline markers live */}
+      {/* Scoring controls — adjustments update timeline markers live */}
       {hitEvents && session.analyzed && (
         <ScoringControls
           session={session}
           hitEvents={hitEvents}
-          compact
+          compact={false}
           onResult={handleScoringResult}
         />
       )}
