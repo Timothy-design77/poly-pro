@@ -48,7 +48,6 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
 
   // Audio refs
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const workletRef = useRef<AudioWorkletNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pcmBufferRef = useRef<Float32Array[]>([]);
   const featuresRef = useRef<SpectralFeatures[]>([]);
@@ -58,7 +57,6 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
   const lastHitTimeRef = useRef(0);
   const sampleCountRef = useRef(0);
 
-  const existingProfile = profiles.find((p) => p.name === selectedInstrument);
   const minHits = isQuickRetrain ? MIN_HITS_QUICK : MIN_HITS_FULL;
 
   // Cleanup on unmount
