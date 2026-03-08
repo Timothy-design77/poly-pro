@@ -32,9 +32,9 @@ export const COMPRESSOR_KNEE = 3;
 export const COMPRESSOR_RATIO = 2;
 export const COMPRESSOR_ATTACK = 0.002;
 export const COMPRESSOR_RELEASE = 0.05;
-export const OUTPUT_GAIN = 8.0; // v1: oG=4.0 with lBst=2 during recording gave 8.0. Now 8.0 is the baseline.
+export const OUTPUT_GAIN = 4.0;
 export const MASTER_GAIN_MULTIPLIER = 8.0;
-export const RECORDING_GAIN_BOOST = 2.5; // Must overpower Android ducking from getUserMedia. Compressor limits actual output.
+export const RECORDING_GAIN_BOOST = 2.0; // v1's lBst=2 — outputGain goes 4.0→8.0 during recording
 
 // ─── Meter Defaults ───
 export const DEFAULT_METER_NUMERATOR = 4;
