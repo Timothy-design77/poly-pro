@@ -32,7 +32,7 @@ export const COMPRESSOR_KNEE = 3;
 export const COMPRESSOR_RATIO = 2;
 export const COMPRESSOR_ATTACK = 0.002;
 export const COMPRESSOR_RELEASE = 0.05;
-export const OUTPUT_GAIN = 8.0;
+export const OUTPUT_GAIN = 10.0;
 export const MASTER_GAIN_MULTIPLIER = 8.0;
 
 // ─── Meter Defaults ───

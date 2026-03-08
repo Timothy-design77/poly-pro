@@ -33,10 +33,11 @@ import {
 type BeatCallback = (event: BeatEvent) => void;
 
 /** Convert linear slider (0–1) to perceptual gain.
- *  vol^1.5 gives: 25%→12%, 50%→35%, 80%→72%, 100%→100% of max gain.
- *  Gentler than quadratic — keeps default 80% loud while making low end responsive. */
+ *  vol² gives wide dynamic range through the compressor:
+ *  10%→0.08, 25%→0.5, 50%→2.0, 80%→5.12, 100%→8.0 masterGain.
+ *  Low end actually gets quiet, high end stays loud. */
 function perceptualGain(vol: number): number {
-  return Math.pow(vol, 1.5) * MASTER_GAIN_MULTIPLIER;
+  return vol * vol * MASTER_GAIN_MULTIPLIER;
 }
 
 class AudioEngine {
