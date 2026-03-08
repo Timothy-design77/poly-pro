@@ -66,7 +66,7 @@
 - 12 CC0 WAV samples generated (woodblock, clave, tick, sticks, kick, snare, rimshot, cowbell, hihat, shaker, bell, marimba)
 - Sound catalog with category-based organization
 - AudioBuffer loader with cache
-- Per-beat gain modulation (OFF=0.0, GHOST=0.2, MED=0.55, LOUD=1.0)
+- Per-beat gain modulation (6 levels: OFF=0.0, GHOST=0.03, SOFT=0.10, MED=0.25, LOUD=0.55, ACCENT=1.0)
 - Compressor → OutputGain → Destination audio chain
 - Haptic vibration on beat (downbeats/accents)
 
@@ -165,8 +165,8 @@
 - 30-minute max with 25-minute warning
 
 **Phase 4 — Audio Chain (src/audio/engine.ts, src/utils/constants.ts):**
-- Compressor (0dB threshold, 2:1 ratio) → outputGain (8.0, fixed)
-- Volume slider: perceptual curve (vol^1.5 × 8.0) for responsive feel
+- Compressor (0dB threshold, 2:1 ratio) → outputGain (10.0, fixed)
+- Volume slider: perceptual curve (vol² × 8.0) for responsive feel
 - Same volume whether recording or not (no boost mechanism)
 - Volume wired to metronomeStore.volume; dead settingsStore.clickVolume removed
 - Schema version migration: resets stale IDB volume to 0.8 on first load
@@ -376,9 +376,9 @@ This is how v1 works and it's correct. The `25ms` interval and `100ms` lookahead
 **Audio output chain (simplified):**
 ```
 clicks → per-beat gain (0.0–1.0)
-       → masterGain (volume^1.5 × 8.0, default 0.8 → ~5.7)
+       → masterGain (vol² × 8.0, default 0.8 → 5.12)
        → compressor (threshold=0dB, knee=3, ratio=2:1, attack=0.002, release=0.05)
-       → outputGain (8.0, fixed — same volume recording or not)
+       → outputGain (10.0, fixed — same volume recording or not)
        → destination (speakers / BT A2DP)
 ```
 
@@ -489,11 +489,13 @@ No horizontal overflow, no clipping
 
 ### Accent/Volume State Naming
 
-4 states: **OFF / GHOST / MED / LOUD** with gain values:
+6 states: **OFF / GHOST / SOFT / MED / LOUD / ACCENT** with gain values:
 - OFF = 0.0
-- GHOST = 0.2
-- MED = 0.55
-- LOUD = 1.0
+- GHOST = 0.03
+- SOFT = 0.10
+- MED = 0.25
+- LOUD = 0.55
+- ACCENT = 1.0
 
 **⚠️ Use v2 naming everywhere. The v1 naming (muted/normal/accent/strong) is legacy.**
 
@@ -701,7 +703,7 @@ This is essential for porting. Every v1 variable, its meaning, and its v2 equiva
 interface Track {
   id: string;
   beats: number;          // total beats (meter.num * subdivision)
-  accents: number[];      // per-beat volume level: 0=OFF, 1=GHOST, 2=MED, 3=LOUD
+  accents: number[];      // per-beat volume level: 0=OFF, 1=GHOST, 2=SOFT, 3=MED, 4=LOUD, 5=ACCENT
   normalSound: string;    // sound ID for normal beats
   normalVolume: number;   // 0–2
   accentSound: string;    // sound ID for accented beats
@@ -823,7 +825,9 @@ poly-pro/
 ├── .github/workflows/deploy.yml
 ├── public/
 │   ├── icons/icon-192.png, icon-512.png
-│   ├── sounds/              (P1: 10-12 CC0 WAV samples)
+│   ├── sounds/              (P1: 12 CC0 WAV samples + 4 count-in)
+│   ├── worklets/
+│   │   └── pcm-capture.js   (P4: raw PCM capture AudioWorklet)
 │   └── _redirects
 ├── index.html
 ├── package.json
@@ -831,21 +835,20 @@ poly-pro/
 ├── vite.config.ts
 ├── tailwind.config.ts
 ├── postcss.config.js
+├── IMPLEMENTATION-PLAN.md
 │
 └── src/
     ├── main.tsx
     ├── App.tsx
+    ├── vite-env.d.ts
     ├── styles/globals.css
     │
     ├── audio/
-    │   ├── engine.ts
+    │   ├── engine.ts          (AudioEngine singleton, scheduler, gain chain)
     │   ├── sounds.ts          (AudioBuffer loader + catalog)
-    │   ├── types.ts
-    │   └── worklets/
-    │       ├── analyzer.worklet.ts    (P5: real-time onset detection)
-    │       └── pcm-capture.js         (P4: raw PCM capture from mic)
+    │   └── types.ts           (VolumeState enum, VOLUME_GAINS, TrackConfig, etc.)
     │
-    ├── analysis/
+    ├── analysis/              (P5+, not yet created)
     │   ├── onset-detection.ts    (P5: spectral flux post-processing)
     │   ├── reanalysis.ts
     │   ├── grid.ts
@@ -857,100 +860,75 @@ poly-pro/
     │   └── types.ts
     │
     ├── store/
-    │   ├── db.ts
-    │   ├── metronome-store.ts
-    │   ├── project-store.ts
-    │   ├── session-store.ts
-    │   ├── settings-store.ts
-    │   └── types.ts
+    │   ├── db.ts              (IDB schema, CRUD, typed records)
+    │   ├── metronome-store.ts (bpm, meter, tracks, playing, swing, trainer, practice modes)
+    │   ├── project-store.ts   (projects CRUD, active project, snapshots)
+    │   ├── session-store.ts   (sessions CRUD, per-project filtering)
+    │   ├── settings-store.ts  (sounds, vibration, detection stubs, calibration)
+    │   ├── nav-store.ts       (page index, swipe navigation)
+    │   ├── persistence.ts     (IDB hydration, debounced writes, schema migration)
+    │   └── types.ts           (MetronomeState, SettingsState, createDefaultTrack)
     │
     ├── pages/
     │   ├── HomePage.tsx
     │   ├── ProjectsPage.tsx
     │   ├── ProgressPage.tsx
-    │   ├── SessionDetailPage.tsx   (P7: full-screen overlay)
-    │   └── CalibrationPage.tsx     (P6)
+    │   ├── SessionDetailPage.tsx   (P7: full-screen overlay, not yet created)
+    │   └── CalibrationPage.tsx     (P6, not yet created)
     │
     ├── components/
     │   ├── ui/
     │   │   ├── Button.tsx
-    │   │   ├── Card.tsx
-    │   │   ├── Slider.tsx
+    │   │   ├── CollapsibleCard.tsx
     │   │   ├── Toggle.tsx
     │   │   ├── Modal.tsx
-    │   │   ├── BottomSheet.tsx
-    │   │   ├── NumberInput.tsx
+    │   │   ├── NumberInput.tsx      (BPM keypad modal)
     │   │   ├── ErrorBoundary.tsx
     │   │   └── SwipeNavigation.tsx
     │   │
     │   ├── metronome/
     │   │   ├── PlayButton.tsx
     │   │   ├── RecordButton.tsx
-    │   │   ├── BpmControl.tsx
+    │   │   ├── BpmControl.tsx       (hold-to-accelerate ±)
     │   │   ├── TapTempo.tsx
-    │   │   ├── BeatGrid.tsx
+    │   │   ├── BeatGrid.tsx         (pattern editor, multi-track)
     │   │   ├── MeterControl.tsx
     │   │   ├── SubdivisionPicker.tsx
-    │   │   ├── WaveformDisplay.tsx
-    │   │   ├── Dial.tsx
-    │   │   └── TrainerConfig.tsx
+    │   │   ├── GroupingPicker.tsx    (irregular meter groupings)
+    │   │   ├── PolyrhythmControl.tsx (add/remove/mute poly tracks)
+    │   │   ├── PracticeModes.tsx     (count-in, gap click, random mute, play/mute cycle)
+    │   │   ├── SoundPickerSheet.tsx  (per-beat sound override picker)
+    │   │   ├── WaveformDisplay.tsx   (live mic level during recording)
+    │   │   ├── Dial.tsx             (canvas beat visualization)
+    │   │   └── TrainerConfig.tsx     (tempo ramp settings)
     │   │
     │   ├── projects/
-    │   │   ├── ProjectCard.tsx
-    │   │   ├── ProjectCreateSheet.tsx
-    │   │   └── ProjectList.tsx
+    │   │   └── ProjectCreateSheet.tsx (bottom sheet, emoji grid, BPM range)
     │   │
-    │   ├── progress/
-    │   │   ├── HeroChart.tsx
-    │   │   ├── HeatmapCalendar.tsx
-    │   │   ├── BpmProgressBar.tsx
-    │   │   ├── MilestoneList.tsx
-    │   │   ├── SessionList.tsx
-    │   │   └── SessionCard.tsx
+    │   ├── settings/
+    │   │   ├── SettingsOverlay.tsx   (6 collapsible sections)
+    │   │   ├── SoundSettings.tsx     (sound picker, volume slider, preview)
+    │   │   └── VibrationSettings.tsx (haptic toggle, intensity)
     │   │
-    │   ├── session/
-    │   │   ├── ScoreTab.tsx        (P7)
-    │   │   ├── TimelineTab.tsx     (P7)
-    │   │   ├── ChartsTab.tsx       (P7)
-    │   │   ├── TuneTab.tsx         (P7)
-    │   │   └── AnalyzingOverlay.tsx (P5)
-    │   │
-    │   ├── analytics/
-    │   │   ├── ChartCanvas.tsx
-    │   │   ├── DistributionChart.tsx
-    │   │   ├── DriftChart.tsx
-    │   │   ├── PerBeatChart.tsx
-    │   │   ├── DynamicsChart.tsx
-    │   │   ├── TempoStabilityChart.tsx
-    │   │   ├── FatigueChart.tsx
-    │   │   └── TimelineView.tsx      (P7: DAW-style waveform)
-    │   │
-    │   └── settings/
-    │       ├── SettingsOverlay.tsx
-    │       ├── SoundSettings.tsx
-    │       ├── RecordingSettings.tsx
-    │       ├── DetectionSettings.tsx
-    │       ├── VibrationSettings.tsx
-    │       ├── CalibrationSettings.tsx
-    │       └── DataSettings.tsx
+    │   └── analytics/               (P7+, not yet created)
+    │       ├── ScoreTab.tsx
+    │       ├── TimelineTab.tsx
+    │       ├── ChartsTab.tsx
+    │       └── TuneTab.tsx
     │
     ├── hooks/
-    │   ├── useMetronome.ts
-    │   ├── useRecording.ts
-    │   ├── useOnsetDetection.ts
-    │   ├── useWakeLock.ts
-    │   ├── useCalibration.ts
-    │   └── useCanvas.ts
+    │   ├── useMetronome.ts    (connects engine lifecycle to React)
+    │   ├── useRecording.ts    (AudioWorklet capture, session save)
+    │   ├── usePlayback.ts     (session audio playback from IDB)
+    │   └── useWakeLock.ts     (screen wake lock during playback)
     │
     └── utils/
-        ├── mic.ts
-        ├── timing.ts
-        ├── export.ts
-        ├── migration.ts
-        └── constants.ts
+        ├── constants.ts       (scheduler, BPM, audio chain, defaults)
+        ├── mic.ts             (built-in mic selection, BT avoidance, raw audio verify)
+        └── timing.ts          (getBeatGrouping, getMeasureDuration, clampBpm, etc.)
 ```
 
-**NOTE:** No routine-related files. No `routine-store.ts`, no `RoutineRunner.tsx`, no `RoutineEditor.tsx`, no `useRoutineRunner.ts`. Routines are deferred to post-v2.
+**NOTE:** No routine-related files. Routines are deferred to post-v2.
 
 ---
 
@@ -1088,7 +1066,7 @@ Stable, accurate metronome with v2 tempo controls and sample-based sounds. The c
   - Percussion: Cowbell, Hi-hat closed, Shaker
   - Tonal: Bell, Marimba
 - Total bundle size: ~200-500KB for all sounds
-- Volume states use same sample at different gain: LOUD=1.0, MED=0.55, GHOST=0.2, OFF=0.0
+- Volume states use same sample at different gain: ACCENT=1.0, LOUD=0.55, MED=0.25, SOFT=0.10, GHOST=0.03, OFF=0.0
 
 **Scheduler:**
 - `setTimeout(25ms)` on main thread as scheduling trigger
@@ -1100,7 +1078,7 @@ Stable, accurate metronome with v2 tempo controls and sample-based sounds. The c
 **Per-beat gain modulation:**
 ```
 For each beat in lookahead window:
-  gain = volumeStateMap[pattern[beatIndex]]  // OFF=0, GHOST=0.2, MED=0.55, LOUD=1.0
+  gain = VOLUME_GAINS[pattern[beatIndex]]  // OFF=0, GHOST=0.03, SOFT=0.10, MED=0.25, LOUD=0.55, ACCENT=1.0
   source = context.createBufferSource()
   source.buffer = currentClickBuffer
   gainNode = context.createGain()
@@ -1142,7 +1120,7 @@ class AudioEngine {
 
   initContext(): void {
     // Create AudioContext, compressor (threshold:0, knee:3, ratio:2, attack:0.002, release:0.05),
-    // output gain (4.0), master gain (vol * 8.0)
+    // output gain (10.0), master gain (vol² × 8.0)
     // Chain: sounds → masterGain → compressor → outputGain → destination
     // Load all sound samples via fetch + decodeAudioData
   }
@@ -1252,8 +1230,8 @@ Full feature parity with v1's metronome, plus new training modes.
 - Per-layer: label row → beat cells → subdivision cells
 - Beat cells: height 30-34px, shows beat number
 - Subdivision cells: height 8-10px, small indicators
-- 4 volume states per cell: tap to cycle OFF → GHOST → MED → LOUD
-- Visual: fill bar rises from bottom + number opacity changes (OFF=0.08, GHOST=0.2, MED=0.45, LOUD=0.85)
+- 6 volume states per cell: tap to cycle OFF → GHOST → SOFT → MED → LOUD → ACCENT
+- Visual: fill bar rises from bottom + number opacity changes (OFF=0.08, GHOST=0.12, SOFT=0.20, MED=0.35, LOUD=0.55, ACCENT=0.85)
 - Long-press any cell → bottom sheet sound picker
 - Layered inheritance: layer default → beat override → cell override
 - Override indicator: small dot in cell corner
@@ -1404,7 +1382,7 @@ getUserMedia (built-in mic forced, raw: no AEC/AGC/NS)
   → silentGain(0) → destination (keeps worklet alive, mic not audible)
 
 Metronome runs on the SAME AudioContext:
-clicks → per-beat gain → masterGain → compressor → outputGain(8.0) → destination
+clicks → per-beat gain → masterGain → compressor → outputGain(10.0) → destination
 ```
 
 **Key: BT stays on A2DP because we force the built-in phone mic via explicit deviceId. The BT mic is never activated, so Android never switches to HFP call mode.**
@@ -1435,8 +1413,8 @@ clicks → per-beat gain → masterGain → compressor → outputGain(8.0) → d
 - `src/hooks/useRecording.ts` — full recording lifecycle (AudioWorklet)
 - `src/hooks/usePlayback.ts` — playback via Web Audio (raw PCM + legacy compressed compat)
 - `src/utils/mic.ts` — built-in mic selection with BT avoidance
-- `src/audio/engine.ts` — perceptual volume curve, outputGain fixed at 8.0
-- `src/utils/constants.ts` — OUTPUT_GAIN = 8.0, no recording boost
+- `src/audio/engine.ts` — perceptual volume curve, outputGain fixed at 10.0
+- `src/utils/constants.ts` — OUTPUT_GAIN = 10.0, no recording boost
 - `src/store/persistence.ts` — schema version migration for stale volume values
 
 ### Recording Flow

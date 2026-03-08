@@ -23,10 +23,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   // Calibration
   latencyOffset: 0,
 
-  // Recording
-  recordingClickVolume: 0.15,
-  includeClickInRecording: true,
-
   // ─── Actions ───
 
   setClickSound: (id) => set({ clickSound: id }),

@@ -76,8 +76,6 @@ interface PersistedSettings {
   hapticEnabled: boolean;
   vibrationIntensity: number;
   latencyOffset: number;
-  recordingClickVolume: number;
-  includeClickInRecording: boolean;
   sensitivity: number;
 }
 
@@ -89,8 +87,6 @@ function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): Pers
     hapticEnabled: state.hapticEnabled,
     vibrationIntensity: state.vibrationIntensity,
     latencyOffset: state.latencyOffset,
-    recordingClickVolume: state.recordingClickVolume,
-    includeClickInRecording: state.includeClickInRecording,
     sensitivity: state.sensitivity,
   };
 }

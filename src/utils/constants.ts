@@ -24,9 +24,7 @@ export const TAP_MAX_TAPS = 8;
 export const TAP_TIMEOUT_MS = 3000;
 
 // ─── Audio Engine ───
-// ─── Audio Tuning ───
-// THESE ARE THE EXACT V1 PROVEN VALUES — DO NOT CHANGE
-// Chain: per-beat gain → masterGain (vol × 8) → compressor (0dB, 2:1) → output (×4) → destination
+// Chain: per-beat gain → masterGain (vol² × 8) → compressor (0dB, 2:1) → outputGain (×10) → destination
 export const COMPRESSOR_THRESHOLD = 0;
 export const COMPRESSOR_KNEE = 3;
 export const COMPRESSOR_RATIO = 2;

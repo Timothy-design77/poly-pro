@@ -98,10 +98,6 @@ export interface SettingsState {
   // Calibration
   latencyOffset: number;
 
-  // Recording
-  recordingClickVolume: number;
-  includeClickInRecording: boolean;
-
   // Actions
   setClickSound: (id: string) => void;
   setAccentSound: (id: string) => void;

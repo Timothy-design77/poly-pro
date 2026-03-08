@@ -532,11 +532,6 @@ class AudioEngine {
     return () => this.beatCallbacks.delete(callback);
   }
 
-  // ─── Accessors for recording hook ───
-
-  getAudioCtx(): AudioContext | null { return this.audioCtx; }
-  getMasterGain(): GainNode | null { return this.masterGain; }
-
   // ─── Cleanup ───
 
   async dispose(): Promise<void> {
