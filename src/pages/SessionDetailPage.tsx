@@ -1,13 +1,13 @@
 /**
- * SessionDetailPage — Full-screen overlay with 4 tap-only tabs.
+ * SessionDetailPage — Full-screen overlay with 4 swipeable tabs.
  *
- * Rendered via React Portal at document.body level — this is critical
- * because the overlay is opened from ProgressPage which sits inside
- * SwipeNavigation. Without a portal, touch events bubble through the
- * React tree to SwipeNavigation and cause page swipes.
+ * Rendered via React Portal at document.body level.
+ * Swipe left/right to navigate between tabs.
+ * Timeline tab's canvas handles its own touch events (scroll/pinch)
+ * so swipes within the canvas don't trigger tab switches.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionRecord, HitEventsRecord } from '../store/db';
 import * as db from '../store/db';
@@ -32,19 +32,29 @@ const TABS: { id: TabId; label: string; help: string }[] = [
   { id: 'tune', label: 'Tune', help: 'Adjust analysis parameters and see how they affect your score in real-time. Changes don\'t affect saved data.' },
 ];
 
+const TAB_IDS: TabId[] = ['score', 'timeline', 'charts', 'tune'];
+const SWIPE_THRESHOLD = 50;
+const VELOCITY_THRESHOLD = 0.3;
+
 export function SessionDetailPage({ session, visible, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('score');
   const [hitEvents, setHitEvents] = useState<HitEventsRecord | null>(null);
   const [loading, setLoading] = useState(false);
-  /** Which chart section to auto-open when navigating from headline */
   const [openChart, setOpenChart] = useState<string | null>(null);
+
+  // ─── Swipe state ───
+  const [dragX, setDragX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
+  const startTimeRef = useRef(0);
+  const directionRef = useRef<'h' | 'v' | null>(null);
 
   const handleNavigateChart = useCallback((chartId: string) => {
     setOpenChart(chartId);
     setActiveTab('charts');
   }, []);
 
-  // Load hit events when session changes
   useEffect(() => {
     if (!session || !visible) {
       setHitEvents(null);
@@ -52,11 +62,6 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     }
     setLoading(true);
     db.getHitEvents(session.id).then((events) => {
-      if (events) {
-        console.log(`Loaded hitEvents for ${session.id}: ${events.scoredOnsets.length} scored, ${events.rawOnsets.length} raw`);
-      } else {
-        console.warn(`No hitEvents found for session ${session.id}`);
-      }
       setHitEvents(events ?? null);
       setLoading(false);
     }).catch((err) => {
@@ -66,10 +71,71 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     });
   }, [session?.id, visible]);
 
-  // Reset to score tab when opening a new session
   useEffect(() => {
-    if (visible) setActiveTab('score');
+    if (visible) {
+      setActiveTab('score');
+      setDragX(0);
+    }
   }, [session?.id, visible]);
+
+  // ─── Swipe handlers ───
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    // Don't capture if touch starts on a canvas (timeline has its own handler)
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'CANVAS') return;
+
+    startXRef.current = e.touches[0].clientX;
+    startYRef.current = e.touches[0].clientY;
+    startTimeRef.current = Date.now();
+    directionRef.current = null;
+    setIsDragging(true);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging) return;
+
+    const dx = e.touches[0].clientX - startXRef.current;
+    const dy = e.touches[0].clientY - startYRef.current;
+
+    // Lock direction on first significant movement
+    if (directionRef.current === null) {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        directionRef.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      }
+      return;
+    }
+
+    if (directionRef.current === 'h') {
+      const tabIdx = TAB_IDS.indexOf(activeTab);
+      // Rubber-band at edges
+      let adj = dx;
+      if ((tabIdx === 0 && dx > 0) || (tabIdx === TAB_IDS.length - 1 && dx < 0)) {
+        adj = dx * 0.2;
+      }
+      setDragX(adj);
+    }
+  }, [isDragging, activeTab]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+
+    if (directionRef.current === 'h') {
+      const elapsed = Math.max(1, Date.now() - startTimeRef.current);
+      const velocity = Math.abs(dragX) / elapsed;
+      const tabIdx = TAB_IDS.indexOf(activeTab);
+
+      let nextIdx = tabIdx;
+      if (Math.abs(dragX) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+        if (dragX > 0 && tabIdx > 0) nextIdx = tabIdx - 1;
+        else if (dragX < 0 && tabIdx < TAB_IDS.length - 1) nextIdx = tabIdx + 1;
+      }
+      setActiveTab(TAB_IDS[nextIdx]);
+    }
+
+    directionRef.current = null;
+    setDragX(0);
+  }, [isDragging, dragX, activeTab]);
 
   if (!visible || !session) return null;
 
@@ -80,7 +146,13 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     hour: '2-digit', minute: '2-digit',
   });
 
-  // Portal: render at document.body, outside SwipeNavigation's DOM tree
+  const tabIdx = TAB_IDS.indexOf(activeTab);
+  const pageWidth = 100 / TAB_IDS.length;
+  const trackOffset = -(tabIdx * pageWidth);
+  const dragPercent = isDragging && directionRef.current === 'h'
+    ? (dragX / (window.innerWidth || 400)) * pageWidth
+    : 0;
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex flex-col"
@@ -101,12 +173,12 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
         <div className="w-12" />
       </div>
 
-      {/* Tab bar — tap only, no swiping */}
+      {/* Tab bar */}
       <div className="flex px-4 gap-1 shrink-0 mb-2">
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => { setActiveTab(tab.id); setDragX(0); }}
             className={`
               flex-1 py-2 rounded-lg text-xs font-semibold tracking-wide
               touch-manipulation select-none transition-colors
@@ -120,27 +192,47 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
         ))}
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-20">
+      {/* Swipeable tab content */}
+      <div
+        className="flex-1 overflow-hidden"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         {loading ? (
-          <div className="flex items-center justify-center h-32">
+          <div className="flex items-center justify-center h-32 px-4">
             <span className="text-text-muted text-sm">Loading analysis…</span>
           </div>
         ) : (
-          <>
-            {activeTab === 'score' && (
-              <ScoreTab session={session} hitEvents={hitEvents} onNavigateChart={handleNavigateChart} />
-            )}
-            {activeTab === 'timeline' && (
-              <TimelineTab session={session} hitEvents={hitEvents} />
-            )}
-            {activeTab === 'charts' && (
-              <ChartsTab session={session} hitEvents={hitEvents} autoOpenSection={openChart} />
-            )}
-            {activeTab === 'tune' && (
-              <TuneTab session={session} hitEvents={hitEvents} />
-            )}
-          </>
+          <div
+            className="flex h-full will-change-transform"
+            style={{
+              width: `${TAB_IDS.length * 100}%`,
+              transform: `translateX(${trackOffset + dragPercent}%)`,
+              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
+            }}
+          >
+            {TAB_IDS.map((tabId) => (
+              <div
+                key={tabId}
+                className="h-full overflow-y-auto px-4 pb-20"
+                style={{ width: `${pageWidth}%` }}
+              >
+                {tabId === 'score' && (
+                  <ScoreTab session={session} hitEvents={hitEvents} onNavigateChart={handleNavigateChart} />
+                )}
+                {tabId === 'timeline' && (
+                  <TimelineTab session={session} hitEvents={hitEvents} />
+                )}
+                {tabId === 'charts' && (
+                  <ChartsTab session={session} hitEvents={hitEvents} autoOpenSection={openChart} />
+                )}
+                {tabId === 'tune' && (
+                  <TuneTab session={session} hitEvents={hitEvents} />
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>,
