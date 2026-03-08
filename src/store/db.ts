@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'polypro';
-const DB_VERSION = 2;
+const DB_VERSION = 1;
 
 export interface PolyProDB {
   settings: { key: string; value: unknown };
@@ -134,44 +134,45 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
-    dbPromise = new Promise<IDBPDatabase>((resolve, reject) => {
-      // Timeout: if upgrade is blocked by old SW/tab for >3s, reject and retry
-      const timeout = setTimeout(() => {
-        dbPromise = null;
-        reject(new Error('IDB open timed out — old connection may be blocking upgrade'));
-      }, 3000);
-
-      openDB(DB_NAME, DB_VERSION, {
-        upgrade(db) {
-          if (!db.objectStoreNames.contains('settings')) {
-            db.createObjectStore('settings');
-          }
-          if (!db.objectStoreNames.contains('presets')) {
-            db.createObjectStore('presets', { keyPath: 'id' });
-          }
-          if (!db.objectStoreNames.contains('projects')) {
-            db.createObjectStore('projects', { keyPath: 'id' });
-          }
-          if (!db.objectStoreNames.contains('sessions')) {
-            const store = db.createObjectStore('sessions', { keyPath: 'id' });
-            store.createIndex('projectId', 'projectId');
-            store.createIndex('date', 'date');
-          }
-          if (!db.objectStoreNames.contains('recordings')) {
-            db.createObjectStore('recordings');
-          }
-        },
-        blocked() {
-          console.warn('IDB upgrade blocked by old connection — will timeout and retry');
-        },
-      }).then((db) => {
-        clearTimeout(timeout);
-        resolve(db);
-      }).catch((err) => {
-        clearTimeout(timeout);
-        dbPromise = null;
-        reject(err);
-      });
+    dbPromise = openDB(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings');
+        }
+        if (!db.objectStoreNames.contains('presets')) {
+          db.createObjectStore('presets', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('projects')) {
+          db.createObjectStore('projects', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('sessions')) {
+          const store = db.createObjectStore('sessions', { keyPath: 'id' });
+          store.createIndex('projectId', 'projectId');
+          store.createIndex('date', 'date');
+        }
+        if (!db.objectStoreNames.contains('recordings')) {
+          db.createObjectStore('recordings');
+        }
+      },
+    }).catch((err) => {
+      // If DB was already upgraded to v2 by a previous deploy, open at v2 instead
+      if (err?.name === 'VersionError') {
+        console.warn('DB is at v2 from previous deploy, opening at v2');
+        return openDB(DB_NAME, 2, {
+          upgrade(db) {
+            if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+            if (!db.objectStoreNames.contains('presets')) db.createObjectStore('presets', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('sessions')) {
+              const store = db.createObjectStore('sessions', { keyPath: 'id' });
+              store.createIndex('projectId', 'projectId');
+              store.createIndex('date', 'date');
+            }
+            if (!db.objectStoreNames.contains('recordings')) db.createObjectStore('recordings');
+          },
+        });
+      }
+      throw err;
     });
   }
   return dbPromise;

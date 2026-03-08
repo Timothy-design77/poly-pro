@@ -14,23 +14,15 @@ export function App() {
   const loadSessions = useSessionStore((s) => s.loadFromDB);
 
   useEffect(() => {
-    const init = () =>
-      Promise.all([loadProjects(), loadSessions(), hydrateStores()])
-        .then(() => {
-          startPersistence();
-          setReady(true);
-        });
-
-    init().catch((err) => {
-      console.warn('First init attempt failed, retrying in 1s:', err);
-      // Retry once — the blocked upgrade may have resolved after old SW died
-      setTimeout(() => {
-        init().catch((err2) => {
-          console.error('Init retry failed:', err2);
-          setReady(true); // Load anyway with defaults
-        });
-      }, 1000);
-    });
+    Promise.all([loadProjects(), loadSessions(), hydrateStores()])
+      .then(() => {
+        startPersistence();
+        setReady(true);
+      })
+      .catch((err) => {
+        console.error('Failed to load data:', err);
+        setReady(true);
+      });
   }, [loadProjects, loadSessions]);
 
   if (!ready) {
