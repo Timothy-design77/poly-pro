@@ -150,22 +150,26 @@ export function useCalibration() {
       const chirpBuffer = createChirpBuffer(ctx);
       const chirpPlayTimes: number[] = [];
 
-      // Play 5 chirps, 1 second apart
+      // Schedule all 5 chirps at precise absolute times
+      // Start first chirp 100ms from now to ensure clean scheduling
+      const firstChirpTime = ctx.currentTime + 0.1;
       for (let i = 0; i < CHIRP_COUNT; i++) {
-        if (!isRunningRef.current) return;
-
-        const playTime = ctx.currentTime + 0.05; // small scheduling buffer
+        const playTime = firstChirpTime + i * CHIRP_INTERVAL_S;
         chirpPlayTimes.push(playTime);
         playChirp(ctx, chirpBuffer, playTime);
-
-        setState((s) => ({ ...s, chirpProgress: i + 1 }));
-
-        if (i < CHIRP_COUNT - 1) {
-          await sleep(CHIRP_INTERVAL_S * 1000);
-        }
       }
 
-      // Wait for last chirp to be captured (+ 200ms buffer for latency)
+      // Wait for all chirps to finish + 300ms for last chirp's round trip
+
+      // Update progress as chirps play
+      for (let i = 0; i < CHIRP_COUNT; i++) {
+        if (!isRunningRef.current) return;
+        const waitUntil = (chirpPlayTimes[i] - ctx.currentTime) * 1000 + 200;
+        if (waitUntil > 0) await sleep(waitUntil);
+        setState((s) => ({ ...s, chirpProgress: i + 1 }));
+      }
+
+      // Wait for the final chirp's echo to be captured
       await sleep(500);
 
       if (!isRunningRef.current) return;

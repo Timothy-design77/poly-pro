@@ -15,7 +15,7 @@
  * frequency sweep covers drum onset detection range.
  */
 
-const CHIRP_DURATION_S = 0.005; // 5ms
+const CHIRP_DURATION_S = 0.020; // 20ms — longer = sharper correlation peak
 const CHIRP_FREQ_START = 200;   // Hz
 const CHIRP_FREQ_END = 4000;    // Hz
 const CHIRP_COUNT = 5;
@@ -59,9 +59,9 @@ export function createChirpBuffer(ctx: AudioContext): AudioBuffer {
 export function playChirp(ctx: AudioContext, buffer: AudioBuffer, time: number): void {
   const source = ctx.createBufferSource();
   source.buffer = buffer;
-  // Play at moderate volume through a dedicated gain
+  // Play loud — needs to be clearly picked up by the mic
   const gain = ctx.createGain();
-  gain.gain.value = 0.8;
+  gain.gain.value = 1.0;
   source.connect(gain);
   gain.connect(ctx.destination);
   source.start(time);
@@ -185,10 +185,10 @@ export function computeCalibrationResult(
   total: number;
   quality: 'excellent' | 'good' | 'poor' | 'failed';
 } {
-  // Filter by correlation confidence
+  // Filter by correlation confidence — 0.5 minimum (stricter to reject false matches)
   const valid: number[] = [];
   for (let i = 0; i < latencies.length; i++) {
-    if (correlations[i] >= 0.3 && latencies[i] >= 0 && latencies[i] < 200) {
+    if (correlations[i] >= 0.5 && latencies[i] >= 0 && latencies[i] < 200) {
       valid.push(latencies[i]);
     }
   }
@@ -207,7 +207,6 @@ export function computeCalibrationResult(
   valid.sort((a, b) => a - b);
   let trimmed = valid;
   if (valid.length >= 4) {
-    // Trim 1 from each end
     trimmed = valid.slice(1, -1);
   }
 
@@ -217,23 +216,64 @@ export function computeCalibrationResult(
     ? (trimmed[mid - 1] + trimmed[mid]) / 2
     : trimmed[mid];
 
-  // Standard deviation for consistency
-  const mean = trimmed.reduce((s, v) => s + v, 0) / trimmed.length;
-  const variance = trimmed.reduce((s, v) => s + (v - mean) * (v - mean), 0) / (trimmed.length - 1);
-  const stdDev = Math.sqrt(variance);
+  // Check if values are tightly clustered — if range > 20ms, something is wrong
+  const range = trimmed[trimmed.length - 1] - trimmed[0];
+  if (range > 20) {
+    // Measurements too spread out — likely false matches mixed in
+    // Fall back to the tightest cluster
+    const clusters = findTightestCluster(valid, 10); // 10ms window
+    if (clusters.length >= 2) {
+      const clusterMedian = clusters[Math.floor(clusters.length / 2)];
+      const clusterStd = stdDev(clusters);
+      return {
+        offsetMs: Math.round(clusterMedian * 10) / 10,
+        consistencyMs: Math.round(clusterStd * 10) / 10,
+        accepted: clusters.length,
+        total: latencies.length,
+        quality: clusterStd <= 3 ? 'excellent' : clusterStd <= 8 ? 'good' : 'poor',
+      };
+    }
+  }
+
+  const std = stdDev(trimmed);
 
   let quality: 'excellent' | 'good' | 'poor' | 'failed';
-  if (stdDev <= 3) quality = 'excellent';
-  else if (stdDev <= 8) quality = 'good';
+  if (std <= 3) quality = 'excellent';
+  else if (std <= 8) quality = 'good';
   else quality = 'poor';
 
   return {
-    offsetMs: Math.round(median * 10) / 10, // round to 0.1ms
-    consistencyMs: Math.round(stdDev * 10) / 10,
+    offsetMs: Math.round(median * 10) / 10,
+    consistencyMs: Math.round(std * 10) / 10,
     accepted: valid.length,
     total: latencies.length,
     quality,
   };
+}
+
+/** Standard deviation of an array of numbers */
+function stdDev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((s, v) => s + v, 0) / values.length;
+  const variance = values.reduce((s, v) => s + (v - mean) * (v - mean), 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
+/** Find the largest cluster of values within a given window size */
+function findTightestCluster(sorted: number[], windowMs: number): number[] {
+  let bestCluster: number[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const cluster: number[] = [];
+    for (let j = i; j < sorted.length; j++) {
+      if (sorted[j] - sorted[i] <= windowMs) {
+        cluster.push(sorted[j]);
+      } else break;
+    }
+    if (cluster.length > bestCluster.length) {
+      bestCluster = cluster;
+    }
+  }
+  return bestCluster;
 }
 
 export { CHIRP_COUNT, CHIRP_INTERVAL_S, NOISE_FLOOR_WAIT_S };
