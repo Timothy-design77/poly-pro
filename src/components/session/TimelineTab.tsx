@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
+import type { SessionAnalysis, ScoredOnset } from '../../analysis/types';
 import * as db from '../../store/db';
 import { ScoringControls } from './ScoringControls';
 
@@ -31,6 +32,12 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const [containerWidth, setContainerWidth] = useState(350);
   const touchStartRef = useRef<number | null>(null);
   const scrollStartRef = useRef(0);
+  /** Live-scored onsets from ScoringControls — overrides hitEvents when sliders are adjusted */
+  const [liveOnsets, setLiveOnsets] = useState<ScoredOnset[] | null>(null);
+
+  const handleScoringResult = useCallback((result: SessionAnalysis) => {
+    setLiveOnsets(result.scoredOnsets);
+  }, []);
 
   // Measure container
   useEffect(() => {
@@ -137,8 +144,9 @@ export function TimelineTab({ session, hitEvents }: Props) {
     }
 
     // ─── Onset markers ───
-    if (hitEvents) {
-      for (const onset of hitEvents.scoredOnsets) {
+    const onsetsToRender = liveOnsets ?? hitEvents?.scoredOnsets;
+    if (onsetsToRender) {
+      for (const onset of onsetsToRender) {
         const x = (onset.time / durationS) * totalWidth;
 
         if (onset.scored) {
@@ -179,7 +187,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
         }
       }
     }
-  }, [totalWidth, canvasHeight, waveform, hitEvents, session, zoom]);
+  }, [totalWidth, canvasHeight, waveform, hitEvents, liveOnsets, session, zoom]);
 
   useEffect(() => {
     render();
@@ -306,12 +314,13 @@ export function TimelineTab({ session, hitEvents }: Props) {
         </span>
       </div>
 
-      {/* Scoring controls (compact) */}
+      {/* Scoring controls (compact) — adjustments update timeline markers live */}
       {hitEvents && session.analyzed && (
         <ScoringControls
           session={session}
           hitEvents={hitEvents}
           compact
+          onResult={handleScoringResult}
         />
       )}
     </div>
