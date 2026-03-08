@@ -155,39 +155,44 @@
 - Default project auto-created on first launch
 
 **Phase 4 — Recording (src/hooks/useRecording.ts):**
-- MediaRecorder-based capture (NOT AudioWorklet — see Architecture Decision below)
+- AudioWorklet-based raw Float32 PCM capture at 48kHz
+- Mic → createMediaStreamSource → AudioWorkletNode → 1s chunks via MessagePort → IDB
+- Real-time mic peak level from worklet for waveform display
+- Built-in mic forced via explicit deviceId (prevents BT A2DP→HFP switch)
 - getUserMedia with raw constraints: echoCancellation/autoGainControl/noiseSuppression all {exact: false}
-- BT earbud avoidance: enumerates devices, filters out BT mics by keyword
-- Post-recording decode: Opus/WebM → decodeAudioData → Float32 PCM for analysis
-- Session record created on stop, saved to IDB with PCM blob + compressed playback blob
+- Session record created on stop, saved to IDB with raw PCM blob
 - Auto-start metronome on record, auto-stop on finish, auto-navigate to Progress page
 - 30-minute max with 25-minute warning
-- Recording boost: outputGain × 2.0 during recording (v1's lBst pattern)
 
-**Phase 4 — Audio Chain Fix (src/utils/constants.ts, src/audio/engine.ts):**
-- Restored exact v1 audio constants (compressor 0dB/2:1, masterGain ×8, outputGain ×4)
-- Recording boost on outputGain (AFTER compressor, speakers only — v1 pattern)
-- Volume slider wired to metronomeStore.volume (not settingsStore.clickVolume)
-- Removed dead settingsStore.clickVolume to prevent confusion
-- Schema version migration: resets stale IDB volume to 0.8 on first load after fix
+**Phase 4 — Audio Chain (src/audio/engine.ts, src/utils/constants.ts):**
+- Compressor (0dB threshold, 2:1 ratio) → outputGain (8.0, fixed)
+- Volume slider: perceptual curve (vol^1.5 × 8.0) for responsive feel
+- Same volume whether recording or not (no boost mechanism)
+- Volume wired to metronomeStore.volume; dead settingsStore.clickVolume removed
+- Schema version migration: resets stale IDB volume to 0.8 on first load
 
 **Phase 4 — Mic Selection (src/utils/mic.ts):**
-- echoCancellation: {exact: false} as master switch for Chrome Android processing pipeline
-- Built-in mic preference when BT devices detected
-- verifyRawAudio() to confirm processing is actually disabled
-- hasBtAudioOutput() for BT earbud tip display
+- enumerateDevices() first (no dummy stream if permission already granted)
+- Dummy stream only on first-ever visit, with sampleRate:{ideal:48000} to avoid BT
+- Samsung-specific keywords: 'bottom', 'built-in', 'internal'
+- verifyRawAudio() confirms processing disabled
+- hasBtAudioOutput() for BT detection
+
+**Phase 4 — Playback (src/hooks/usePlayback.ts):**
+- Raw PCM → AudioBuffer → GainNode(4.0) → destination
+- Backward compat with legacy compressed Opus/WebM blobs
 
 **Phase 4 — Components:**
 - RecordButton: fully wired, red dot, toggles recording
-- WaveformDisplay: static recording indicator (no live metering — see Architecture Decision)
-- BT earbud tip: one-time dismissible notification
+- WaveformDisplay: mic level from worklet (real-time)
+- BT earbud tip: shows mic device name, warns if built-in not selected
 
-**⚠️ Phase 4 Audio Verification Pending:**
-User needs to test on Galaxy Z Fold 7:
-- [ ] Metronome plays at full volume (clear, loud clicks)
-- [ ] Volume slider works (0% silent → 100% loud)
-- [ ] Recording starts → metronome stays loud (recording boost active)
-- [ ] Recording stops → session saved → appears in Progress page
+**Phase 4 — VERIFIED ✅ on Galaxy Z Fold 7:**
+- [x] Metronome at full volume, same whether recording or not
+- [x] Volume slider responsive (perceptual curve)
+- [x] BT stays on A2DP/ANC during recording, built-in mic used
+- [x] Sessions save, playback works
+- [x] AudioWorklet captures raw PCM, no processing on input
 
 ### What's Next: Phase 5
 
@@ -368,16 +373,16 @@ This is how v1 works and it's correct. The `25ms` interval and `100ms` lookahead
 - No 173MB `decodeAudioData()` memory spike after 30-min recordings
 - PCM chunks stream to IDB in 1-second intervals (no memory growth)
 
-**Audio output chain (v1-proven, restored):**
+**Audio output chain (simplified):**
 ```
 clicks → per-beat gain (0.0–1.0)
        → masterGain (volume^1.5 × 8.0, default 0.8 → ~5.7)
        → compressor (threshold=0dB, knee=3, ratio=2:1, attack=0.002, release=0.05)
-       → outputGain (4.0, or 8.0 during recording via ×2.0 boost)
+       → outputGain (8.0, fixed — same volume recording or not)
        → destination (speakers / BT A2DP)
 ```
 
-**Recording boost:** outputGain goes from 4.0 → 8.0 during recording (v1's `lBst=2` pattern). Compensates for any residual Android ducking.
+**No recording boost.** Metronome volume is identical whether recording or not. The old v1 `lBst` boost mechanism has been removed — it was compensating for BT HFP ducking which no longer occurs with correct mic selection.
 
 ---
 
@@ -1399,7 +1404,7 @@ getUserMedia (built-in mic forced, raw: no AEC/AGC/NS)
   → silentGain(0) → destination (keeps worklet alive, mic not audible)
 
 Metronome runs on the SAME AudioContext:
-clicks → per-beat gain → masterGain → compressor → outputGain(4.0 or 8.0) → destination
+clicks → per-beat gain → masterGain → compressor → outputGain(8.0) → destination
 ```
 
 **Key: BT stays on A2DP because we force the built-in phone mic via explicit deviceId. The BT mic is never activated, so Android never switches to HFP call mode.**
@@ -1430,8 +1435,8 @@ clicks → per-beat gain → masterGain → compressor → outputGain(4.0 or 8.0
 - `src/hooks/useRecording.ts` — full recording lifecycle (AudioWorklet)
 - `src/hooks/usePlayback.ts` — playback via Web Audio (raw PCM + legacy compressed compat)
 - `src/utils/mic.ts` — built-in mic selection with BT avoidance
-- `src/audio/engine.ts` — setRecordingBoost() on outputGain, perceptual volume curve
-- `src/utils/constants.ts` — RECORDING_GAIN_BOOST = 2.0 (v1's lBst)
+- `src/audio/engine.ts` — perceptual volume curve, outputGain fixed at 8.0
+- `src/utils/constants.ts` — OUTPUT_GAIN = 8.0, no recording boost
 - `src/store/persistence.ts` — schema version migration for stale volume values
 
 ### Recording Flow
@@ -1445,7 +1450,6 @@ clicks → per-beat gain → masterGain → compressor → outputGain(4.0 or 8.0
 - RECORD button turns red
 - getUserMedia acquires built-in mic (explicit deviceId, raw constraints)
 - AudioWorklet loaded, mic → worklet → silentGain → destination
-- outputGain boosted ×2 for any residual ducking
 - Worklet begins streaming Float32 PCM chunks to main thread
 - Real-time mic peak level drives waveform display
 
