@@ -2,9 +2,10 @@
  * CalibrationSettings — Calibration section in the Settings overlay.
  *
  * Shows:
- * - Current offset (read-only display)
+ * - Effective offset (calibrated + manual)
+ * - Calibrated base value (read-only)
  * - Run Calibration button → opens CalibrationPage
- * - Manual offset override slider (-100 to +100ms, 0.5ms step)
+ * - Fine-tune slider: ±50ms on top of calibration
  * - Last calibrated date
  */
 
@@ -13,12 +14,15 @@ import { useSettingsStore } from '../../store/settings-store';
 import { CalibrationPage } from '../../pages/CalibrationPage';
 
 export function CalibrationSettings() {
-  const latencyOffset = useSettingsStore((s) => s.latencyOffset);
+  const calibratedOffset = useSettingsStore((s) => s.calibratedOffset);
+  const manualAdjustment = useSettingsStore((s) => s.manualAdjustment);
   const lastCalibratedAt = useSettingsStore((s) => s.lastCalibratedAt);
   const calibrationConsistency = useSettingsStore((s) => s.calibrationConsistency);
-  const setLatencyOffset = useSettingsStore((s) => s.setLatencyOffset);
+  const setManualAdjustment = useSettingsStore((s) => s.setManualAdjustment);
 
   const [showCalibration, setShowCalibration] = useState(false);
+
+  const effectiveOffset = calibratedOffset + manualAdjustment;
 
   const lastCalLabel = lastCalibratedAt
     ? new Date(lastCalibratedAt).toLocaleDateString(undefined, {
@@ -28,15 +32,25 @@ export function CalibrationSettings() {
 
   return (
     <div className="space-y-4">
-      {/* Current offset display */}
+      {/* Effective offset */}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-text-secondary">Current Offset</span>
+        <span className="text-xs text-text-secondary">Effective Offset</span>
         <span className="text-sm font-mono font-bold text-text-primary">
-          {latencyOffset === 0 && !lastCalibratedAt
-            ? 'Not set'
-            : `${latencyOffset > 0 ? '+' : ''}${latencyOffset.toFixed(1)}ms`}
+          {calibratedOffset === 0 && !lastCalibratedAt
+            ? 'Not calibrated'
+            : `${effectiveOffset.toFixed(1)}ms`}
         </span>
       </div>
+
+      {/* Calibrated base (read-only) */}
+      {lastCalibratedAt && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-text-secondary">Calibrated Base</span>
+          <span className="text-xs font-mono text-text-muted">
+            {calibratedOffset.toFixed(1)}ms
+          </span>
+        </div>
+      )}
 
       {/* Consistency from last calibration */}
       {calibrationConsistency !== null && (
@@ -62,35 +76,35 @@ export function CalibrationSettings() {
                    bg-[rgba(255,255,255,0.85)] text-[#0C0C0E]
                    active:bg-[rgba(255,255,255,0.95)]"
       >
-        Run Calibration
+        {lastCalibratedAt ? 'Recalibrate' : 'Run Calibration'}
       </button>
 
-      {/* Manual override slider */}
+      {/* Fine-tune slider: ±50ms on top of calibrated value */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-text-secondary">Manual Override</span>
+          <span className="text-xs text-text-secondary">Fine-Tune</span>
           <span className="text-xs font-mono text-text-primary">
-            {latencyOffset > 0 ? '+' : ''}{latencyOffset.toFixed(1)}ms
+            {manualAdjustment > 0 ? '+' : ''}{manualAdjustment.toFixed(1)}ms
           </span>
         </div>
         <input
           type="range"
-          min={-100}
-          max={100}
+          min={-50}
+          max={50}
           step={0.5}
-          value={latencyOffset}
-          onChange={(e) => setLatencyOffset(parseFloat(e.target.value))}
+          value={manualAdjustment}
+          onChange={(e) => setManualAdjustment(parseFloat(e.target.value))}
           className="w-full h-1.5 rounded-full appearance-none cursor-pointer touch-manipulation"
           style={{
             background: `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) ${
-              ((latencyOffset + 100) / 200) * 100
+              ((manualAdjustment + 50) / 100) * 100
             }%, rgba(255,255,255,0.08) 100%)`,
           }}
         />
         <div className="flex justify-between mt-0.5">
-          <span className="text-[9px] text-text-muted">-100ms</span>
+          <span className="text-[9px] text-text-muted">-50ms</span>
           <span className="text-[9px] text-text-muted">0</span>
-          <span className="text-[9px] text-text-muted">+100ms</span>
+          <span className="text-[9px] text-text-muted">+50ms</span>
         </div>
       </div>
 

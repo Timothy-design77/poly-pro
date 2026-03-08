@@ -24,7 +24,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   detectionPreset: 'Standard',
 
   // Calibration
-  latencyOffset: 0,
+  calibratedOffset: 0,
+  manualAdjustment: 0,
   lastCalibratedAt: null,
   calibrationConsistency: null,
 
@@ -36,7 +37,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setHapticEnabled: (enabled) => set({ hapticEnabled: enabled }),
   setVibrationIntensity: (intensity) =>
     set({ vibrationIntensity: Math.max(0, Math.min(1, intensity)) }),
-  setLatencyOffset: (offset) => set({ latencyOffset: offset }),
+  setCalibratedOffset: (offset) => set({ calibratedOffset: offset }),
+  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-50, Math.min(50, adj)) }),
   setLastCalibratedAt: (date) => set({ lastCalibratedAt: date }),
   setCalibrationConsistency: (value) => set({ calibrationConsistency: value }),
   setSensitivity: (value) => set({ sensitivity: Math.max(0, Math.min(1, value)) }),

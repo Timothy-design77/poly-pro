@@ -225,7 +225,8 @@ export function useCalibration() {
   const acceptResult = useCallback(() => {
     if (state.step !== 'results') return;
     const settings = useSettingsStore.getState();
-    settings.setLatencyOffset(state.offsetMs);
+    settings.setCalibratedOffset(state.offsetMs);
+    settings.setManualAdjustment(0); // Reset fine-tune when accepting new calibration
     settings.setLastCalibratedAt(new Date().toISOString());
     settings.setCalibrationConsistency(state.consistencyMs);
     setState((s) => ({ ...s, step: 'idle' }));

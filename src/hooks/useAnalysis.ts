@@ -89,7 +89,7 @@ export function useAnalysis() {
             noiseGate: settings.noiseGate,
             accentThreshold: settings.accentThreshold,
             highPassHz: settings.highPassHz,
-            latencyOffsetMs: settings.latencyOffset,
+            latencyOffsetMs: settings.calibratedOffset + settings.manualAdjustment,
           },
           onProgress: (progress) => {
             if (!abortRef.current) {

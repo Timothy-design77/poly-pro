@@ -98,7 +98,10 @@ export interface SettingsState {
   detectionPreset: string;     // 'Standard' | 'Strict' | 'Forgiving' | 'Noisy Room' | 'Custom'
 
   // Calibration
-  latencyOffset: number;
+  /** Offset from automated calibration (ms) */
+  calibratedOffset: number;
+  /** Manual fine-tune adjustment on top of calibration (ms) */
+  manualAdjustment: number;
   lastCalibratedAt: string | null;
   calibrationConsistency: number | null;
 
@@ -108,7 +111,8 @@ export interface SettingsState {
   setAccentSoundThreshold: (level: number) => void;
   setHapticEnabled: (enabled: boolean) => void;
   setVibrationIntensity: (intensity: number) => void;
-  setLatencyOffset: (offset: number) => void;
+  setCalibratedOffset: (offset: number) => void;
+  setManualAdjustment: (adj: number) => void;
   setLastCalibratedAt: (date: string) => void;
   setCalibrationConsistency: (value: number) => void;
   setSensitivity: (value: number) => void;

@@ -75,7 +75,8 @@ interface PersistedSettings {
   accentSoundThreshold: number;
   hapticEnabled: boolean;
   vibrationIntensity: number;
-  latencyOffset: number;
+  calibratedOffset: number;
+  manualAdjustment: number;
   sensitivity: number;
   // Detection (Phase 5)
   scoringWindowPct: number;
@@ -96,7 +97,8 @@ function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): Pers
     accentSoundThreshold: state.accentSoundThreshold,
     hapticEnabled: state.hapticEnabled,
     vibrationIntensity: state.vibrationIntensity,
-    latencyOffset: state.latencyOffset,
+    calibratedOffset: state.calibratedOffset,
+    manualAdjustment: state.manualAdjustment,
     sensitivity: state.sensitivity,
     scoringWindowPct: state.scoringWindowPct,
     flamMergePct: state.flamMergePct,
@@ -213,7 +215,13 @@ export async function hydrateStores(): Promise<void> {
   }
 
   if (settingsData) {
-    useSettingsStore.setState(settingsData);
+    // Backward compat: migrate old latencyOffset → calibratedOffset
+    const data = settingsData as PersistedSettings & { latencyOffset?: number };
+    if (data.latencyOffset !== undefined && data.calibratedOffset === undefined) {
+      data.calibratedOffset = data.latencyOffset;
+      data.manualAdjustment = 0;
+    }
+    useSettingsStore.setState(data);
   }
 }
 
