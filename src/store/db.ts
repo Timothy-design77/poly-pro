@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'polypro';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface PolyProDB {
   settings: { key: string; value: unknown };
@@ -154,25 +154,6 @@ function getDB(): Promise<IDBPDatabase> {
           db.createObjectStore('recordings');
         }
       },
-    }).catch((err) => {
-      // If DB was already upgraded to v2 by a previous deploy, open at v2 instead
-      if (err?.name === 'VersionError') {
-        console.warn('DB is at v2 from previous deploy, opening at v2');
-        return openDB(DB_NAME, 2, {
-          upgrade(db) {
-            if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
-            if (!db.objectStoreNames.contains('presets')) db.createObjectStore('presets', { keyPath: 'id' });
-            if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
-            if (!db.objectStoreNames.contains('sessions')) {
-              const store = db.createObjectStore('sessions', { keyPath: 'id' });
-              store.createIndex('projectId', 'projectId');
-              store.createIndex('date', 'date');
-            }
-            if (!db.objectStoreNames.contains('recordings')) db.createObjectStore('recordings');
-          },
-        });
-      }
-      throw err;
     });
   }
   return dbPromise;
