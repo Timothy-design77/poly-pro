@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'polypro';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export interface PolyProDB {
   settings: { key: string; value: unknown };
@@ -9,6 +9,20 @@ export interface PolyProDB {
   projects: { key: string; value: ProjectRecord };
   sessions: { key: string; value: SessionRecord };
   recordings: { key: string; value: Blob };
+}
+
+/** A user-recorded custom sound sample */
+export interface CustomSampleRecord {
+  /** Unique ID, prefixed with 'custom:' */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Raw audio blob (WAV) */
+  blob: Blob;
+  /** Duration in ms */
+  durationMs: number;
+  /** When recorded/imported */
+  createdAt: string;
 }
 
 export interface MetronomeSnapshot {
@@ -195,6 +209,9 @@ function getDB(): Promise<IDBPDatabase> {
           if (!db.objectStoreNames.contains('instrumentProfiles')) {
             db.createObjectStore('instrumentProfiles', { keyPath: 'name' });
           }
+          if (!db.objectStoreNames.contains('customSamples')) {
+            db.createObjectStore('customSamples', { keyPath: 'id' });
+          }
         },
         blocked(currentVersion, blockedVersion) {
           blocked = true;
@@ -378,4 +395,31 @@ export async function deleteInstrumentProfile(name: string): Promise<void> {
 export async function clearAllInstrumentProfiles(): Promise<void> {
   const db = await getDB();
   await db.clear('instrumentProfiles');
+}
+
+// ─── Custom Samples ───
+
+export async function getAllCustomSamples(): Promise<CustomSampleRecord[]> {
+  const db = await getDB();
+  return db.getAll('customSamples');
+}
+
+export async function getCustomSample(id: string): Promise<CustomSampleRecord | undefined> {
+  const db = await getDB();
+  return db.get('customSamples', id);
+}
+
+export async function putCustomSample(record: CustomSampleRecord): Promise<void> {
+  const db = await getDB();
+  await db.put('customSamples', record);
+}
+
+export async function deleteCustomSample(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('customSamples', id);
+}
+
+export async function clearAllCustomSamples(): Promise<void> {
+  const db = await getDB();
+  await db.clear('customSamples');
 }

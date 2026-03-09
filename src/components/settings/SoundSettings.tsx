@@ -1,9 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio/engine';
 import { VolumeState } from '../../audio/types';
+import * as db from '../../store/db';
+import type { CustomSampleRecord } from '../../store/db';
+import { CustomSampleManager } from './CustomSampleManager';
 
 /**
  * Settings section: Sounds
@@ -26,12 +29,28 @@ export function SoundSettings() {
   // Track which picker was last interacted with for the Preview button
   const lastPickerRef = useRef<'click' | 'accent'>('click');
 
+  // Custom samples
+  const [customSamples, setCustomSamples] = useState<CustomSampleRecord[]>([]);
+
+  useEffect(() => {
+    db.getAllCustomSamples().then(setCustomSamples).catch(() => {});
+  }, []);
+
+  const refreshCustomSamples = useCallback(() => {
+    db.getAllCustomSamples().then(setCustomSamples).catch(() => {});
+  }, []);
+
   const handlePreview = (soundId: string) => {
     audioEngine.previewSound(soundId);
   };
 
-  const getSoundName = (id: string) =>
-    SOUND_CATALOG.find((s) => s.id === id)?.name || id;
+  const getSoundName = (id: string) => {
+    if (id.startsWith('custom:')) {
+      const custom = customSamples.find((s) => s.id === id);
+      return custom?.name || 'Custom Sample';
+    }
+    return SOUND_CATALOG.find((s) => s.id === id)?.name || id;
+  };
 
   const categories = ['clicks', 'drums', 'percussion', 'tonal'] as const;
   const categoryLabels: Record<string, string> = {
@@ -69,7 +88,44 @@ export function SoundSettings() {
         </button>
 
         {isExpanded && (
-          <div className="mt-1 bg-bg-primary border border-border-subtle rounded-lg overflow-hidden max-h-[280px] overflow-y-auto">
+          <div className="mt-1 bg-bg-primary border border-border-subtle rounded-lg overflow-hidden max-h-[320px] overflow-y-auto">
+            {/* Custom samples first if any exist */}
+            {customSamples.length > 0 && (
+              <div>
+                <div className="text-[10px] text-text-muted uppercase tracking-wider px-3 pt-2 pb-1">
+                  My Samples
+                </div>
+                {customSamples.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      onSelect(s.id);
+                      handlePreview(s.id);
+                      lastPickerRef.current = pickerKey;
+                      setExpandedPicker(null);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2
+                      ${s.id === current
+                        ? 'text-text-primary bg-bg-raised'
+                        : 'text-text-secondary active:bg-bg-raised'
+                      }`}
+                  >
+                    {s.id === current && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                    <span className={s.id === current ? '' : 'pl-[22px]'}>
+                      {s.name}
+                      <span className="text-text-muted text-[10px] ml-1">{s.durationMs}ms</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Built-in categories */}
             {categories.map((cat) => {
               const sounds = SOUND_CATALOG.filter((s) => s.category === cat);
               return (
@@ -209,6 +265,11 @@ export function SoundSettings() {
         </svg>
         {previewLabel}
       </button>
+
+      {/* Custom samples */}
+      <div className="border-t border-border-subtle pt-4 mt-2">
+        <CustomSampleManager onSamplesChanged={refreshCustomSamples} />
+      </div>
     </div>
   );
 }

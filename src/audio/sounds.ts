@@ -1,6 +1,7 @@
 import type { SoundEntry } from './types';
+import * as db from '../store/db';
 
-/** All available click/percussion sounds */
+/** All available built-in click/percussion sounds */
 export const SOUND_CATALOG: SoundEntry[] = [
   // Clicks
   { id: 'woodblock', name: 'Woodblock', category: 'clicks', file: 'woodblock.wav' },
@@ -49,6 +50,11 @@ export async function loadSound(
   const cached = bufferCache.get(soundId);
   if (cached) return cached;
 
+  // Custom samples stored in IDB
+  if (soundId.startsWith('custom:')) {
+    return loadCustomSample(ctx, soundId);
+  }
+
   const entry = SOUND_CATALOG.find((s) => s.id === soundId);
   if (!entry) {
     console.warn(`Sound not found: ${soundId}`);
@@ -67,6 +73,37 @@ export async function loadSound(
     console.error(`Failed to load sound ${soundId}:`, err);
     return null;
   }
+}
+
+/**
+ * Load a custom sample from IDB into an AudioBuffer.
+ */
+async function loadCustomSample(
+  ctx: AudioContext,
+  soundId: string,
+): Promise<AudioBuffer | null> {
+  try {
+    const record = await db.getCustomSample(soundId);
+    if (!record) {
+      console.warn(`Custom sample not found in IDB: ${soundId}`);
+      return null;
+    }
+    const arrayBuffer = await record.blob.arrayBuffer();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    bufferCache.set(soundId, audioBuffer);
+    return audioBuffer;
+  } catch (err) {
+    console.error(`Failed to load custom sample ${soundId}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Register a custom sample buffer (e.g., right after recording it).
+ * Avoids needing to round-trip through IDB to use it immediately.
+ */
+export function registerCustomBuffer(soundId: string, buffer: AudioBuffer): void {
+  bufferCache.set(soundId, buffer);
 }
 
 /**
@@ -101,8 +138,16 @@ export async function loadAllSounds(ctx: AudioContext): Promise<void> {
   const countPromises = COUNT_SOUNDS.map((entry) =>
     loadSoundFile(ctx, entry.id, entry.file)
   );
-  await Promise.allSettled([...catalogPromises, ...countPromises]);
-  console.log(`Loaded ${bufferCache.size}/${SOUND_CATALOG.length + COUNT_SOUNDS.length} sounds`);
+
+  // Also load any custom samples from IDB
+  let customPromises: Promise<AudioBuffer | null>[] = [];
+  try {
+    const customSamples = await db.getAllCustomSamples();
+    customPromises = customSamples.map((s) => loadCustomSample(ctx, s.id));
+  } catch { /* IDB may not be ready yet */ }
+
+  await Promise.allSettled([...catalogPromises, ...countPromises, ...customPromises]);
+  console.log(`Loaded ${bufferCache.size} sounds (${SOUND_CATALOG.length} built-in + custom)`);
 }
 
 /**

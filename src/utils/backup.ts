@@ -34,6 +34,7 @@ export interface BackupManifest {
     sessions: number;
     recordings: number;
     profiles: number;
+    customSamples?: number;
   };
 }
 
@@ -115,7 +116,20 @@ export async function exportBackup(
     }
   }
 
-  // 7. Manifest
+  // 7. Custom samples (WAV blobs)
+  const customSamples = await db.getAllCustomSamples();
+  const customSamplesFolder = zip.folder('customsamples')!;
+  // Store metadata separately from blobs
+  const customMeta = customSamples.map((s) => ({
+    id: s.id, name: s.name, durationMs: s.durationMs, createdAt: s.createdAt,
+  }));
+  zip.file('customsamples.json', JSON.stringify(customMeta, null, 2));
+  for (const sample of customSamples) {
+    const buffer = await sample.blob.arrayBuffer();
+    customSamplesFolder.file(`${sample.id.replace('custom:', '')}.wav`, buffer);
+  }
+
+  // 8. Manifest
   const manifest: BackupManifest = {
     version: 2,
     format: 'polypro-backup',
@@ -126,6 +140,7 @@ export async function exportBackup(
       sessions: sessions.length,
       recordings: recordingCount,
       profiles: profiles.length,
+      customSamples: customSamples.length,
     },
   };
   zip.file('manifest.json', JSON.stringify(manifest, null, 2));
@@ -317,6 +332,32 @@ export async function importBackup(
     for (const profile of profiles) {
       if (!existingNames.has(profile.name)) {
         await db.putInstrumentProfile(profile);
+      }
+    }
+  }
+
+  // 7. Custom samples (merge, don't overwrite)
+  const customMetaFile = zip.file('customsamples.json');
+  if (customMetaFile) {
+    const customMeta: Array<{ id: string; name: string; durationMs: number; createdAt: string }> =
+      JSON.parse(await customMetaFile.async('text'));
+    const existingCustom = await db.getAllCustomSamples();
+    const existingIds = new Set(existingCustom.map((s) => s.id));
+    const customFolder = zip.folder('customsamples');
+
+    for (const meta of customMeta) {
+      if (existingIds.has(meta.id)) continue;
+      const fileKey = meta.id.replace('custom:', '');
+      const wavFile = customFolder?.file(`${fileKey}.wav`);
+      if (wavFile) {
+        const buffer = await wavFile.async('arraybuffer');
+        await db.putCustomSample({
+          id: meta.id,
+          name: meta.name,
+          blob: new Blob([buffer], { type: 'audio/wav' }),
+          durationMs: meta.durationMs,
+          createdAt: meta.createdAt,
+        });
       }
     }
   }
