@@ -18,6 +18,8 @@ import { ScoringControls } from './ScoringControls';
 import { HelpTip } from '../ui/HelpTip';
 import { INSTRUMENT_INFO } from '../../analysis/classification';
 import type { InstrumentName } from '../../analysis/classification';
+import { useSettingsStore } from '../../store/settings-store';
+import { VolumeState, VOLUME_GAINS } from '../../audio/types';
 
 interface Props {
   session: SessionRecord;
@@ -45,12 +47,18 @@ export function TimelineTab({ session, hitEvents }: Props) {
   /** Live-scored onsets from ScoringControls — overrides hitEvents when sliders are adjusted */
   const [liveOnsets, setLiveOnsets] = useState<ScoredOnset[] | null>(null);
 
+  // ─── Click sound settings ───
+  const clickSoundId = useSettingsStore((s) => s.clickSound);
+  const accentSoundId = useSettingsStore((s) => s.accentSound);
+  const accentThreshold = useSettingsStore((s) => s.accentSoundThreshold);
+
   // ─── Playback state ───
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPos, setPlaybackPos] = useState(0); // 0–1 fraction of duration
   const [showLanes, setShowLanes] = useState(false);
   const [clickOverlay, setClickOverlay] = useState(true);
   const [clickVolume, setClickVolume] = useState(0.5);
+  const [isSaving, setIsSaving] = useState(false);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -167,16 +175,16 @@ export function TimelineTab({ session, hitEvents }: Props) {
     gainNodeRef.current = gain;
     setIsPlaying(true);
 
-    // ─── Click overlay: schedule metronome clicks at beat grid times ───
+    // ─── Click overlay: schedule clicks using user's sound settings ───
     if (clickOverlay) {
       const durationS = session.durationMs / 1000;
       const bpm = session.bpm;
       const subdivision = session.subdivision || 1;
-      const ioi = 60 / bpm / subdivision; // interval between subdivisions
+      const ioi = 60 / bpm / subdivision;
+      const meterNum = parseInt(session.meter) || 4;
 
-      // Get click sound buffers
-      const clickBuf = getBuffer('woodblock') || getBuffer('tick');
-      const accentBuf = getBuffer('clave') || clickBuf;
+      const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
+      const accentBuf = getBuffer(accentSoundId) || clickBuf;
 
       if (clickBuf) {
         const clickGain = ctx.createGain();
@@ -189,19 +197,25 @@ export function TimelineTab({ session, hitEvents }: Props) {
         let beatIdx = 0;
 
         while (beatTime < durationS) {
-          // Only schedule clicks that are ahead of our playback offset
           if (beatTime > offset) {
             const when = ctx.currentTime + (beatTime - offset);
-            const isDownbeat = beatIdx % (subdivision * (parseInt(session.meter) || 4)) === 0;
+            const isDownbeat = beatIdx % (subdivision * meterNum) === 0;
             const isMainBeat = beatIdx % subdivision === 0;
 
-            const buf = isDownbeat ? accentBuf : clickBuf;
+            // Determine volume state for this beat
+            const volState = isDownbeat ? VolumeState.ACCENT
+              : isMainBeat ? VolumeState.LOUD
+              : VolumeState.MED;
+
+            // Use accent sound if volume state meets threshold
+            const useAccent = volState >= accentThreshold;
+            const buf = useAccent ? (accentBuf || clickBuf) : clickBuf;
+
             const clickSource = ctx.createBufferSource();
             clickSource.buffer = buf;
 
-            // Vary gain: downbeat louder, subdivisions quieter
             const clickNodeGain = ctx.createGain();
-            clickNodeGain.gain.value = isDownbeat ? 1.0 : isMainBeat ? 0.7 : 0.4;
+            clickNodeGain.gain.value = VOLUME_GAINS[volState];
             clickSource.connect(clickNodeGain);
             clickNodeGain.connect(clickGain);
 
@@ -253,7 +267,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
       }
     };
     animFrameRef.current = requestAnimationFrame(animate);
-  }, [stopPlayback, session.durationMs, session.bpm, session.subdivision, session.meter, zoom, clickOverlay, clickVolume]);
+  }, [stopPlayback, session.durationMs, session.bpm, session.subdivision, session.meter, zoom, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold]);
 
   const togglePlayback = useCallback(async () => {
     if (isPlaying) {
@@ -267,6 +281,123 @@ export function TimelineTab({ session, hitEvents }: Props) {
       startPlayback();
     }
   }, [isPlaying, stopPlayback, startPlayback]);
+
+  // ─── Save / Export audio file ───
+
+  const saveAudio = useCallback(async (withClick: boolean) => {
+    if (!audioBufferRef.current) return;
+    setIsSaving(true);
+
+    try {
+      const { getBuffer } = await import('../../audio/sounds');
+      const sampleRate = 48000;
+      const srcBuf = audioBufferRef.current;
+      const durationS = srcBuf.duration;
+      const totalSamples = Math.ceil(durationS * sampleRate);
+
+      // Create offline context
+      const offline = new OfflineAudioContext(1, totalSamples, sampleRate);
+
+      // Schedule the recording
+      const recSource = offline.createBufferSource();
+      recSource.buffer = srcBuf;
+      const recGain = offline.createGain();
+      recGain.gain.value = 4.0; // same boost as live playback
+      recSource.connect(recGain);
+      recGain.connect(offline.destination);
+      recSource.start(0);
+
+      // Schedule clicks if requested
+      if (withClick) {
+        const bpm = session.bpm;
+        const subdivision = session.subdivision || 1;
+        const ioi = 60 / bpm / subdivision;
+        const meterNum = parseInt(session.meter) || 4;
+
+        const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
+        const accentBuf = getBuffer(accentSoundId) || clickBuf;
+
+        if (clickBuf) {
+          const clickMasterGain = offline.createGain();
+          clickMasterGain.gain.value = clickVolume;
+          clickMasterGain.connect(offline.destination);
+
+          let beatTime = 0;
+          let beatIdx = 0;
+
+          while (beatTime < durationS) {
+            const isDownbeat = beatIdx % (subdivision * meterNum) === 0;
+            const isMainBeat = beatIdx % subdivision === 0;
+
+            const volState = isDownbeat ? VolumeState.ACCENT
+              : isMainBeat ? VolumeState.LOUD
+              : VolumeState.MED;
+            const useAccent = volState >= accentThreshold;
+            const buf = useAccent ? (accentBuf || clickBuf) : clickBuf;
+
+            const clickSource = offline.createBufferSource();
+            clickSource.buffer = buf;
+            const clickNodeGain = offline.createGain();
+            clickNodeGain.gain.value = VOLUME_GAINS[volState];
+            clickSource.connect(clickNodeGain);
+            clickNodeGain.connect(clickMasterGain);
+            clickSource.start(beatTime);
+
+            beatTime += ioi;
+            beatIdx++;
+          }
+        }
+      }
+
+      // Render
+      const rendered = await offline.startRendering();
+
+      // Convert to WAV
+      const pcm = rendered.getChannelData(0);
+      const dataSize = pcm.length * 2;
+      const wavBuf = new ArrayBuffer(44 + dataSize);
+      const v = new DataView(wavBuf);
+      const w = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+
+      w(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true); w(8, 'WAVE');
+      w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+      v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
+      v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+      w(36, 'data'); v.setUint32(40, dataSize, true);
+
+      // Normalize to -1dB headroom
+      let peak = 0;
+      for (let i = 0; i < pcm.length; i++) {
+        const abs = Math.abs(pcm[i]);
+        if (abs > peak) peak = abs;
+      }
+      const scale = peak > 0 ? 0.89 / peak : 1; // -1dB
+
+      let off = 44;
+      for (let i = 0; i < pcm.length; i++) {
+        const s = pcm[i] * scale;
+        v.setInt16(off, Math.max(-32768, Math.min(32767, s < 0 ? s * 0x8000 : s * 0x7FFF)), true);
+        off += 2;
+      }
+
+      // Download
+      const blob = new Blob([wavBuf], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStr = new Date(session.date).toISOString().slice(0, 10);
+      const suffix = withClick ? 'with-click' : 'raw';
+      a.href = url;
+      a.download = `polypro-${session.bpm}bpm-${dateStr}-${suffix}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Save failed:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [session, clickSoundId, accentSoundId, accentThreshold, clickVolume]);
 
   const canvasHeight = 200;
   const totalWidth = containerWidth * zoom;
@@ -642,6 +773,26 @@ export function TimelineTab({ session, hitEvents }: Props) {
           </span>
         )}
       </div>
+
+      {/* Save / Export buttons */}
+      {audioBufferRef.current && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => saveAudio(false)}
+            disabled={isSaving}
+            className="flex-1 py-2 bg-bg-raised border border-border-subtle text-text-secondary rounded-md text-[10px] min-h-[38px] hover:bg-border-subtle transition-colors disabled:opacity-40"
+          >
+            {isSaving ? 'Rendering…' : 'Save Raw'}
+          </button>
+          <button
+            onClick={() => saveAudio(true)}
+            disabled={isSaving}
+            className="flex-1 py-2 bg-bg-raised border border-border-subtle text-text-primary rounded-md text-[10px] min-h-[38px] hover:bg-border-subtle transition-colors disabled:opacity-40"
+          >
+            {isSaving ? 'Rendering…' : 'Save with Click'}
+          </button>
+        </div>
+      )}
 
       {/* Timeline canvas with playhead */}
       <div
