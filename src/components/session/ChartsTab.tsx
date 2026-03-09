@@ -12,6 +12,7 @@ import { DriftChart } from '../analytics/DriftChart';
 import { PushPullChart } from '../analytics/PushPullChart';
 import { SwingChart } from '../analytics/SwingChart';
 import { VelocityChart } from '../analytics/VelocityChart';
+import { InstrumentChart } from '../analytics/InstrumentChart';
 import { HelpTip } from '../ui/HelpTip';
 
 interface Props {
@@ -87,6 +88,12 @@ export function ChartsTab({ session, hitEvents, autoOpenSection }: Props) {
         defaultOpen={autoOpenSection === 'velocity'}
         help="Hit amplitude over time. Yellow dots = accent beats (downbeats). Dashed line = trend. Shows if volume stays consistent or fades.">
         <VelocityChart hitEvents={hitEvents} width={chartWidth} height={160} subdivision={session.subdivision} />
+      </ChartSection>
+
+      <ChartSection title="Per-Instrument Timing" id="instrument"
+        defaultOpen={autoOpenSection === 'instrument'}
+        help="σ (consistency) and mean offset for each classified instrument. Requires instrument training. Darker bars = σ, lighter bars = offset.">
+        <InstrumentChart hitEvents={hitEvents} width={chartWidth} height={180} />
       </ChartSection>
     </div>
   );

@@ -16,6 +16,8 @@ import type { SessionAnalysis, ScoredOnset } from '../../analysis/types';
 import * as db from '../../store/db';
 import { ScoringControls } from './ScoringControls';
 import { HelpTip } from '../ui/HelpTip';
+import { INSTRUMENT_INFO } from '../../analysis/classification';
+import type { InstrumentName } from '../../analysis/classification';
 
 interface Props {
   session: SessionRecord;
@@ -46,6 +48,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
   // ─── Playback state ───
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPos, setPlaybackPos] = useState(0); // 0–1 fraction of duration
+  const [showLanes, setShowLanes] = useState(false);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -276,17 +279,29 @@ export function TimelineTab({ session, hitEvents }: Props) {
     // ─── Onset markers ───
     const onsetsToRender = liveOnsets ?? hitEvents?.scoredOnsets;
     if (onsetsToRender) {
+      // Detect if classification data exists
+      const hasClassification = onsetsToRender.some((o) => o.instrumentLabel);
+
       for (const onset of onsetsToRender) {
         const x = (onset.time / durationS) * totalWidth;
 
         if (onset.scored) {
-          // Color by deviation
-          const absDev = Math.abs(onset.delta);
-          ctx.fillStyle = absDev < 10
-            ? 'rgba(74,222,128,0.8)'
-            : absDev < 25
-              ? 'rgba(251,191,36,0.7)'
-              : 'rgba(248,113,113,0.7)';
+          if (hasClassification && onset.instrumentLabel && onset.instrumentLabel !== 'Unknown') {
+            // Color by instrument classification
+            const instInfo = INSTRUMENT_INFO[onset.instrumentLabel as InstrumentName];
+            const alpha = (onset.instrumentConfidence ?? 0) >= 0.75 ? 0.8 : 0.4;
+            ctx.fillStyle = instInfo
+              ? `${instInfo.color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`
+              : 'rgba(255,255,255,0.4)';
+          } else {
+            // Color by deviation (no classification)
+            const absDev = Math.abs(onset.delta);
+            ctx.fillStyle = absDev < 10
+              ? 'rgba(74,222,128,0.8)'
+              : absDev < 25
+                ? 'rgba(251,191,36,0.7)'
+                : 'rgba(248,113,113,0.7)';
+          }
         } else {
           ctx.fillStyle = 'rgba(255,255,255,0.2)';
         }
@@ -334,8 +349,48 @@ export function TimelineTab({ session, hitEvents }: Props) {
           ctx.fillText(label, x, onsetY + 32);
         }
       }
+
+      // ─── Instrument lanes (below waveform) ───
+      if (showLanes && hasClassification) {
+        const laneStartY = canvasHeight * 0.85;
+        const laneHeight = 12;
+
+        // Collect unique instruments
+        const instruments = new Set<string>();
+        for (const o of onsetsToRender) {
+          if (o.instrumentLabel && o.instrumentLabel !== 'Unknown' && o.scored) {
+            instruments.add(o.instrumentLabel);
+          }
+        }
+
+        const sortedInstruments = Array.from(instruments).sort();
+        let laneIdx = 0;
+
+        for (const instName of sortedInstruments) {
+          const y = laneStartY + laneIdx * (laneHeight + 2);
+          const instInfo = INSTRUMENT_INFO[instName as InstrumentName];
+          const color = instInfo?.color ?? '#8B8B94';
+
+          // Lane label
+          ctx.fillStyle = 'rgba(255,255,255,0.3)';
+          ctx.font = '8px "DM Sans", sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText(instName, 2, y + laneHeight - 2);
+
+          // Onset blocks
+          for (const o of onsetsToRender) {
+            if (o.instrumentLabel !== instName || !o.scored) continue;
+            const ox = (o.time / durationS) * totalWidth;
+            const h = Math.min(laneHeight, Math.max(3, o.peak * laneHeight * 2));
+            ctx.fillStyle = color + '99';
+            ctx.fillRect(ox - 1, y + (laneHeight - h), 3, h);
+          }
+
+          laneIdx++;
+        }
+      }
     }
-  }, [totalWidth, canvasHeight, waveform, hitEvents, liveOnsets, session, zoom]);
+  }, [totalWidth, canvasHeight, waveform, hitEvents, liveOnsets, session, zoom, showLanes]);
 
   useEffect(() => {
     render();
@@ -430,6 +485,17 @@ export function TimelineTab({ session, hitEvents }: Props) {
           </span>
         )}
         <HelpTip text="Zoom into the timeline to see individual hits and their timing deviations. Pinch with two fingers or tap a zoom level. Drag to scroll." />
+
+        {/* Lanes toggle */}
+        <button
+          onClick={() => setShowLanes(!showLanes)}
+          className={`ml-auto px-2 py-1.5 rounded-lg text-[10px] touch-manipulation transition-colors
+            ${showLanes
+              ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
+              : 'bg-bg-raised text-text-muted'}`}
+        >
+          Lanes
+        </button>
       </div>
 
       {/* Transport controls */}

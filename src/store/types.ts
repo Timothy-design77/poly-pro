@@ -105,6 +105,18 @@ export interface SettingsState {
   lastCalibratedAt: string | null;
   calibrationConsistency: number | null;
 
+  // Recording
+  /** Whether metronome click is played through speaker during recording */
+  includeClickInRecording: boolean;
+  /** Click volume during recording (0–0.5), separate from playback volume */
+  clickVolumeInRecording: number;
+  /** Show live waveform during recording */
+  liveWaveform: boolean;
+  /** What to do with raw PCM after analysis */
+  audioAfterAnalysis: 'compress' | 'keep-raw' | 'delete';
+  /** How many days to keep raw PCM (only relevant if audioAfterAnalysis === 'keep-raw') */
+  rawPcmRetentionDays: number;
+
   // Actions
   setClickSound: (id: string) => void;
   setAccentSound: (id: string) => void;
@@ -116,6 +128,11 @@ export interface SettingsState {
   setLastCalibratedAt: (date: string) => void;
   setCalibrationConsistency: (value: number) => void;
   setSensitivity: (value: number) => void;
+  setIncludeClickInRecording: (value: boolean) => void;
+  setClickVolumeInRecording: (value: number) => void;
+  setLiveWaveform: (value: boolean) => void;
+  setAudioAfterAnalysis: (value: 'compress' | 'keep-raw' | 'delete') => void;
+  setRawPcmRetentionDays: (value: number) => void;
   setScoringWindowPct: (value: number) => void;
   setFlamMergePct: (value: number) => void;
   setNoiseGate: (value: number) => void;

@@ -8,7 +8,7 @@
  * and a shorter window for temporal features (attack time).
  */
 
-import type { DetectedOnset, SpectralFeatures, AnalysisProgress } from './types';
+import type { DetectedOnset, SpectralFeatures, BandIsolatedFeatures, BandSubFeatures, AnalysisProgress } from './types';
 
 type ProgressCallback = (progress: AnalysisProgress) => void;
 
@@ -190,7 +190,131 @@ export function extractOnsetFeatures(
     zeroCrossingRate,
     bandEnergy,
     attackTime,
+    bandIsolated: extractBandIsolatedFeatures(pcm, sampleRate, onsetSample, magnitudes, numBins, binFreq),
   };
+}
+
+// ─── Band-Pass Pseudo-Separation (Phase 8 Enhancement) ───
+
+/** Band definitions for pseudo-separation */
+const SEPARATION_BANDS: Array<{ name: 'low' | 'mid' | 'high'; minHz: number; maxHz: number }> = [
+  { name: 'low', minHz: 0, maxHz: 500 },
+  { name: 'mid', minHz: 500, maxHz: 4000 },
+  { name: 'high', minHz: 4000, maxHz: 24000 },
+];
+
+/** Minimum energy ratio for a band to be considered active */
+const BAND_ACTIVE_THRESHOLD = 0.05;
+
+/**
+ * Extract features from band-pass filtered versions of the signal.
+ * Helps the classifier distinguish simultaneous hits (e.g., kick + hi-hat).
+ */
+function extractBandIsolatedFeatures(
+  pcm: Float32Array,
+  sampleRate: number,
+  onsetSample: number,
+  magnitudes: Float32Array,
+  numBins: number,
+  binFreq: number,
+): BandIsolatedFeatures {
+  // Total energy across all bins
+  let totalEnergy = 0;
+  for (let i = 0; i < numBins; i++) {
+    totalEnergy += magnitudes[i] * magnitudes[i];
+  }
+
+  const result: Record<string, BandSubFeatures> = {};
+
+  for (const band of SEPARATION_BANDS) {
+    const minBin = Math.floor(band.minHz / binFreq);
+    const maxBin = Math.min(numBins - 1, Math.ceil(band.maxHz / binFreq));
+
+    // Band energy
+    let bandEnergy = 0;
+    let weightedFreqSum = 0;
+    let magSum = 0;
+    for (let i = minBin; i <= maxBin; i++) {
+      const mag = magnitudes[i];
+      const freq = i * binFreq;
+      bandEnergy += mag * mag;
+      weightedFreqSum += freq * mag;
+      magSum += mag;
+    }
+
+    const energyRatio = totalEnergy > 0 ? bandEnergy / totalEnergy : 0;
+    const centroid = magSum > 0 ? weightedFreqSum / magSum : (band.minHz + band.maxHz) / 2;
+
+    // Band-specific attack time: apply a simple band-pass in the time domain
+    // using the FFT magnitudes to estimate energy onset within this band
+    const attackTime = estimateBandAttackTime(pcm, sampleRate, onsetSample, band.minHz, band.maxHz);
+
+    result[band.name] = {
+      energyRatio,
+      centroid,
+      attackTime,
+      active: energyRatio >= BAND_ACTIVE_THRESHOLD,
+    };
+  }
+
+  return {
+    low: result.low,
+    mid: result.mid,
+    high: result.high,
+  };
+}
+
+/**
+ * Estimate attack time within a frequency band using a simple
+ * running energy window filtered to the specified range.
+ */
+function estimateBandAttackTime(
+  pcm: Float32Array,
+  sampleRate: number,
+  onsetSample: number,
+  minHz: number,
+  maxHz: number,
+): number {
+  // Apply a simple single-pole band-pass approximation for attack detection
+  const attackWindowSamples = Math.min(Math.round(sampleRate * 0.020), pcm.length - onsetSample);
+  if (attackWindowSamples < 4) return 0;
+
+  // Simple IIR band-pass using biquad coefficients approximation
+  const centerFreq = (minHz + maxHz) / 2;
+  const bw = maxHz - minHz;
+  const Q = centerFreq / Math.max(1, bw);
+  const w0 = (2 * Math.PI * centerFreq) / sampleRate;
+  const alpha = Math.sin(w0) / (2 * Q);
+
+  const b0 = alpha;
+  const b1 = 0;
+  const b2 = -alpha;
+  const a0 = 1 + alpha;
+  const a1 = -2 * Math.cos(w0);
+  const a2 = 1 - alpha;
+
+  // Apply filter to onset window
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  let peakVal = 0;
+  let peakIdx = 0;
+
+  for (let i = 0; i < attackWindowSamples; i++) {
+    const idx = onsetSample + i;
+    if (idx >= pcm.length) break;
+    const x = pcm[idx];
+    const y = (b0 / a0) * x + (b1 / a0) * x1 + (b2 / a0) * x2 - (a1 / a0) * y1 - (a2 / a0) * y2;
+
+    x2 = x1; x1 = x;
+    y2 = y1; y1 = y;
+
+    const absY = Math.abs(y);
+    if (absY > peakVal) {
+      peakVal = absY;
+      peakIdx = i;
+    }
+  }
+
+  return (peakIdx / sampleRate) * 1000; // ms
 }
 
 /**

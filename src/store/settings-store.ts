@@ -29,6 +29,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   lastCalibratedAt: null,
   calibrationConsistency: null,
 
+  // Recording
+  includeClickInRecording: true,
+  clickVolumeInRecording: 0.15,
+  liveWaveform: true,
+  audioAfterAnalysis: 'compress' as const,
+  rawPcmRetentionDays: 30,
+
   // ─── Actions ───
 
   setClickSound: (id) => set({ clickSound: id }),
@@ -42,6 +49,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setLastCalibratedAt: (date) => set({ lastCalibratedAt: date }),
   setCalibrationConsistency: (value) => set({ calibrationConsistency: value }),
   setSensitivity: (value) => set({ sensitivity: Math.max(0, Math.min(1, value)) }),
+  setIncludeClickInRecording: (value) => set({ includeClickInRecording: value }),
+  setClickVolumeInRecording: (value) => set({ clickVolumeInRecording: Math.max(0, Math.min(0.5, value)) }),
+  setLiveWaveform: (value) => set({ liveWaveform: value }),
+  setAudioAfterAnalysis: (value) => set({ audioAfterAnalysis: value }),
+  setRawPcmRetentionDays: (value) => set({ rawPcmRetentionDays: value }),
 
   // Detection setters — changing any slider switches preset to 'Custom'
   setScoringWindowPct: (value) =>
@@ -81,5 +93,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     accentThreshold: 1.5,
     highPassHz: 0,
     detectionPreset: 'Standard',
+    includeClickInRecording: true,
+    clickVolumeInRecording: 0.15,
+    liveWaveform: true,
+    audioAfterAnalysis: 'compress' as const,
+    rawPcmRetentionDays: 30,
   }),
 }));

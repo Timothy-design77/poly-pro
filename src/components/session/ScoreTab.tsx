@@ -8,7 +8,7 @@
 import { useState, useMemo } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
 import { HelpTip } from '../ui/HelpTip';
-import { computeInstrumentMetrics, INSTRUMENT_INFO } from '../../analysis/classification';
+import { computeInstrumentMetrics, computeInterLimbCorrelation, INSTRUMENT_INFO } from '../../analysis/classification';
 import type { ClassificationResult, InstrumentMetrics } from '../../analysis/classification';
 
 interface Props {
@@ -23,25 +23,29 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
   const [expandedInstrument, setExpandedInstrument] = useState<string | null>(null);
 
   // Compute per-instrument metrics from hitEvents
-  const instrumentMetrics = useMemo(() => {
-    if (!hitEvents?.scoredOnsets) return [];
+  const { instrumentMetrics, interLimbCorrelations } = useMemo(() => {
+    if (!hitEvents?.scoredOnsets) return { instrumentMetrics: [], interLimbCorrelations: [] };
 
     const hasClassification = hitEvents.scoredOnsets.some((o) => o.instrumentLabel);
-    if (!hasClassification) return [];
+    if (!hasClassification) return { instrumentMetrics: [], interLimbCorrelations: [] };
 
-    const classifications: ClassificationResult[] = hitEvents.scoredOnsets
-      .filter((o) => o.scored)
+    const scored = hitEvents.scoredOnsets.filter((o) => o.scored);
+
+    const classifications: ClassificationResult[] = scored
       .map((o) => ({
         label: (o.instrumentLabel as ClassificationResult['label']) ?? 'Unknown',
         confidence: o.instrumentConfidence ?? 0,
         topCandidates: (o.instrumentCandidates ?? []) as ClassificationResult['topCandidates'],
       }));
 
-    const deltas = hitEvents.scoredOnsets
-      .filter((o) => o.scored)
-      .map((o) => o.delta);
+    const deltas = scored.map((o) => o.delta);
+    const peaks = scored.map((o) => o.peak);
+    const times = scored.map((o) => o.time);
 
-    return computeInstrumentMetrics(classifications, deltas);
+    const metrics = computeInstrumentMetrics(classifications, deltas, peaks);
+    const correlations = computeInterLimbCorrelation(classifications, deltas, times);
+
+    return { instrumentMetrics: metrics, interLimbCorrelations: correlations };
   }, [hitEvents]);
 
   if (!session.analyzed) {
@@ -234,6 +238,36 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
         </div>
       )}
 
+      {/* Inter-limb correlation */}
+      {interLimbCorrelations.length > 0 && (
+        <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
+          <div className="flex items-center gap-1 mb-2">
+            <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">
+              Inter-Limb Correlation
+            </p>
+            <HelpTip text="Pearson r between timing deviations of instruments that hit simultaneously. High positive = limbs rush/drag together. Negative = one rushes when the other drags." />
+          </div>
+          <div className="space-y-1">
+            {interLimbCorrelations.map((c, i) => {
+              const infoA = INSTRUMENT_INFO[c.instrumentA as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
+              const infoB = INSTRUMENT_INFO[c.instrumentB as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
+              const rColor = Math.abs(c.correlation) > 0.5 ? '#FBBF24' : '#4A4A52';
+              return (
+                <div key={i} className="flex items-center gap-2 py-1 px-1 text-[10px]">
+                  <span>{infoA.icon} {c.instrumentA}</span>
+                  <span className="text-text-muted">↔</span>
+                  <span>{infoB.icon} {c.instrumentB}</span>
+                  <span className="font-mono ml-auto" style={{ color: rColor }}>
+                    r = {c.correlation.toFixed(2)}
+                  </span>
+                  <span className="text-text-muted">({c.pairCount} pairs)</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* How was this computed? */}
       <button
         onClick={() => setShowBreakdown(!showBreakdown)}
@@ -255,6 +289,11 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
           {Math.abs(meanOffset) < 5 && totalScored > 10 && (
             <p>
               <span className="text-text-muted">NMA bonus:</span> +2 (mean offset &lt; 5ms)
+            </p>
+          )}
+          {accentAdherence !== null && accentAdherence !== undefined && accentAdherence > 0.80 && (
+            <p>
+              <span className="text-text-muted">Accent bonus:</span> +3 (accent adherence &gt; 80%)
             </p>
           )}
           <p>
@@ -357,6 +396,16 @@ function InstrumentRow({
           <p>Hits: {metrics.hitCount}</p>
           <p>Mean: {metrics.meanOffset > 0 ? '+' : ''}{metrics.meanOffset.toFixed(2)}ms</p>
           <p>σ: {metrics.sigma.toFixed(2)}ms</p>
+          <p>Fatigue: {metrics.fatigueRatio.toFixed(2)}×{' '}
+            <span className={metrics.fatigueRatio > 1.3 ? 'text-warning' : 'text-text-muted'}>
+              {metrics.fatigueRatio > 1.3 ? 'degrading' : metrics.fatigueRatio < 0.8 ? 'improving' : 'stable'}
+            </span>
+          </p>
+          <p>Volume: {metrics.balanceRatio.toFixed(2)}×{' '}
+            <span>
+              {metrics.balanceRatio > 1.2 ? 'louder than average' : metrics.balanceRatio < 0.8 ? 'quieter than average' : 'balanced'}
+            </span>
+          </p>
           <p>
             {metrics.meanOffset > 3 ? 'Tends late' :
              metrics.meanOffset < -3 ? 'Tends early' : 'Well centered'}

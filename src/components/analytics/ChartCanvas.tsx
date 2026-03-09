@@ -5,7 +5,7 @@
  * All charts are Canvas-rendered per the plan (no SVG).
  */
 
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, memo } from 'react';
 
 interface Props {
   width: number;
@@ -14,7 +14,7 @@ interface Props {
   className?: string;
 }
 
-export function ChartCanvas({ width, height, draw, className }: Props) {
+export const ChartCanvas = memo(function ChartCanvas({ width, height, draw, className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [zoom, setZoom] = useState(1);
   const [panX, setPanX] = useState(0);
@@ -97,4 +97,4 @@ export function ChartCanvas({ width, height, draw, className }: Props) {
       onTouchEnd={handleTouchEnd}
     />
   );
-}
+});

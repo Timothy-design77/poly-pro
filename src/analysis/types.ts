@@ -56,6 +56,29 @@ export interface SpectralFeatures {
   /** Energy per band: [sub-bass, low, mid, hi-mid, high] */
   bandEnergy: [number, number, number, number, number];
   attackTime: number;
+  /** Band-isolated features for simultaneous hit detection (Phase 8 enhancement) */
+  bandIsolated?: BandIsolatedFeatures;
+}
+
+/** Features extracted from band-pass filtered signal (pseudo-separation) */
+export interface BandIsolatedFeatures {
+  /** Low band (0–500Hz): kick drum region */
+  low: BandSubFeatures;
+  /** Mid band (500–4kHz): snare body region */
+  mid: BandSubFeatures;
+  /** High band (4kHz+): cymbal/hi-hat region */
+  high: BandSubFeatures;
+}
+
+export interface BandSubFeatures {
+  /** Proportion of total onset energy in this band */
+  energyRatio: number;
+  /** Spectral centroid within this band */
+  centroid: number;
+  /** Attack time in this band (ms) */
+  attackTime: number;
+  /** Whether this band has significant energy (above noise threshold) */
+  active: boolean;
 }
 
 // ─── Grid Types ───

@@ -5,6 +5,7 @@ import { DetectionSettings } from './DetectionSettings';
 import { CalibrationSettings } from './CalibrationSettings';
 import { InstrumentSettings } from './InstrumentSettings';
 import { DataSettings } from './DataSettings';
+import { CloudSettings } from './CloudSettings';
 import { useSettingsStore } from '../../store/settings-store';
 import { HelpTip } from '../ui/HelpTip';
 
@@ -48,19 +49,81 @@ function CollapsibleSection({ title, icon, defaultOpen = false, help, children }
 }
 
 /**
- * Recording settings — mic sensitivity for percussion capture.
+ * Recording settings — full recording controls per plan.
  */
 function RecordingSettings() {
   const sensitivity = useSettingsStore((s) => s.sensitivity);
   const setSensitivity = useSettingsStore((s) => s.setSensitivity);
+  const includeClick = useSettingsStore((s) => s.includeClickInRecording);
+  const setIncludeClick = useSettingsStore((s) => s.setIncludeClickInRecording);
+  const clickVolRec = useSettingsStore((s) => s.clickVolumeInRecording);
+  const setClickVolRec = useSettingsStore((s) => s.setClickVolumeInRecording);
+  const liveWaveform = useSettingsStore((s) => s.liveWaveform);
+  const setLiveWaveform = useSettingsStore((s) => s.setLiveWaveform);
+  const audioAfter = useSettingsStore((s) => s.audioAfterAnalysis);
+  const setAudioAfter = useSettingsStore((s) => s.setAudioAfterAnalysis);
+  const retentionDays = useSettingsStore((s) => s.rawPcmRetentionDays);
+  const setRetentionDays = useSettingsStore((s) => s.setRawPcmRetentionDays);
 
   // Gain label: sensitivity 0 = 1x, 0.5 = 3x, 1.0 = 5x
   const gainValue = 1 + sensitivity * 4;
   const gainLabel = gainValue === 1 ? '1x (off)' : `${gainValue.toFixed(1)}x`;
 
+  const sliderClass = `w-full accent-white h-2 bg-bg-raised rounded-full appearance-none
+                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
+                       [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
+                       [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer`;
+
   return (
     <div className="space-y-4">
-      {/* Mic Sensitivity / Gain Boost */}
+      {/* Include Click in Recording */}
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-xs text-text-muted uppercase tracking-wider">
+            Include Click
+          </label>
+          <p className="text-[10px] text-text-muted mt-0.5">
+            Play metronome through speaker during recording
+          </p>
+        </div>
+        <button
+          onClick={() => setIncludeClick(!includeClick)}
+          className={`w-10 h-6 rounded-full transition-colors ${
+            includeClick ? 'bg-accent' : 'bg-bg-raised'
+          }`}
+        >
+          <div
+            className={`w-4 h-4 rounded-full bg-white mx-1 transition-transform ${
+              includeClick ? 'translate-x-4' : ''
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Click Volume in Recording */}
+      {includeClick && (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs text-text-muted uppercase tracking-wider">
+              Click Volume (Recording)
+            </label>
+            <span className="font-mono text-xs text-text-secondary">{Math.round(clickVolRec * 100)}%</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="50"
+            value={Math.round(clickVolRec * 100)}
+            onChange={(e) => setClickVolRec(Number(e.target.value) / 100)}
+            className={sliderClass}
+          />
+          <p className="text-[10px] text-text-muted mt-1.5">
+            Lower than playback volume to reduce click bleed in mic
+          </p>
+        </div>
+      )}
+
+      {/* Mic Input Gain */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <label className="text-xs text-text-muted uppercase tracking-wider">
@@ -74,15 +137,96 @@ function RecordingSettings() {
           max="100"
           value={Math.round(sensitivity * 100)}
           onChange={(e) => setSensitivity(Number(e.target.value) / 100)}
-          className="w-full accent-white h-2 bg-bg-raised rounded-full appearance-none
-                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
-                     [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
-                     [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+          className={sliderClass}
         />
         <p className="text-[10px] text-text-muted mt-1.5 leading-relaxed">
           Boost mic input for percussion. Phone mics are voice-optimized — drum hits need more gain.
         </p>
       </div>
+
+      {/* Live Waveform */}
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-xs text-text-muted uppercase tracking-wider">
+            Live Waveform
+          </label>
+          <p className="text-[10px] text-text-muted mt-0.5">
+            Show real-time waveform display during recording
+          </p>
+        </div>
+        <button
+          onClick={() => setLiveWaveform(!liveWaveform)}
+          className={`w-10 h-6 rounded-full transition-colors ${
+            liveWaveform ? 'bg-accent' : 'bg-bg-raised'
+          }`}
+        >
+          <div
+            className={`w-4 h-4 rounded-full bg-white mx-1 transition-transform ${
+              liveWaveform ? 'translate-x-4' : ''
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Audio After Analysis */}
+      <div>
+        <label className="text-xs text-text-muted uppercase tracking-wider block mb-1.5">
+          Audio After Analysis
+        </label>
+        <div className="flex gap-1">
+          {([
+            { value: 'compress' as const, label: 'Compress' },
+            { value: 'keep-raw' as const, label: 'Keep Raw' },
+            { value: 'delete' as const, label: 'Delete' },
+          ]).map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setAudioAfter(opt.value)}
+              className={`flex-1 py-2 rounded-md text-xs min-h-[40px] transition-colors ${
+                audioAfter === opt.value
+                  ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
+                  : 'bg-bg-raised text-text-muted'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-text-muted mt-1.5">
+          {audioAfter === 'compress'
+            ? 'Compress to Opus after analysis (saves space, re-analysis from compressed)'
+            : audioAfter === 'keep-raw'
+              ? 'Keep raw PCM for highest-quality re-analysis'
+              : 'Delete audio after analysis (analysis results kept, no re-analysis)'}
+        </p>
+      </div>
+
+      {/* Raw PCM Retention */}
+      {audioAfter === 'keep-raw' && (
+        <div>
+          <label className="text-xs text-text-muted uppercase tracking-wider block mb-1.5">
+            Raw PCM Retention
+          </label>
+          <div className="flex gap-1">
+            {[7, 14, 30, 60, 90].map((days) => (
+              <button
+                key={days}
+                onClick={() => setRetentionDays(days)}
+                className={`flex-1 py-2 rounded-md text-xs min-h-[40px] transition-colors ${
+                  retentionDays === days
+                    ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
+                    : 'bg-bg-raised text-text-muted'
+                }`}
+              >
+                {days}d
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-text-muted mt-1.5">
+            Raw PCM files are large. After this period, raw audio is auto-deleted (analysis kept).
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -201,6 +345,19 @@ export function SettingsContent() {
         }
       >
         <DataSettings />
+      </CollapsibleSection>
+
+      {/* Section 8: Cloud Enhancement */}
+      <CollapsibleSection
+        title="Cloud Enhancement"
+        help="Optional: upload recordings to MVSEP for professional drum stem separation. Improves instrument classification accuracy significantly."
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+          </svg>
+        }
+      >
+        <CloudSettings />
       </CollapsibleSection>
     </div>
   );

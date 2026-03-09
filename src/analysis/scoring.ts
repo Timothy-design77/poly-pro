@@ -415,19 +415,6 @@ export function computeSessionAnalysis(
   const goodPct = scored.length > 0 ? (goodCount / scored.length) * 100 : 0;
 
   // Compute score
-  let score = computeBaseScore(sigma);
-
-  // Hit rate penalty
-  score *= Math.min(1, hitRate);
-
-  // NMA bonus: centered timing
-  if (Math.abs(meanOffset) < 5 && scored.length > 10) {
-    score += 2;
-  }
-
-  // Clamp
-  score = Math.max(0, Math.min(100, Math.round(score)));
-
   // Fatigue
   const fatigueRatio = computeFatigueRatio(scoredOnsets);
 
@@ -442,6 +429,25 @@ export function computeSessionAnalysis(
 
   // Phase 9: Dynamics metrics
   const dynamicsMetrics = computeDynamicsMetrics(scoredOnsets, subdivision);
+
+  // ─── Score computation (after all metrics) ───
+  let score = computeBaseScore(sigma);
+
+  // Hit rate penalty
+  score *= Math.min(1, hitRate);
+
+  // NMA bonus: centered timing
+  if (Math.abs(meanOffset) < 5 && scored.length > 10) {
+    score += 2;
+  }
+
+  // Accent bonus: clear dynamic contrast
+  if (dynamicsMetrics.accentAdherence !== null && dynamicsMetrics.accentAdherence > 0.80) {
+    score += 3;
+  }
+
+  // Clamp
+  score = Math.max(0, Math.min(100, Math.round(score)));
 
   onProgress?.({ stage: 'grid-scoring', progress: 1 });
 

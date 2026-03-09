@@ -46,6 +46,7 @@ export function DataSettings() {
   const [isPersistent, setIsPersistent] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showProjectBreakdown, setShowProjectBreakdown] = useState(false);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -185,18 +186,50 @@ export function DataSettings() {
     setIsPersistent(granted);
   }, []);
 
+  // ─── Delete audio only ───
+
+  const handleDeleteAudioOnly = useCallback(async (sessionId: string) => {
+    try {
+      await db.deleteRecording(sessionId);
+      // Update session record to reflect no recording
+      const session = sessions.find((s) => s.id === sessionId);
+      if (session) {
+        await db.putSession({ ...session, hasRecording: false });
+      }
+      await loadSessions();
+      const info = await getStorageInfo();
+      setStorageInfo(info);
+    } catch (err) {
+      console.error('Delete audio failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete audio');
+    }
+  }, [sessions, loadSessions]);
+
   // ─── Project storage breakdown ───
 
   const projectBreakdown = projects.map((p) => {
-    const projectSessions = sessions.filter((s) => s.projectId === p.id);
+    const projectSessions = sessions
+      .filter((s) => s.projectId === p.id)
+      .sort((a, b) => {
+        // Sort: sessions with recordings first, then by duration (proxy for size)
+        if (a.hasRecording !== b.hasRecording) return a.hasRecording ? -1 : 1;
+        return b.durationMs - a.durationMs;
+      });
     return {
+      id: p.id,
       name: p.name,
       icon: p.icon,
-      sessions: projectSessions.length,
+      sessions: projectSessions,
+      recordingCount: projectSessions.filter((s) => s.hasRecording).length,
     };
   });
 
-  const orphanSessions = sessions.filter((s) => !s.projectId);
+  const orphanSessions = sessions
+    .filter((s) => !s.projectId)
+    .sort((a, b) => {
+      if (a.hasRecording !== b.hasRecording) return a.hasRecording ? -1 : 1;
+      return b.durationMs - a.durationMs;
+    });
 
   // ─── Progress label ───
 
@@ -368,24 +401,53 @@ export function DataSettings() {
       {showProjectBreakdown && (
         <div className="space-y-1">
           {projectBreakdown.map((p) => (
-            <div
-              key={p.name}
-              className="flex items-center justify-between py-1.5 px-2 bg-bg-surface rounded-sm"
-            >
-              <span className="text-xs text-text-primary">
-                {p.icon} {p.name}
-              </span>
-              <span className="text-xs text-text-muted font-mono">
-                {p.sessions} sessions
-              </span>
+            <div key={p.id}>
+              <button
+                onClick={() => setExpandedProjectId(expandedProjectId === p.id ? null : p.id)}
+                className="w-full flex items-center justify-between py-2 px-2 bg-bg-surface rounded-sm hover:bg-bg-raised transition-colors min-h-[40px]"
+              >
+                <span className="text-xs text-text-primary">
+                  {p.icon} {p.name}
+                </span>
+                <span className="text-xs text-text-muted font-mono">
+                  {p.sessions.length} sessions{p.recordingCount > 0 ? ` · ${p.recordingCount} audio` : ''}
+                </span>
+              </button>
+              {expandedProjectId === p.id && p.sessions.length > 0 && (
+                <div className="ml-4 space-y-0.5 my-1">
+                  {p.sessions.map((s) => (
+                    <SessionDrillRow
+                      key={s.id}
+                      session={s}
+                      onDeleteAudio={() => handleDeleteAudioOnly(s.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ))}
           {orphanSessions.length > 0 && (
-            <div className="flex items-center justify-between py-1.5 px-2 bg-bg-surface rounded-sm">
-              <span className="text-xs text-text-muted">No project</span>
-              <span className="text-xs text-text-muted font-mono">
-                {orphanSessions.length} sessions
-              </span>
+            <div>
+              <button
+                onClick={() => setExpandedProjectId(expandedProjectId === '__orphan' ? null : '__orphan')}
+                className="w-full flex items-center justify-between py-2 px-2 bg-bg-surface rounded-sm hover:bg-bg-raised transition-colors min-h-[40px]"
+              >
+                <span className="text-xs text-text-muted">No project</span>
+                <span className="text-xs text-text-muted font-mono">
+                  {orphanSessions.length} sessions
+                </span>
+              </button>
+              {expandedProjectId === '__orphan' && (
+                <div className="ml-4 space-y-0.5 my-1">
+                  {orphanSessions.map((s) => (
+                    <SessionDrillRow
+                      key={s.id}
+                      session={s}
+                      onDeleteAudio={() => handleDeleteAudioOnly(s.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -425,6 +487,64 @@ export function DataSettings() {
           Delete All Data
         </button>
       )}
+    </div>
+  );
+}
+
+// ─── Sub-components ───
+
+function SessionDrillRow({
+  session,
+  onDeleteAudio,
+}: {
+  session: { id: string; date: string; bpm: number; durationMs: number; hasRecording: boolean; score?: number };
+  onDeleteAudio: () => void;
+}) {
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const dateStr = new Date(session.date).toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  const durSec = Math.round(session.durationMs / 1000);
+  const durLabel = durSec >= 60 ? `${Math.floor(durSec / 60)}m ${durSec % 60}s` : `${durSec}s`;
+
+  return (
+    <div className="flex items-center gap-2 py-1 px-1 text-[10px]">
+      <span className="text-text-muted w-24 flex-shrink-0 truncate">{dateStr}</span>
+      <span className="text-text-secondary font-mono">{session.bpm} BPM</span>
+      <span className="text-text-muted font-mono">{durLabel}</span>
+      {session.score !== undefined && (
+        <span className="text-text-secondary font-mono">{Math.round(session.score)}%</span>
+      )}
+      <span className="ml-auto flex items-center gap-1">
+        {session.hasRecording && !showConfirm && (
+          <button
+            onClick={() => setShowConfirm(true)}
+            className="text-warning text-[9px] min-h-[32px] px-1"
+          >
+            Delete audio
+          </button>
+        )}
+        {showConfirm && (
+          <>
+            <button
+              onClick={() => setShowConfirm(false)}
+              className="text-text-muted text-[9px] min-h-[32px] px-1"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { onDeleteAudio(); setShowConfirm(false); }}
+              className="text-danger text-[9px] min-h-[32px] px-1"
+            >
+              Confirm
+            </button>
+          </>
+        )}
+        {!session.hasRecording && (
+          <span className="text-text-muted text-[9px]">No audio</span>
+        )}
+      </span>
     </div>
   );
 }

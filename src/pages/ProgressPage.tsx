@@ -26,6 +26,7 @@ function formatDate(dateStr: string): string {
 
 export function ProgressPage() {
   const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
+  const [visibleSessions, setVisibleSessions] = useState(20);
   const activeProject = useProjectStore((s) => {
     return s.projects.find((p) => p.id === s.activeProjectId) || null;
   });
@@ -203,7 +204,7 @@ export function ProgressPage() {
           </div>
         ) : (
           <div className="space-y-1.5">
-            {sessions.map((s) => {
+            {sessions.slice(0, visibleSessions).map((s) => {
               const isPlaying = playingSessionId === s.id;
               const score = s.analyzed ? (s.score ?? 0) : s.perfectPct;
               const sigmaLabel = s.analyzed && s.sigmaLevel ? s.sigmaLevel : null;
@@ -287,6 +288,14 @@ export function ProgressPage() {
                 </div>
               );
             })}
+            {sessions.length > visibleSessions && (
+              <button
+                onClick={() => setVisibleSessions((v) => v + 20)}
+                className="w-full py-2.5 text-text-muted text-xs hover:text-text-secondary transition-colors"
+              >
+                Show more ({sessions.length - visibleSessions} remaining)
+              </button>
+            )}
           </div>
         )}
       </div>
