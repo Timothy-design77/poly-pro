@@ -49,9 +49,13 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPos, setPlaybackPos] = useState(0); // 0–1 fraction of duration
   const [showLanes, setShowLanes] = useState(false);
+  const [clickOverlay, setClickOverlay] = useState(true);
+  const [clickVolume, setClickVolume] = useState(0.5);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const clickNodesRef = useRef<AudioBufferSourceNode[]>([]);
+  const clickGainRef = useRef<GainNode | null>(null);
   const playStartTimeRef = useRef(0); // AudioContext time when play started
   const playOffsetRef = useRef(0);    // offset into the buffer (for resume)
   const animFrameRef = useRef(0);
@@ -125,6 +129,15 @@ export function TimelineTab({ session, hitEvents }: Props) {
       try { gainNodeRef.current.disconnect(); } catch {}
       gainNodeRef.current = null;
     }
+    // Stop all scheduled click sounds
+    for (const node of clickNodesRef.current) {
+      try { node.stop(); } catch {}
+    }
+    clickNodesRef.current = [];
+    if (clickGainRef.current) {
+      try { clickGainRef.current.disconnect(); } catch {}
+      clickGainRef.current = null;
+    }
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = 0;
@@ -137,6 +150,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
     stopPlayback();
 
     const { audioEngine: eng } = await import('../../audio/engine');
+    const { getBuffer } = await import('../../audio/sounds');
     const ctx = await eng.initContext();
     const source = ctx.createBufferSource();
     source.buffer = audioBufferRef.current;
@@ -153,11 +167,66 @@ export function TimelineTab({ session, hitEvents }: Props) {
     gainNodeRef.current = gain;
     setIsPlaying(true);
 
+    // ─── Click overlay: schedule metronome clicks at beat grid times ───
+    if (clickOverlay) {
+      const durationS = session.durationMs / 1000;
+      const bpm = session.bpm;
+      const subdivision = session.subdivision || 1;
+      const ioi = 60 / bpm / subdivision; // interval between subdivisions
+
+      // Get click sound buffers
+      const clickBuf = getBuffer('woodblock') || getBuffer('tick');
+      const accentBuf = getBuffer('clave') || clickBuf;
+
+      if (clickBuf) {
+        const clickGain = ctx.createGain();
+        clickGain.gain.value = clickVolume;
+        clickGain.connect(ctx.destination);
+        clickGainRef.current = clickGain;
+
+        const scheduled: AudioBufferSourceNode[] = [];
+        let beatTime = 0;
+        let beatIdx = 0;
+
+        while (beatTime < durationS) {
+          // Only schedule clicks that are ahead of our playback offset
+          if (beatTime > offset) {
+            const when = ctx.currentTime + (beatTime - offset);
+            const isDownbeat = beatIdx % (subdivision * (parseInt(session.meter) || 4)) === 0;
+            const isMainBeat = beatIdx % subdivision === 0;
+
+            const buf = isDownbeat ? accentBuf : clickBuf;
+            const clickSource = ctx.createBufferSource();
+            clickSource.buffer = buf;
+
+            // Vary gain: downbeat louder, subdivisions quieter
+            const clickNodeGain = ctx.createGain();
+            clickNodeGain.gain.value = isDownbeat ? 1.0 : isMainBeat ? 0.7 : 0.4;
+            clickSource.connect(clickNodeGain);
+            clickNodeGain.connect(clickGain);
+
+            clickSource.start(when);
+            scheduled.push(clickSource);
+          }
+
+          beatTime += ioi;
+          beatIdx++;
+        }
+
+        clickNodesRef.current = scheduled;
+      }
+    }
+
     source.onended = () => {
       setIsPlaying(false);
       setPlaybackPos(0);
       playOffsetRef.current = 0;
       sourceNodeRef.current = null;
+      // Clean up click nodes
+      for (const node of clickNodesRef.current) {
+        try { node.stop(); } catch {}
+      }
+      clickNodesRef.current = [];
     };
 
     // Animation loop: update playhead position
@@ -184,7 +253,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
       }
     };
     animFrameRef.current = requestAnimationFrame(animate);
-  }, [stopPlayback, session.durationMs, zoom]);
+  }, [stopPlayback, session.durationMs, session.bpm, session.subdivision, session.meter, zoom, clickOverlay, clickVolume]);
 
   const togglePlayback = useCallback(async () => {
     if (isPlaying) {
@@ -535,6 +604,42 @@ export function TimelineTab({ session, hitEvents }: Props) {
           >
             ↺ Start
           </button>
+        )}
+      </div>
+
+      {/* Click overlay controls */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setClickOverlay(!clickOverlay)}
+          className={`px-2.5 py-1.5 rounded-lg text-[10px] touch-manipulation transition-colors flex items-center gap-1.5 ${
+            clickOverlay
+              ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
+              : 'bg-bg-raised text-text-muted'
+          }`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            {clickOverlay && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />}
+          </svg>
+          Click
+        </button>
+        {clickOverlay && (
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={Math.round(clickVolume * 100)}
+            onChange={(e) => setClickVolume(Number(e.target.value) / 100)}
+            className="flex-1 accent-white h-1 bg-bg-raised rounded-full appearance-none max-w-[120px]
+                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3
+                       [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full
+                       [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+          />
+        )}
+        {clickOverlay && (
+          <span className="text-[9px] text-text-muted font-mono w-8">
+            {Math.round(clickVolume * 100)}%
+          </span>
         )}
       </div>
 
