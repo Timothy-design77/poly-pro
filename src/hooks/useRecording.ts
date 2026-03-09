@@ -19,6 +19,8 @@ export interface RecordingState {
   isRawAudio: boolean;
   /** Real-time onset count from Mode 1 (visual feedback only) */
   realtimeOnsetCount: number;
+  /** User-facing error message (e.g., mic permission denied) */
+  error: string | null;
 }
 
 /** Returned after recording stops — enough info to trigger analysis */
@@ -54,6 +56,7 @@ export function useRecording() {
     btTip: null,
     isRawAudio: false,
     realtimeOnsetCount: 0,
+    error: null,
   });
 
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -186,6 +189,7 @@ export function useRecording() {
         btTip,
         isRawAudio: true,
         realtimeOnsetCount: 0,
+        error: null,
       });
 
       // Elapsed timer
@@ -207,10 +211,23 @@ export function useRecording() {
     } catch (err) {
       console.error('Failed to start recording:', err);
       cleanupRecording();
+
+      // Friendly error messages
+      let errorMsg = 'Recording failed. Please try again.';
+      if (err instanceof DOMException) {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMsg = 'Microphone access denied. Enable mic permission in your browser settings and try again.';
+        } else if (err.name === 'NotFoundError') {
+          errorMsg = 'No microphone found. Connect a mic and try again.';
+        } else if (err.name === 'NotReadableError' || err.name === 'AbortError') {
+          errorMsg = 'Microphone is in use by another app. Close other apps and try again.';
+        }
+      }
+
       setState({
         isRecording: false, elapsed: 0, micLevel: 0,
         warning: null, btTip: null, isRawAudio: false,
-        realtimeOnsetCount: 0,
+        realtimeOnsetCount: 0, error: errorMsg,
       });
     }
   }, [cleanupRecording]);
@@ -257,7 +274,7 @@ export function useRecording() {
       setState({
         isRecording: false, elapsed: 0, micLevel: 0,
         warning: null, btTip: null, isRawAudio: false,
-        realtimeOnsetCount: 0,
+        realtimeOnsetCount: 0, error: null,
       });
       return null;
     }
@@ -315,7 +332,7 @@ export function useRecording() {
     setState({
       isRecording: false, elapsed: 0, micLevel: 0,
       warning: null, btTip: null, isRawAudio: false,
-      realtimeOnsetCount: 0,
+      realtimeOnsetCount: 0, error: null,
     });
 
     // Return analysis params (caller handles navigation + analysis trigger)
@@ -349,11 +366,16 @@ export function useRecording() {
     [],
   );
 
+  const clearError = useCallback(() => {
+    setState((s) => ({ ...s, error: null }));
+  }, []);
+
   return {
     ...state,
     startRecording,
     stopRecording,
     toggleRecording,
     setOnRealtimeOnset,
+    clearError,
   };
 }

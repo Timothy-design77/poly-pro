@@ -18,6 +18,7 @@ import { GroupingPicker } from '../components/metronome/GroupingPicker';
 import { BeatGrid } from '../components/metronome/BeatGrid';
 import { TrainerConfig, useTrainerBadge } from '../components/metronome/TrainerConfig';
 import { PracticeModes, usePracticeBadge } from '../components/metronome/PracticeModes';
+import { BackupBanner } from '../components/ui/BackupBanner';
 import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
 import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
@@ -96,6 +97,7 @@ export function HomePage() {
 
   return (
     <div className="h-full overflow-y-auto">
+      <BackupBanner />
       <div className="px-4 pb-4">
         {/* Header: project context + recording/timer indicator */}
         <div className="flex items-center gap-2 py-1.5">
@@ -147,6 +149,19 @@ export function HomePage() {
 
           {/* Live waveform during recording */}
           <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
+
+          {/* Mic error message */}
+          {recording.error && (
+            <div className="bg-danger-dim border border-danger/30 rounded-md p-2 mt-1">
+              <p className="text-danger text-xs">{recording.error}</p>
+              <button
+                onClick={recording.clearError}
+                className="text-danger/60 text-[10px] mt-1"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* BT earbuds tip */}
           {recording.btTip && (

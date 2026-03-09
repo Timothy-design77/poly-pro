@@ -4,6 +4,7 @@ import { ProjectsPage } from './pages/ProjectsPage';
 import { HomePage } from './pages/HomePage';
 import { ProgressPage } from './pages/ProgressPage';
 import { SettingsContent } from './components/settings/SettingsOverlay';
+import { UpdateBanner } from './components/ui/UpdateBanner';
 import { useProjectStore } from './store/project-store';
 import { useSessionStore } from './store/session-store';
 import { useInstrumentStore } from './store/instrument-store';
@@ -30,6 +31,8 @@ export function App() {
         clearTimeout(safetyTimer);
         startPersistence();
         setReady(true);
+        // Request persistent storage so browser won't evict our data
+        navigator.storage?.persist?.().catch(() => {});
       })
       .catch((err) => {
         clearTimeout(safetyTimer);
@@ -47,15 +50,18 @@ export function App() {
   }
 
   return (
-    <SwipeNavigation
-      pages={[
-        <ProjectsPage />,
-        <HomePage />,
-        <ProgressPage />,
-      ]}
-      pageLabels={['Projects', 'Home', 'Progress']}
-      initialPage={1}
-      settingsContent={<SettingsContent />}
-    />
+    <>
+      <UpdateBanner />
+      <SwipeNavigation
+        pages={[
+          <ProjectsPage />,
+          <HomePage />,
+          <ProgressPage />,
+        ]}
+        pageLabels={['Projects', 'Home', 'Progress']}
+        initialPage={1}
+        settingsContent={<SettingsContent />}
+      />
+    </>
   );
 }

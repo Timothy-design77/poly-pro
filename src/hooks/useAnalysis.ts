@@ -184,6 +184,12 @@ export function useAnalysis() {
           })),
         });
 
+        // Track sessions since last backup (for auto-backup prompt)
+        try {
+          const count = (await db.getSetting<number>('sessionsSinceBackup')) ?? 0;
+          await db.setSetting('sessionsSinceBackup', count + 1);
+        } catch { /* non-critical */ }
+
         setState({
           isAnalyzing: false,
           progress: { stage: 'complete', progress: 1 },

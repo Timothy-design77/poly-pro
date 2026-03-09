@@ -4,6 +4,7 @@ import { VibrationSettings } from './VibrationSettings';
 import { DetectionSettings } from './DetectionSettings';
 import { CalibrationSettings } from './CalibrationSettings';
 import { InstrumentSettings } from './InstrumentSettings';
+import { DataSettings } from './DataSettings';
 import { useSettingsStore } from '../../store/settings-store';
 import { HelpTip } from '../ui/HelpTip';
 
@@ -199,7 +200,7 @@ export function SettingsContent() {
           </svg>
         }
       >
-        <div className="text-sm text-text-muted py-2">Coming in Phase 10</div>
+        <DataSettings />
       </CollapsibleSection>
     </div>
   );
