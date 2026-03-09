@@ -130,6 +130,8 @@ export interface SessionRecord {
   dynamicRange?: number | null;
   velocityDecaySlope?: number | null;
   velocityDecayLabel?: string;
+  /** Sample rate of stored recording (default 48000, lower if compressed) */
+  recordingSampleRate?: number;
 }
 
 /** Onset data stored separately from session metadata (can be large) */

@@ -106,11 +106,12 @@ export function TimelineTab({ session, hitEvents }: Props) {
       }
       setWaveform(downsampled);
 
-      // Create AudioBuffer for playback
+      // Create AudioBuffer for playback (use session's sample rate — may be compressed)
       try {
         const { audioEngine: eng } = await import('../../audio/engine');
         const ctx = await eng.initContext();
-        const audioBuf = ctx.createBuffer(1, pcm.length, 48000);
+        const sampleRate = session.recordingSampleRate || 48000;
+        const audioBuf = ctx.createBuffer(1, pcm.length, sampleRate);
         audioBuf.getChannelData(0).set(pcm);
         audioBufferRef.current = audioBuf;
       } catch (err) {
@@ -290,8 +291,8 @@ export function TimelineTab({ session, hitEvents }: Props) {
 
     try {
       const { getBuffer } = await import('../../audio/sounds');
-      const sampleRate = 48000;
       const srcBuf = audioBufferRef.current;
+      const sampleRate = srcBuf.sampleRate;
       const durationS = srcBuf.duration;
       const totalSamples = Math.ceil(durationS * sampleRate);
 

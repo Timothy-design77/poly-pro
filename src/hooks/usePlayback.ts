@@ -65,7 +65,14 @@ export function usePlayback() {
         // Raw Float32 PCM from AudioWorklet
         const float32 = new Float32Array(arrayBuffer);
         if (float32.length === 0) return;
-        audioBuffer = ctx.createBuffer(1, float32.length, 48000);
+        // Look up actual sample rate (may be downsampled from 48kHz)
+        let sampleRate = 48000;
+        try {
+          const sessions = await db.getAllSessions();
+          const session = sessions.find((s) => s.id === sessionId);
+          if (session?.recordingSampleRate) sampleRate = session.recordingSampleRate;
+        } catch { /* use default */ }
+        audioBuffer = ctx.createBuffer(1, float32.length, sampleRate);
         audioBuffer.getChannelData(0).set(float32);
       }
 

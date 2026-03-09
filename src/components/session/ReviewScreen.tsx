@@ -81,8 +81,9 @@ export function ReviewScreen({
       try {
         const { audioEngine } = await import('../../audio/engine');
         const ctx = await audioEngine.initContext();
-        const buf = ctx.createBuffer(1, new Float32Array(await blob.arrayBuffer()).length, 48000);
-        buf.getChannelData(0).set(new Float32Array(await blob.arrayBuffer()));
+        const pcm = new Float32Array(await blob.arrayBuffer());
+        const buf = ctx.createBuffer(1, pcm.length, 48000);
+        buf.getChannelData(0).set(pcm);
         audioBufferRef.current = buf;
       } catch { /* */ }
     });
@@ -190,9 +191,24 @@ export function ReviewScreen({
     try {
       const { getBuffer } = await import('../../audio/sounds');
 
-      // Handle storage choice
+      // Handle downloads FIRST — before compression modifies the stored blob
+      if (downloadChoice !== 'none') {
+        const blob = await db.getRecording(sessionId);
+        if (blob) {
+          const pcm = new Float32Array(await blob.arrayBuffer());
+          // Downloads always use the original 48kHz data
+          if (downloadChoice === 'raw' || downloadChoice === 'both') {
+            downloadWav(pcm, 48000, analysis, false, getBuffer);
+          }
+          if (downloadChoice === 'with-click' || downloadChoice === 'both') {
+            await downloadWithClick(pcm, analysis, clickSoundId, accentSoundId, accentThreshold, clickVol, getBuffer);
+          }
+        }
+      }
+
+      // Handle storage choice (may modify or delete the recording blob)
       if (storageChoice === 'compressed') {
-        // Resample to 22kHz and re-save
+        // Resample to 22kHz and re-save as raw Float32 (same format, fewer samples)
         const blob = await db.getRecording(sessionId);
         if (blob) {
           const pcm = new Float32Array(await blob.arrayBuffer());
@@ -206,8 +222,13 @@ export function ReviewScreen({
             const frac = srcIdx - lo;
             resampled[i] = pcm[lo] * (1 - frac) + pcm[hi] * frac;
           }
-          const wavBlob = encodeWav(resampled, 22050);
-          await db.putRecording(sessionId, wavBlob);
+          // Store as raw Float32 blob — same format as original, just downsampled
+          const rawBlob = new Blob([resampled.buffer], { type: 'application/octet-stream' });
+          await db.putRecording(sessionId, rawBlob);
+          // Record the new sample rate on the session
+          const sessions = await db.getAllSessions();
+          const s = sessions.find((s) => s.id === sessionId);
+          if (s) await db.putSession({ ...s, recordingSampleRate: 22050 });
         }
       } else if (storageChoice === 'delete') {
         await db.deleteRecording(sessionId);
@@ -217,22 +238,6 @@ export function ReviewScreen({
         if (s) await db.putSession({ ...s, hasRecording: false });
       }
       // 'raw' = keep as-is
-
-      // Handle downloads
-      if (downloadChoice !== 'none') {
-        const blob = await db.getRecording(sessionId);
-        if (blob) {
-          const pcm = new Float32Array(await blob.arrayBuffer());
-          const sampleRate = storageChoice === 'compressed' ? 22050 : 48000;
-
-          if (downloadChoice === 'raw' || downloadChoice === 'both') {
-            downloadWav(pcm, sampleRate, analysis, false, getBuffer);
-          }
-          if (downloadChoice === 'with-click' || downloadChoice === 'both') {
-            await downloadWithClick(pcm, analysis, clickSoundId, accentSoundId, accentThreshold, clickVol, getBuffer);
-          }
-        }
-      }
 
       setStep('done');
     } catch (err) {
