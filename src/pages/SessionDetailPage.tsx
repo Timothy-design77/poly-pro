@@ -23,6 +23,7 @@ interface Props {
   session: SessionRecord | null;
   visible: boolean;
   onClose: () => void;
+  onDelete?: (sessionId: string) => void;
 }
 
 const TABS: { id: TabId; label: string; help: string }[] = [
@@ -36,11 +37,12 @@ const TAB_IDS: TabId[] = ['score', 'timeline', 'charts', 'tune'];
 const SWIPE_THRESHOLD = 50;
 const VELOCITY_THRESHOLD = 0.3;
 
-export function SessionDetailPage({ session, visible, onClose }: Props) {
+export function SessionDetailPage({ session, visible, onClose, onDelete }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('score');
   const [hitEvents, setHitEvents] = useState<HitEventsRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [openChart, setOpenChart] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // ─── Swipe state ───
   const [dragX, setDragX] = useState(0);
@@ -54,6 +56,20 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     setOpenChart(chartId);
     setActiveTab('charts');
   }, []);
+
+  const handleDelete = useCallback(async () => {
+    if (!session) return;
+    try {
+      await db.deleteRecording(session.id);
+      await db.deleteHitEvents(session.id);
+      await db.deleteSession(session.id);
+      setShowDeleteConfirm(false);
+      onDelete?.(session.id);
+      onClose();
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  }, [session, onDelete, onClose]);
 
   useEffect(() => {
     if (!session || !visible) {
@@ -75,6 +91,7 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
     if (visible) {
       setActiveTab('score');
       setDragX(0);
+      setShowDeleteConfirm(false);
     }
   }, [session?.id, visible]);
 
@@ -170,8 +187,43 @@ export function SessionDetailPage({ session, visible, onClose }: Props) {
           {dateStr} {timeStr}
           <HelpTip text={TABS.find((t) => t.id === activeTab)?.help ?? ''} />
         </span>
-        <div className="w-12" />
+        {onDelete ? (
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="text-sm text-text-muted touch-manipulation py-2 px-1 hover:text-danger transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        ) : (
+          <div className="w-12" />
+        )}
       </div>
+
+      {/* Delete confirmation */}
+      {showDeleteConfirm && (
+        <div className="mx-4 mb-2 bg-danger-dim border border-danger/30 rounded-md p-3 shrink-0">
+          <p className="text-danger text-xs font-medium mb-2">
+            Delete this session and all its data?
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="flex-1 py-2 border border-border-subtle text-text-secondary rounded-md text-xs min-h-[40px]"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              className="flex-1 py-2 bg-danger text-white rounded-md text-xs font-medium min-h-[40px]"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex px-4 gap-1 shrink-0 mb-2">

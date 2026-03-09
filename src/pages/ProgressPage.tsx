@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
 import { usePlayback } from '../hooks/usePlayback';
@@ -34,6 +34,12 @@ export function ProgressPage() {
     activeProject ? s.getSessionsForProject(activeProject.id) : []
   );
   const { playingSessionId, play } = usePlayback();
+  const loadSessions = useSessionStore((s) => s.loadFromDB);
+
+  const handleDeleteSession = useCallback(async () => {
+    setSelectedSession(null);
+    await loadSessions();
+  }, [loadSessions]);
 
   const totalTime = sessions.reduce((acc, s) => acc + s.durationMs, 0);
   const bestPct = sessions.length > 0
@@ -308,6 +314,7 @@ export function ProgressPage() {
         session={selectedSession}
         visible={selectedSession !== null}
         onClose={() => setSelectedSession(null)}
+        onDelete={handleDeleteSession}
       />
     </div>
   );

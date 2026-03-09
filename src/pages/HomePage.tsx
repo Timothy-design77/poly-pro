@@ -282,6 +282,10 @@ export function HomePage() {
         session={detailSession}
         visible={detailSession !== null}
         onClose={() => setDetailSession(null)}
+        onDelete={async () => {
+          setDetailSession(null);
+          await loadSessions();
+        }}
       />
     </div>
   );
