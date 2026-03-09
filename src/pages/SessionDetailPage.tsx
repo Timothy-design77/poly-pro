@@ -28,7 +28,7 @@ interface Props {
 const TABS: { id: TabId; label: string; help: string }[] = [
   { id: 'score', label: 'Score', help: 'Overall session score, consistency metrics, and auto-generated insights about your playing.' },
   { id: 'timeline', label: 'Timeline', help: 'DAW-style view of your recording with onset markers, metronome grid, and scoring controls.' },
-  { id: 'charts', label: 'Charts', help: 'Detailed charts showing timing distribution, fatigue, per-beat analysis, drift, and push/pull patterns.' },
+  { id: 'charts', label: 'Charts', help: 'Detailed charts: timing distribution, fatigue, per-beat, drift, push/pull, swing analysis, and velocity/dynamics.' },
   { id: 'tune', label: 'Tune', help: 'Adjust analysis parameters and see how they affect your score in real-time. Changes don\'t affect saved data.' },
 ];
 

@@ -18,7 +18,6 @@ import { GroupingPicker } from '../components/metronome/GroupingPicker';
 import { BeatGrid } from '../components/metronome/BeatGrid';
 import { TrainerConfig, useTrainerBadge } from '../components/metronome/TrainerConfig';
 import { PracticeModes, usePracticeBadge } from '../components/metronome/PracticeModes';
-import { HelpTip } from '../components/ui/HelpTip';
 import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
 import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
@@ -135,9 +134,6 @@ export function HomePage() {
         {/* Dial */}
         <div ref={dialContainerRef} className="flex items-center justify-center pt-1 relative">
           <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
-          <div className="absolute top-1 right-0">
-            <HelpTip text="Drag around the dial to adjust BPM. Tap the number to type a specific BPM. The ring pulses with the beat when playing." />
-          </div>
         </div>
 
         {/* Controls */}
@@ -147,7 +143,6 @@ export function HomePage() {
           <div className="flex gap-2 items-center">
             <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
             <TapTempo />
-            <HelpTip text="Record: captures your playing via mic and analyzes timing after you stop. Tap Tempo: tap rhythmically to set the BPM. Needs 3+ taps." />
           </div>
 
           {/* Live waveform during recording */}

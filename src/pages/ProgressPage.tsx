@@ -98,9 +98,8 @@ export function ProgressPage() {
       {/* Hero chart placeholder */}
       <div className="bg-bg-surface rounded-[10px] border border-border-subtle p-4 mb-3 shrink-0">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-text-secondary flex items-center gap-1">
+          <span className="text-xs font-semibold text-text-secondary">
             Score
-            <HelpTip text="Bar chart of recent session scores. Green ≥85%, amber ≥70%, red <70%. Based on timing consistency (σ)." />
           </span>
         </div>
         {sessions.length > 0 ? (
@@ -136,9 +135,8 @@ export function ProgressPage() {
       <div className="flex gap-2.5 mb-3 shrink-0">
         {/* Heatmap */}
         <div className="flex-1 bg-bg-surface rounded-[10px] border border-border-subtle p-3">
-          <p className="text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-2 flex items-center gap-1">
+          <p className="text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-2">
             Consistency
-            <HelpTip text="Practice consistency over the last 28 days. Darker green = more sessions that day. Build streaks for steady improvement." />
           </p>
           <div className="grid grid-cols-7 gap-[2px]">
             {heatmapData.map((count, i) => (
@@ -196,9 +194,8 @@ export function ProgressPage() {
 
       {/* Sessions list */}
       <div>
-        <h3 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1">
+        <h3 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">
           Sessions ({sessions.length})
-          <HelpTip text="All recorded sessions for this project, newest first. Tap a session to see detailed score, timeline, charts, and tuning controls." />
         </h3>
         {sessions.length === 0 ? (
           <div className="flex items-center justify-center py-6">
