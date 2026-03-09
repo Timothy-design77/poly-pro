@@ -124,13 +124,33 @@ export interface SessionAnalysis {
   maxDrift: number;
   /** Auto-generated text headlines with chart link tags */
   headlines: HeadlineItem[];
+
+  // ─── Phase 9: Groove Metrics ───
+  /** Swing ratio: long/short 8th-note pair ratio. 1.0 = straight */
+  swingRatio?: number;
+  /** Swing consistency (σ of per-pair ratios) */
+  swingSigma?: number;
+  /** Whether swing was detected */
+  hasSwing?: boolean;
+  /** Groove consistency: Pearson r across measures (null if <16 measures) */
+  grooveConsistency?: number | null;
+
+  // ─── Phase 9: Dynamics Metrics ───
+  /** Accent adherence: % of accent beats played louder (0–1, null if not enough data) */
+  accentAdherence?: number | null;
+  /** Dynamic range: 95th/5th percentile energy ratio */
+  dynamicRange?: number | null;
+  /** Velocity decay slope (energy per second, negative = getting softer) */
+  velocityDecaySlope?: number | null;
+  /** Velocity decay label */
+  velocityDecayLabel?: string;
 }
 
 /** Headline with optional chart tab link */
 export interface HeadlineItem {
   text: string;
   /** Which chart tab/section to jump to when tapped */
-  link?: 'distribution' | 'fatigue' | 'per-beat' | 'drift' | 'push-pull';
+  link?: 'distribution' | 'fatigue' | 'per-beat' | 'drift' | 'push-pull' | 'swing';
 }
 
 /** Sigma quality level */

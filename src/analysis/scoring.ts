@@ -22,6 +22,8 @@ import type {
 } from './types';
 import { getSigmaLevel } from './types';
 import { computeScoringWindowS } from './grid';
+import { computeGrooveMetrics } from './groove';
+import { computeDynamicsMetrics } from './dynamics';
 
 type ProgressCallback = (progress: AnalysisProgress) => void;
 
@@ -302,8 +304,41 @@ function generateHeadlines(
     });
   }
 
-  // Limit to 4 headlines max
-  return headlines.slice(0, 4);
+  // 8. Swing (Phase 9)
+  if (analysis.hasSwing && analysis.swingRatio) {
+    const swingPct = Math.round((analysis.swingRatio - 1) * 100);
+    headlines.push({
+      text: `Swing detected: ${analysis.swingRatio.toFixed(2)} ratio (${swingPct}% swing)`,
+      link: 'swing',
+    });
+  }
+
+  // 9. Groove consistency (Phase 9)
+  if (analysis.grooveConsistency !== null && analysis.grooveConsistency !== undefined) {
+    if (analysis.grooveConsistency > 0.8) {
+      headlines.push({
+        text: `Very consistent groove pattern (r = ${analysis.grooveConsistency.toFixed(2)})`,
+        link: 'push-pull',
+      });
+    } else if (analysis.grooveConsistency < 0.3) {
+      headlines.push({
+        text: `Groove varies a lot measure-to-measure (r = ${analysis.grooveConsistency.toFixed(2)})`,
+        link: 'push-pull',
+      });
+    }
+  }
+
+  // 10. Accent adherence (Phase 9)
+  if (analysis.accentAdherence !== null && analysis.accentAdherence !== undefined) {
+    if (analysis.accentAdherence > 0.8) {
+      headlines.push({
+        text: `Strong accent adherence: ${Math.round(analysis.accentAdherence * 100)}% of downbeats louder`,
+      });
+    }
+  }
+
+  // Limit to 5 headlines max
+  return headlines.slice(0, 5);
 }
 
 // ─── Full Scoring Pipeline ───
@@ -399,6 +434,15 @@ export function computeSessionAnalysis(
   // Drift
   const maxDrift = computeMaxDrift(scoredOnsets);
 
+  // Phase 9: Groove metrics
+  const beatsPerMeasure = grid.length > 0
+    ? Math.max(...grid.filter((b) => b.measure === 0).map((b) => b.beatIndex)) + 1
+    : 4;
+  const grooveMetrics = computeGrooveMetrics(scoredOnsets, bpm, subdivision, beatsPerMeasure);
+
+  // Phase 9: Dynamics metrics
+  const dynamicsMetrics = computeDynamicsMetrics(scoredOnsets, subdivision);
+
   onProgress?.({ stage: 'grid-scoring', progress: 1 });
 
   const noiseFloor = 0; // Already computed upstream, passed through
@@ -427,6 +471,16 @@ export function computeSessionAnalysis(
     fatigueRatio,
     maxDrift,
     headlines: [] as HeadlineItem[],
+    // Phase 9: Groove
+    swingRatio: grooveMetrics.swingRatio,
+    swingSigma: grooveMetrics.swingSigma,
+    hasSwing: grooveMetrics.hasSwing,
+    grooveConsistency: grooveMetrics.grooveConsistency,
+    // Phase 9: Dynamics
+    accentAdherence: dynamicsMetrics.accentAdherence,
+    dynamicRange: dynamicsMetrics.dynamicRange,
+    velocityDecaySlope: dynamicsMetrics.velocityDecaySlope,
+    velocityDecayLabel: dynamicsMetrics.decayLabel,
   };
 
   // Generate headlines

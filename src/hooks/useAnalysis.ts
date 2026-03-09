@@ -146,6 +146,16 @@ export function useAnalysis() {
           fatigueRatio: result.fatigueRatio,
           maxDrift: result.maxDrift,
           headlines: result.headlines,
+          // Phase 9: Groove
+          swingRatio: result.swingRatio,
+          swingSigma: result.swingSigma,
+          hasSwing: result.hasSwing,
+          grooveConsistency: result.grooveConsistency,
+          // Phase 9: Dynamics
+          accentAdherence: result.accentAdherence,
+          dynamicRange: result.dynamicRange,
+          velocityDecaySlope: result.velocityDecaySlope,
+          velocityDecayLabel: result.velocityDecayLabel,
         });
 
         // Save hit events (onset data) separately

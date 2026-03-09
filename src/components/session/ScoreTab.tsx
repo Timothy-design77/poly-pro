@@ -72,6 +72,16 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
   const scoringWindowMs = session.scoringWindowMs ?? 0;
   const flamMergeMs = session.flamMergeMs ?? 0;
 
+  // Phase 9: Groove
+  const swingRatio = session.swingRatio;
+  const hasSwing = session.hasSwing;
+  const grooveConsistency = session.grooveConsistency;
+
+  // Phase 9: Dynamics
+  const accentAdherence = session.accentAdherence;
+  const dynamicRange = session.dynamicRange;
+  const velocityDecayLabel = session.velocityDecayLabel;
+
   const scoreColor = score >= 85 ? '#4ADE80' : score >= 70 ? '#FBBF24' : '#F87171';
 
   const durationMin = Math.floor(session.durationMs / 60000);
@@ -157,6 +167,46 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
             help="Standard deviation of timing deviations — the primary metric. Lower is better." />
         </div>
       </div>
+
+      {/* Phase 9: Groove & Dynamics stats */}
+      {(hasSwing || grooveConsistency != null || accentAdherence != null || dynamicRange != null) && (
+        <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
+          <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider mb-2">
+            Groove & Dynamics
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {hasSwing && swingRatio !== undefined && (
+              <StatRow label="Swing Ratio" value={swingRatio.toFixed(2)}
+                sub={swingRatio > 1.5 ? 'heavy swing' : swingRatio > 1.2 ? 'moderate swing' : 'light swing'}
+                help="Ratio of long-to-short 8th note intervals. 1.0 = straight. ~1.67 = standard jazz swing." />
+            )}
+            {!hasSwing && swingRatio !== undefined && (
+              <StatRow label="Swing Ratio" value="1.0"
+                sub="straight time"
+                help="No swing detected — playing straight 8th notes." />
+            )}
+            {grooveConsistency != null && (
+              <StatRow label="Groove Lock" value={`r = ${grooveConsistency.toFixed(2)}`}
+                sub={grooveConsistency > 0.7 ? 'locked in' : grooveConsistency > 0.4 ? 'moderate' : 'loose'}
+                help="How consistent your timing pattern is across measures. Higher = more repeatable groove. Requires ≥16 measures." />
+            )}
+            {accentAdherence != null && (
+              <StatRow label="Accents" value={`${Math.round(accentAdherence * 100)}%`}
+                sub={accentAdherence > 0.7 ? 'clear dynamics' : 'subtle'}
+                help="% of accent beats (downbeats) played louder than the median. Higher = clearer dynamic contrast. ⚠️ May be affected by phone mic AGC." />
+            )}
+            {dynamicRange != null && (
+              <StatRow label="Dyn Range" value={`${dynamicRange.toFixed(1)}×`}
+                sub={dynamicRange > 3 ? 'wide' : dynamicRange > 1.5 ? 'moderate' : 'narrow'}
+                help="95th/5th percentile energy ratio. Higher = more dynamic contrast between loud and soft hits. ⚠️ May be affected by AGC." />
+            )}
+            {velocityDecayLabel && (
+              <StatRow label="Volume" value={velocityDecayLabel}
+                help="Trend of your hit energy over the session. Shows if you're fading, building, or staying steady." />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Per-instrument breakdown (Phase 8) */}
       {instrumentMetrics.length > 0 && (

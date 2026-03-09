@@ -106,6 +106,16 @@ export interface SessionRecord {
   fatigueRatio?: number;
   maxDrift?: number;
   headlines?: Array<{ text: string; link?: string }> | string[];
+  // Phase 9: Groove
+  swingRatio?: number;
+  swingSigma?: number;
+  hasSwing?: boolean;
+  grooveConsistency?: number | null;
+  // Phase 9: Dynamics
+  accentAdherence?: number | null;
+  dynamicRange?: number | null;
+  velocityDecaySlope?: number | null;
+  velocityDecayLabel?: string;
 }
 
 /** Onset data stored separately from session metadata (can be large) */
