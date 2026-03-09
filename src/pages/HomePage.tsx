@@ -21,7 +21,11 @@ import { PracticeModes, usePracticeBadge } from '../components/metronome/Practic
 import { BackupBanner } from '../components/ui/BackupBanner';
 import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
-import { useNavStore, PAGE_PROGRESS } from '../store/nav-store';
+import { ReviewScreen } from '../components/session/ReviewScreen';
+import { SessionDetailPage } from './SessionDetailPage';
+import { useSessionStore } from '../store/session-store';
+import type { SessionAnalysis } from '../analysis/types';
+import type { SessionRecord } from '../store/db';
 
 export function HomePage() {
   const bpm = useMetronomeStore((s) => s.bpm);
@@ -38,9 +42,16 @@ export function HomePage() {
 
   const recording = useRecording();
   const analysis = useAnalysis();
+  const sessions = useSessionStore((s) => s.sessions);
+  const loadSessions = useSessionStore((s) => s.loadFromDB);
+
+  // ─── Review screen state ───
+  const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
+  const [reviewAnalysis, setReviewAnalysis] = useState<SessionAnalysis | null>(null);
+  const [detailSession, setDetailSession] = useState<SessionRecord | null>(null);
 
   // Handle recording toggle: toggleRecording uses a ref internally (always current).
-  // If it returns a RecordingResult, recording just stopped → run analysis → navigate.
+  // If it returns a RecordingResult, recording just stopped → run analysis → show review.
   const handleRecordToggle = useCallback(async () => {
     const result = await recording.toggleRecording();
     if (result) {
@@ -55,12 +66,36 @@ export function HomePage() {
         recordingStartTime: result.recordingStartTime,
         recordingEndTime: result.recordingEndTime,
       });
-      useNavStore.getState().navigateTo(PAGE_PROGRESS);
-      if (!analysisResult) {
+      if (analysisResult) {
+        setReviewSessionId(result.sessionId);
+        setReviewAnalysis(analysisResult);
+      } else {
         console.warn('Analysis produced no result');
       }
     }
   }, [recording.toggleRecording, analysis.analyze]);
+
+  const handleReviewViewDetails = useCallback(async () => {
+    if (!reviewSessionId) return;
+    await loadSessions();
+    const s = sessions.find((s) => s.id === reviewSessionId) || null;
+    // Re-fetch in case loadSessions updated
+    const fresh = useSessionStore.getState().sessions.find((s) => s.id === reviewSessionId) || s;
+    setReviewSessionId(null);
+    setReviewAnalysis(null);
+    setDetailSession(fresh);
+  }, [reviewSessionId, sessions, loadSessions]);
+
+  const handleReviewRecordAgain = useCallback(() => {
+    setReviewSessionId(null);
+    setReviewAnalysis(null);
+  }, []);
+
+  const handleReviewDelete = useCallback(async () => {
+    await loadSessions();
+    setReviewSessionId(null);
+    setReviewAnalysis(null);
+  }, [loadSessions]);
 
   // Session timer — ticks every second while playing
   const [elapsed, setElapsed] = useState(0);
@@ -228,6 +263,25 @@ export function HomePage() {
       <AnalyzingOverlay
         visible={analysis.isAnalyzing}
         progress={analysis.progress}
+      />
+
+      {/* Post-recording review screen */}
+      {reviewSessionId && reviewAnalysis && (
+        <ReviewScreen
+          visible={true}
+          sessionId={reviewSessionId}
+          analysis={reviewAnalysis}
+          onViewDetails={handleReviewViewDetails}
+          onRecordAgain={handleReviewRecordAgain}
+          onDelete={handleReviewDelete}
+        />
+      )}
+
+      {/* Session detail (opened from review → View Details) */}
+      <SessionDetailPage
+        session={detailSession}
+        visible={detailSession !== null}
+        onClose={() => setDetailSession(null)}
       />
     </div>
   );
