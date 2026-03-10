@@ -26,9 +26,11 @@ interface Props {
   compact?: boolean;
   /** Called when re-scoring produces new results */
   onResult?: (result: SessionAnalysis) => void;
+  /** Called when latency offset changes (for click overlay sync) */
+  onLatencyChange?: (offsetMs: number) => void;
 }
 
-export function ScoringControls({ session, hitEvents, compact = false, onResult }: Props) {
+export function ScoringControls({ session, hitEvents, compact = false, onResult, onLatencyChange }: Props) {
   const settings = useSettingsStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedGroup, setAdvancedGroup] = useState<string | null>(null);
@@ -65,6 +67,11 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult 
   const updateConfig = useCallback((partial: Partial<AnalysisConfig>) => {
     setConfig((c) => ({ ...c, ...partial }));
   }, []);
+
+  // Notify parent when latency offset changes (for click overlay sync)
+  useEffect(() => {
+    onLatencyChange?.(config.latencyOffsetMs);
+  }, [config.latencyOffsetMs, onLatencyChange]);
 
   const resetBasic = () => {
     updateConfig({
@@ -314,6 +321,8 @@ function AdvancedGroup({
 
 // ─── Tune Slider with revert icon ───
 
+import { PrecisionSlider } from '../ui/PrecisionSlider';
+
 interface TuneSliderProps {
   label: string; value: number; min: number; max: number; step: number;
   format: (value: number) => string; defaultValue: number;
@@ -330,7 +339,6 @@ function TuneSlider({ label, value, min, max, step, format, defaultValue, onChan
           {help && <HelpTip text={help} />}
         </span>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-mono text-text-primary">{format(value)}</span>
           {isModified && (
             <button onClick={() => onChange(defaultValue)} className="text-text-muted touch-manipulation" title="Revert">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -340,16 +348,11 @@ function TuneSlider({ label, value, min, max, step, format, defaultValue, onChan
           )}
         </div>
       </div>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 rounded-full appearance-none cursor-pointer touch-manipulation"
-        style={{
-          background: `linear-gradient(to right, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.4) ${
-            ((value - min) / (max - min)) * 100
-          }%, rgba(255,255,255,0.08) ${
-            ((value - min) / (max - min)) * 100
-          }%, rgba(255,255,255,0.08) 100%)`,
-        }}
+      <PrecisionSlider
+        min={min} max={max} step={step} value={value}
+        onChange={onChange}
+        formatValue={format}
+        showValue
       />
     </div>
   );

@@ -124,6 +124,8 @@ export function DetectionSettings() {
 
 // ─── Reusable slider row ───
 
+import { PrecisionSlider } from '../ui/PrecisionSlider';
+
 interface SliderRowProps {
   label: string;
   value: number;
@@ -137,30 +139,16 @@ interface SliderRowProps {
 
 function SliderRow({ label, value, min, max, step, format, onChange, help }: SliderRowProps) {
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-text-secondary flex items-center gap-1">
-          {label}
-          {help && <HelpTip text={help} />}
-        </span>
-        <span className="text-xs font-mono text-text-primary">{format(value)}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 rounded-full appearance-none cursor-pointer touch-manipulation"
-        style={{
-          background: `linear-gradient(to right, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.4) ${
-            ((value - min) / (max - min)) * 100
-          }%, rgba(255,255,255,0.08) ${
-            ((value - min) / (max - min)) * 100
-          }%, rgba(255,255,255,0.08) 100%)`,
-        }}
-      />
-    </div>
+    <PrecisionSlider
+      min={min} max={max} step={step} value={value}
+      onChange={onChange}
+      formatValue={format}
+      label={
+        help
+          ? `${label}` // HelpTip handled separately below
+          : label
+      }
+      showValue
+    />
   );
 }

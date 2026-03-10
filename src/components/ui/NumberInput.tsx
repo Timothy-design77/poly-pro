@@ -5,6 +5,8 @@ interface NumberInputProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (value: number) => void;
+  /** Called on every valid keystroke for real-time updates (e.g., live BPM change) */
+  onLiveChange?: (value: number) => void;
   initialValue: number;
   min?: number;
   max?: number;
@@ -16,6 +18,7 @@ export function NumberInput({
   isOpen,
   onClose,
   onSubmit,
+  onLiveChange,
   initialValue,
   min = 20,
   max = 300,
@@ -32,6 +35,16 @@ export function NumberInput({
       setHasDecimal(String(initialValue).includes('.'));
     }
   }, [isOpen, initialValue]);
+
+  // Fire live change on every valid keystroke
+  useEffect(() => {
+    if (!isOpen || !onLiveChange) return;
+    const parsed = parseFloat(input);
+    if (!isNaN(parsed) && parsed >= min && parsed <= max) {
+      const stepped = Math.round(parsed / step) * step;
+      onLiveChange(stepped);
+    }
+  }, [input, isOpen, onLiveChange, min, max, step]);
 
   const handleKey = useCallback((key: string) => {
     if (key === 'backspace') {

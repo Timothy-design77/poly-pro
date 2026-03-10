@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { CalibrationPage } from '../../pages/CalibrationPage';
 import { HelpTip } from '../ui/HelpTip';
+import { PrecisionSlider } from '../ui/PrecisionSlider';
 
 export function CalibrationSettings() {
   const calibratedOffset = useSettingsStore((s) => s.calibratedOffset);
@@ -90,23 +91,16 @@ export function CalibrationSettings() {
             Fine-Tune
             <HelpTip text="Adjust on top of the calibrated value. If your mean offset is consistently off by a few ms, nudge this to center it." />
           </span>
-          <span className="text-xs font-mono text-text-primary">
-            {manualAdjustment > 0 ? '+' : ''}{manualAdjustment.toFixed(1)}ms
-          </span>
         </div>
-        <input
-          type="range"
+        <PrecisionSlider
           min={-50}
           max={50}
           step={0.5}
           value={manualAdjustment}
-          onChange={(e) => setManualAdjustment(parseFloat(e.target.value))}
-          className="w-full h-1.5 rounded-full appearance-none cursor-pointer touch-manipulation"
-          style={{
-            background: `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) ${
-              ((manualAdjustment + 50) / 100) * 100
-            }%, rgba(255,255,255,0.08) 100%)`,
-          }}
+          onChange={setManualAdjustment}
+          formatValue={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}ms`}
+          showValue
+          unit="ms"
         />
         <div className="flex justify-between mt-0.5">
           <span className="text-[9px] text-text-muted">-50ms</span>

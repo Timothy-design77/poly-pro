@@ -59,6 +59,10 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const [clickOverlay, setClickOverlay] = useState(true);
   const [clickVolume, setClickVolume] = useState(0.5);
   const [isSaving, setIsSaving] = useState(false);
+  const [latencyOffsetMs, setLatencyOffsetMs] = useState(() => {
+    const s = useSettingsStore.getState();
+    return s.calibratedOffset + s.manualAdjustment;
+  });
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -183,6 +187,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
       const subdivision = session.subdivision || 1;
       const ioi = 60 / bpm / subdivision;
       const meterNum = parseInt(session.meter) || 4;
+      const latencyOffsetS = latencyOffsetMs / 1000; // shift clicks to align with scoring grid
 
       const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
       const accentBuf = getBuffer(accentSoundId) || clickBuf;
@@ -198,8 +203,10 @@ export function TimelineTab({ session, hitEvents }: Props) {
         let beatIdx = 0;
 
         while (beatTime < durationS) {
-          if (beatTime > offset) {
-            const when = ctx.currentTime + (beatTime - offset);
+          // Shift click by latency offset so clicks align with the scoring grid
+          const adjustedBeatTime = beatTime + latencyOffsetS;
+          if (adjustedBeatTime > offset && adjustedBeatTime < durationS) {
+            const when = ctx.currentTime + (adjustedBeatTime - offset);
             const isDownbeat = beatIdx % (subdivision * meterNum) === 0;
             const isMainBeat = beatIdx % subdivision === 0;
 
@@ -268,7 +275,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
       }
     };
     animFrameRef.current = requestAnimationFrame(animate);
-  }, [stopPlayback, session.durationMs, session.bpm, session.subdivision, session.meter, zoom, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold]);
+  }, [stopPlayback, session.durationMs, session.bpm, session.subdivision, session.meter, zoom, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold, latencyOffsetMs]);
 
   const togglePlayback = useCallback(async () => {
     if (isPlaying) {
@@ -282,6 +289,26 @@ export function TimelineTab({ session, hitEvents }: Props) {
       startPlayback();
     }
   }, [isPlaying, stopPlayback, startPlayback]);
+
+  // Re-schedule clicks when latency offset changes during playback
+  const prevLatencyRef = useRef(latencyOffsetMs);
+  useEffect(() => {
+    if (prevLatencyRef.current !== latencyOffsetMs && isPlaying) {
+      // Restart at current position to re-schedule clicks
+      const restart = async () => {
+        const { audioEngine: eng } = await import('../../audio/engine');
+        const ctx = eng.getContext();
+        if (ctx) {
+          playOffsetRef.current += ctx.currentTime - playStartTimeRef.current;
+        }
+        stopPlayback();
+        // Small delay to let stop complete
+        setTimeout(() => startPlayback(), 50);
+      };
+      restart();
+    }
+    prevLatencyRef.current = latencyOffsetMs;
+  }, [latencyOffsetMs, isPlaying, stopPlayback, startPlayback]);
 
   // ─── Save / Export audio file ───
 
@@ -322,12 +349,15 @@ export function TimelineTab({ session, hitEvents }: Props) {
           const clickMasterGain = offline.createGain();
           clickMasterGain.gain.value = clickVolume;
           clickMasterGain.connect(offline.destination);
+          const latencyOffsetS = latencyOffsetMs / 1000;
 
           let beatTime = 0;
           let beatIdx = 0;
 
           while (beatTime < durationS) {
-            const isDownbeat = beatIdx % (subdivision * meterNum) === 0;
+            const adjustedBeatTime = beatTime + latencyOffsetS;
+            if (adjustedBeatTime >= 0 && adjustedBeatTime < durationS) {
+              const isDownbeat = beatIdx % (subdivision * meterNum) === 0;
             const isMainBeat = beatIdx % subdivision === 0;
 
             const volState = isDownbeat ? VolumeState.ACCENT
@@ -342,7 +372,8 @@ export function TimelineTab({ session, hitEvents }: Props) {
             clickNodeGain.gain.value = VOLUME_GAINS[volState];
             clickSource.connect(clickNodeGain);
             clickNodeGain.connect(clickMasterGain);
-            clickSource.start(beatTime);
+            clickSource.start(adjustedBeatTime);
+            }
 
             beatTime += ioi;
             beatIdx++;
@@ -398,7 +429,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
     } finally {
       setIsSaving(false);
     }
-  }, [session, clickSoundId, accentSoundId, accentThreshold, clickVolume]);
+  }, [session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs]);
 
   const canvasHeight = 200;
   const totalWidth = containerWidth * zoom;
@@ -847,6 +878,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
           hitEvents={hitEvents}
           compact={false}
           onResult={handleScoringResult}
+          onLatencyChange={setLatencyOffsetMs}
         />
       )}
     </div>

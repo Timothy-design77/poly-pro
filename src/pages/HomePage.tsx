@@ -252,6 +252,7 @@ export function HomePage() {
         isOpen={showKeypad}
         onClose={() => setShowKeypad(false)}
         onSubmit={setBpm}
+        onLiveChange={setBpm}
         initialValue={bpm}
         min={20}
         max={300}
