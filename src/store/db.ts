@@ -175,19 +175,45 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = new Promise<IDBPDatabase>((resolve, reject) => {
-      // Timeout: if the upgrade is blocked for >3s, delete and retry
+      // Timeout: if the upgrade is blocked, try progressively harder recovery
       let blocked = false;
-      const timeout = setTimeout(() => {
-        if (blocked) {
-          console.warn('[db] IDB upgrade blocked for 3s — deleting old DB and retrying');
-          dbPromise = null;
-          indexedDB.deleteDatabase(DB_NAME);
-          // Retry after delete
-          setTimeout(() => {
-            getDB().then(resolve, reject);
-          }, 200);
-        }
+      let resolved = false;
+
+      // Attempt 1: at 3s, try closing stale service worker connections
+      const softTimeout = setTimeout(async () => {
+        if (!blocked || resolved) return;
+        console.warn('[db] IDB upgrade blocked for 3s — trying to close stale connections');
+        try {
+          // Force service worker to release its connection
+          const reg = await navigator.serviceWorker?.getRegistration();
+          if (reg?.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+        } catch { /* ignore */ }
       }, 3000);
+
+      // Attempt 2: at 8s, give up waiting and resolve with a fresh connection
+      // WITHOUT deleting the database. The upgrade will happen next launch.
+      const hardTimeout = setTimeout(() => {
+        if (resolved) return;
+        if (blocked) {
+          console.error('[db] IDB upgrade still blocked after 8s — opening at current version');
+          dbPromise = null;
+          // Open WITHOUT version upgrade — works with existing stores
+          openDB(DB_NAME).then((db) => {
+            resolved = true;
+            resolve(db);
+          }).catch(() => {
+            // Absolute last resort: delete and recreate
+            console.error('[db] Cannot open DB at all — deleting and recreating');
+            indexedDB.deleteDatabase(DB_NAME);
+            setTimeout(() => {
+              dbPromise = null;
+              getDB().then(resolve, reject);
+            }, 200);
+          });
+        }
+      }, 8000);
 
       openDB(DB_NAME, DB_VERSION, {
         upgrade(db) {
@@ -220,10 +246,14 @@ function getDB(): Promise<IDBPDatabase> {
           console.warn(`[db] IDB upgrade blocked: v${currentVersion} → v${blockedVersion}. Old connection still open.`);
         },
       }).then((db) => {
-        clearTimeout(timeout);
+        clearTimeout(softTimeout);
+        clearTimeout(hardTimeout);
+        resolved = true;
         resolve(db);
       }).catch((err) => {
-        clearTimeout(timeout);
+        clearTimeout(softTimeout);
+        clearTimeout(hardTimeout);
+        resolved = true;
         reject(err);
       });
     });

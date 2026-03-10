@@ -18,6 +18,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionAnalysis } from '../../analysis/types';
 import { useSettingsStore } from '../../store/settings-store';
+import { useSessionStore } from '../../store/session-store';
 import { VolumeState, VOLUME_GAINS } from '../../audio/types';
 import * as db from '../../store/db';
 
@@ -238,6 +239,21 @@ export function ReviewScreen({
         if (s) await db.putSession({ ...s, hasRecording: false });
       }
       // 'raw' = keep as-is
+
+      // Verify recording state and sync session record
+      // (guards against stale store data or IDB upgrade edge cases)
+      if (storageChoice !== 'delete') {
+        const verifyBlob = await db.getRecording(sessionId);
+        const recordingExists = !!verifyBlob && verifyBlob.size > 0;
+        const sessions = await db.getAllSessions();
+        const s = sessions.find((s) => s.id === sessionId);
+        if (s && s.hasRecording !== recordingExists) {
+          await db.putSession({ ...s, hasRecording: recordingExists });
+        }
+      }
+
+      // Reload session store so View Details gets fresh data
+      await useSessionStore.getState().loadFromDB();
 
       setStep('done');
     } catch (err) {
