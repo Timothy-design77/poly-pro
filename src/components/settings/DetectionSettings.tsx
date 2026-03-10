@@ -6,11 +6,14 @@
  * modifying a slider switches to "Custom".
  */
 
+import { useState } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { DETECTION_PRESETS } from '../../analysis/types';
 import { HelpTip } from '../ui/HelpTip';
+import { DetectionTestBench } from './DetectionTestBench';
 
 export function DetectionSettings() {
+  const [showTestBench, setShowTestBench] = useState(false);
   const scoringWindowPct = useSettingsStore((s) => s.scoringWindowPct);
   const flamMergePct = useSettingsStore((s) => s.flamMergePct);
   const noiseGate = useSettingsStore((s) => s.noiseGate);
@@ -188,6 +191,20 @@ export function DetectionSettings() {
           help="Spectral flux sensitivity. Higher = only detect sharp transients, fewer false positives."
         />
       </div>
+
+      {/* Run Test */}
+      <button
+        onClick={() => setShowTestBench(true)}
+        className="w-full py-2.5 bg-bg-raised border border-border-subtle text-text-primary rounded-md text-sm min-h-[44px] hover:bg-border-subtle transition-colors flex items-center justify-center gap-2"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+        </svg>
+        Run Detection Test
+      </button>
+
+      {/* Test Bench overlay */}
+      <DetectionTestBench visible={showTestBench} onClose={() => setShowTestBench(false)} />
     </div>
   );
 }
