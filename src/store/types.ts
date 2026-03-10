@@ -96,6 +96,11 @@ export interface SettingsState {
   accentThreshold: number;     // multiplier (default 1.5)
   highPassHz: number;          // high-pass cutoff, 0 = off
   detectionPreset: string;     // 'Standard' | 'Strict' | 'Forgiving' | 'Noisy Room' | 'Custom'
+  noiseFloorMultiplier: number; // how aggressively to gate (default 5, range 2–20)
+  minOnsetIntervalMs: number;   // minimum gap between detections (default 60, range 20–150)
+  postHitMaskingMs: number;     // decay masking after hits (default 100, range 0–200)
+  postHitMaskingStrength: number; // masking multiplier (default 10, range 0–30)
+  fluxThresholdOffset: number;  // spectral flux threshold above median (default 1.0, range 0.3–3.0)
 
   // Calibration
   /** Offset from automated calibration (ms) */
@@ -138,6 +143,11 @@ export interface SettingsState {
   setNoiseGate: (value: number) => void;
   setAccentThreshold: (value: number) => void;
   setHighPassHz: (value: number) => void;
+  setNoiseFloorMultiplier: (value: number) => void;
+  setMinOnsetIntervalMs: (value: number) => void;
+  setPostHitMaskingMs: (value: number) => void;
+  setPostHitMaskingStrength: (value: number) => void;
+  setFluxThresholdOffset: (value: number) => void;
   setDetectionPreset: (name: string) => void;
   resetToDefaults: () => void;
 }

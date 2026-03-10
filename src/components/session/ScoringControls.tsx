@@ -44,6 +44,11 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
     accentThreshold: settings.accentThreshold,
     highPassHz: settings.highPassHz,
     latencyOffsetMs: settings.calibratedOffset + settings.manualAdjustment,
+    noiseFloorMultiplier: settings.noiseFloorMultiplier,
+    minOnsetIntervalMs: settings.minOnsetIntervalMs,
+    postHitMaskingMs: settings.postHitMaskingMs,
+    postHitMaskingStrength: settings.postHitMaskingStrength,
+    fluxThresholdOffset: settings.fluxThresholdOffset,
   }));
 
   const [liveResult, setLiveResult] = useState<SessionAnalysis | null>(null);
@@ -97,6 +102,15 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
         highPassHz: DEFAULT_ANALYSIS_CONFIG.highPassHz,
         bandPassHz: DEFAULT_ANALYSIS_CONFIG.bandPassHz,
       });
+    } else if (group === 'onset') {
+      updateConfig({
+        noiseFloorMultiplier: DEFAULT_ANALYSIS_CONFIG.noiseFloorMultiplier,
+        minOnsetIntervalMs: DEFAULT_ANALYSIS_CONFIG.minOnsetIntervalMs,
+        postHitMaskingMs: DEFAULT_ANALYSIS_CONFIG.postHitMaskingMs,
+        postHitMaskingStrength: DEFAULT_ANALYSIS_CONFIG.postHitMaskingStrength,
+        fluxThresholdOffset: DEFAULT_ANALYSIS_CONFIG.fluxThresholdOffset,
+        noiseGate: DEFAULT_ANALYSIS_CONFIG.noiseGate,
+      });
     }
   };
 
@@ -114,6 +128,11 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
     settings.setNoiseGate(config.noiseGate);
     settings.setAccentThreshold(config.accentThreshold);
     settings.setHighPassHz(config.highPassHz);
+    settings.setNoiseFloorMultiplier(config.noiseFloorMultiplier);
+    settings.setMinOnsetIntervalMs(config.minOnsetIntervalMs);
+    settings.setPostHitMaskingMs(config.postHitMaskingMs);
+    settings.setPostHitMaskingStrength(config.postHitMaskingStrength);
+    settings.setFluxThresholdOffset(config.fluxThresholdOffset);
   };
 
   const originalScore = session.score ?? 0;
@@ -258,6 +277,54 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
                   defaultValue={0}
                   onChange={(v) => updateConfig({ bandPassHz: v })}
                   help="Focus detection on a frequency range. Useful for isolating specific drums." />
+              </AdvancedGroup>
+
+              {/* Group 4: Onset Detection Tuning */}
+              <AdvancedGroup
+                title="Onset Detection" isOpen={advancedGroup === 'onset'}
+                onToggle={() => toggleGroup('onset')}
+                onReset={() => resetGroup('onset')}
+              >
+                <p className="text-[9px] text-text-muted mb-2 leading-relaxed">
+                  These control how hits are detected from the raw audio. Changes here apply to
+                  your next recording. Use "Save as Default" to keep them.
+                </p>
+                <TuneSlider label="Noise Gate" value={config.noiseGate}
+                  min={0.005} max={0.20} step={0.005}
+                  format={(v) => v.toFixed(3)}
+                  defaultValue={DEFAULT_ANALYSIS_CONFIG.noiseGate}
+                  onChange={(v) => updateConfig({ noiseGate: v })}
+                  help="Minimum peak amplitude to count as a hit. Raise to reject background noise." />
+                <TuneSlider label="Noise Floor ×" value={config.noiseFloorMultiplier}
+                  min={2} max={20} step={1}
+                  format={(v) => `${v}×`}
+                  defaultValue={DEFAULT_ANALYSIS_CONFIG.noiseFloorMultiplier}
+                  onChange={(v) => updateConfig({ noiseFloorMultiplier: v })}
+                  help="Multiplier on measured room noise. Higher = more aggressive filtering. 5× is standard, 10-15× for noisy rooms." />
+                <TuneSlider label="Min Onset Gap" value={config.minOnsetIntervalMs}
+                  min={20} max={150} step={5}
+                  format={(v) => `${v}ms`}
+                  defaultValue={DEFAULT_ANALYSIS_CONFIG.minOnsetIntervalMs}
+                  onChange={(v) => updateConfig({ minOnsetIntervalMs: v })}
+                  help="Minimum time between detected hits. Prevents re-triggering on drum decay. 60ms is standard, raise to 80-100ms for resonant drums." />
+                <TuneSlider label="Post-Hit Masking" value={config.postHitMaskingMs}
+                  min={0} max={200} step={10}
+                  format={(v) => v === 0 ? 'Off' : `${v}ms`}
+                  defaultValue={DEFAULT_ANALYSIS_CONFIG.postHitMaskingMs}
+                  onChange={(v) => updateConfig({ postHitMaskingMs: v })}
+                  help="After each detected hit, temporarily raise the detection threshold. Prevents false detections during drum ring-out." />
+                <TuneSlider label="Masking Strength" value={config.postHitMaskingStrength}
+                  min={0} max={30} step={1}
+                  format={(v) => `${v}×`}
+                  defaultValue={DEFAULT_ANALYSIS_CONFIG.postHitMaskingStrength}
+                  onChange={(v) => updateConfig({ postHitMaskingStrength: v })}
+                  help="How strongly to mask after a hit. Higher = more aggressive suppression of decay triggers." />
+                <TuneSlider label="Flux Threshold" value={config.fluxThresholdOffset}
+                  min={0.3} max={3.0} step={0.1}
+                  format={(v) => v.toFixed(1)}
+                  defaultValue={DEFAULT_ANALYSIS_CONFIG.fluxThresholdOffset}
+                  onChange={(v) => updateConfig({ fluxThresholdOffset: v })}
+                  help="Spectral flux threshold above local median. Higher = only detect sharp transients, fewer false positives." />
               </AdvancedGroup>
             </div>
           )}

@@ -154,10 +154,11 @@ export function applyHighPass(pcm: Float32Array, sampleRate: number, cutoffHz: n
 export function estimateNoiseFloor(
   pcm: Float32Array,
   sampleRate: number,
+  multiplier: number = 5,
 ): number {
   // Analyze first 500ms
   const samples = Math.min(Math.floor(sampleRate * 0.5), pcm.length);
-  if (samples < 256) return 0.001;
+  if (samples < 256) return 0.01;
 
   let sumSq = 0;
   for (let i = 0; i < samples; i++) {
@@ -165,8 +166,8 @@ export function estimateNoiseFloor(
   }
 
   const rms = Math.sqrt(sumSq / samples);
-  // Set noise gate at 2× the noise floor RMS
-  return Math.max(rms * 2, 0.003);
+  // Gate at multiplier × noise RMS, with a sensible minimum
+  return Math.max(rms * multiplier, 0.01);
 }
 
 // ─── Stage 2: Auto-Latency Detection ───
@@ -184,19 +185,28 @@ export function detectAutoLatency(
 // ─── Stage 3: Coarse Onset Detection (Spectral Flux) ───
 
 /**
- * Spectral flux onset detection.
+ * Spectral flux onset detection with post-hit masking.
  *
  * Algorithm:
  * 1. STFT with hop through the recording (256-sample window, 128-sample hop)
  * 2. Compute log-compressed spectral flux between consecutive frames
  * 3. Half-wave rectify (keep only increases)
- * 4. Adaptive threshold (median + factor × MAD over a local window)
- * 5. Peak pick from above-threshold regions
+ * 4. Adaptive threshold (median + configurable offset × MAD)
+ * 5. Post-hit masking: after each detection, temporarily raise threshold
+ *    proportional to the hit's energy (exponential decay)
+ * 6. Minimum inter-onset interval enforcement
+ * 7. Peak pick from above-threshold regions
  */
 export function detectOnsetsCoarse(
   pcm: Float32Array,
   sampleRate: number,
   noiseFloor: number,
+  config: {
+    minOnsetIntervalMs: number;
+    postHitMaskingMs: number;
+    postHitMaskingStrength: number;
+    fluxThresholdOffset: number;
+  },
   onProgress?: ProgressCallback,
 ): DetectedOnset[] {
   const windowSize = 256;
@@ -217,10 +227,8 @@ export function detectOnsetsCoarse(
     const mag = magnitudeSpectrum(windowed, fftSize);
 
     if (prevMag) {
-      // Spectral flux: sum of positive differences (half-wave rectified)
       let flux = 0;
       for (let k = 0; k < mag.length; k++) {
-        // Log compression: log(1 + mag) avoids log(0)
         const logCurr = Math.log(1 + mag[k]);
         const logPrev = Math.log(1 + prevMag[k]);
         const diff = logCurr - logPrev;
@@ -231,52 +239,79 @@ export function detectOnsetsCoarse(
 
     prevMag = mag;
 
-    // Progress + yield every 2000 hops (~500ms of audio)
     if (onProgress && hop % 2000 === 0) {
-      onProgress({
-        stage: 'coarse-onset',
-        progress: hop / totalHops,
-      });
+      onProgress({ stage: 'coarse-onset', progress: hop / totalHops });
     }
   }
 
-  // Adaptive threshold: median filter + deviation
-  const medianWindowSize = 51; // ~51 hops ≈ 340ms at 48kHz/128hop
-  const thresholdFactor = 1.5;
-  const minFlux = noiseFloor * 2; // Absolute minimum flux to consider
+  // Adaptive threshold: median filter + configurable offset
+  const medianWindowSize = 51;
+  const minFlux = noiseFloor * 2;
+
+  // Pre-compute local medians
+  const localMedians = new Float32Array(totalHops);
+  const localMADs = new Float32Array(totalHops);
+  const halfWin = Math.floor(medianWindowSize / 2);
+
+  for (let hop = 0; hop < totalHops; hop++) {
+    const lo = Math.max(0, hop - halfWin);
+    const hi = Math.min(totalHops, hop + halfWin + 1);
+    const localValues: number[] = [];
+    for (let j = lo; j < hi; j++) localValues.push(fluxValues[j]);
+    localValues.sort((a, b) => a - b);
+    const median = localValues[Math.floor(localValues.length / 2)];
+    localMedians[hop] = median;
+
+    const deviations = localValues.map((v) => Math.abs(v - median));
+    deviations.sort((a, b) => a - b);
+    localMADs[hop] = deviations[Math.floor(deviations.length / 2)] || 0.001;
+  }
+
+  // Post-hit masking parameters (in hop units)
+  const minIntervalHops = Math.max(1, Math.floor(
+    (config.minOnsetIntervalMs / 1000) * sampleRate / hopSize,
+  ));
+  const maskingHops = Math.max(1, Math.floor(
+    (config.postHitMaskingMs / 1000) * sampleRate / hopSize,
+  ));
+  const maskingDecayRate = 0.25; // controls exponential decay speed
 
   const onsetCandidates: { hopIndex: number; flux: number; time: number }[] = [];
+  let lastOnsetHop = -minIntervalHops * 2;
+  let lastOnsetPeak = 0;
 
   for (let hop = 1; hop < totalHops - 1; hop++) {
     const flux = fluxValues[hop];
     if (flux < minFlux) continue;
 
-    // Local median
-    const halfWin = Math.floor(medianWindowSize / 2);
-    const lo = Math.max(0, hop - halfWin);
-    const hi = Math.min(totalHops, hop + halfWin + 1);
-    const localValues: number[] = [];
-    for (let j = lo; j < hi; j++) {
-      localValues.push(fluxValues[j]);
+    // Base threshold: median + offset × MAD
+    let threshold = localMedians[hop] + config.fluxThresholdOffset * localMADs[hop];
+
+    // Post-hit masking: raise threshold after recent detection
+    const hopsSinceLast = hop - lastOnsetHop;
+    if (hopsSinceLast < maskingHops && lastOnsetPeak > noiseFloor) {
+      const decay = Math.exp(-hopsSinceLast / (maskingHops * maskingDecayRate));
+      threshold += lastOnsetPeak * config.postHitMaskingStrength * decay;
     }
-    localValues.sort((a, b) => a - b);
-    const median = localValues[Math.floor(localValues.length / 2)];
 
-    // Median absolute deviation
-    const deviations: number[] = localValues.map((v) => Math.abs(v - median));
-    deviations.sort((a, b) => a - b);
-    const mad = deviations[Math.floor(deviations.length / 2)] || 0.001;
-
-    const threshold = median + thresholdFactor * mad;
+    // Minimum interval enforcement
+    if (hopsSinceLast < minIntervalHops) continue;
 
     // Peak: above threshold AND local maximum
-    if (
-      flux > threshold &&
-      flux >= fluxValues[hop - 1] &&
-      flux >= fluxValues[hop + 1]
-    ) {
+    if (flux > threshold && flux >= fluxValues[hop - 1] && flux >= fluxValues[hop + 1]) {
       const time = (hop * hopSize) / sampleRate;
       onsetCandidates.push({ hopIndex: hop, flux, time });
+
+      // Track for masking
+      const samplePos = hop * hopSize;
+      let peak = 0;
+      const peakEnd = Math.min(pcm.length, samplePos + 192);
+      for (let i = Math.max(0, samplePos - 64); i < peakEnd; i++) {
+        const abs = Math.abs(pcm[i]);
+        if (abs > peak) peak = abs;
+      }
+      lastOnsetHop = hop;
+      lastOnsetPeak = peak;
     }
   }
 
@@ -284,7 +319,6 @@ export function detectOnsetsCoarse(
   const onsets: DetectedOnset[] = [];
   for (const cand of onsetCandidates) {
     const samplePos = cand.hopIndex * hopSize;
-    // Find peak amplitude in a small window around the onset
     let peak = 0;
     const peakStart = Math.max(0, samplePos - 64);
     const peakEnd = Math.min(pcm.length, samplePos + 192);
@@ -468,7 +502,7 @@ export async function runOnsetDetection(
 
   // Stage 1: Noise floor estimation
   onProgress?.({ stage: 'noise-floor', progress: 0 });
-  const noiseFloor = estimateNoiseFloor(pcm, sampleRate);
+  const noiseFloor = estimateNoiseFloor(pcm, sampleRate, config.noiseFloorMultiplier);
   const effectiveNoiseGate = Math.max(noiseFloor, config.noiseGate);
   onProgress?.({ stage: 'noise-floor', progress: 1 });
   await yieldToMain();
@@ -485,12 +519,18 @@ export async function runOnsetDetection(
     processedPcm = applyHighPass(pcm, sampleRate, config.highPassHz);
   }
 
-  // Stage 3: Coarse onset detection
+  // Stage 3: Coarse onset detection (with post-hit masking)
   onProgress?.({ stage: 'coarse-onset', progress: 0 });
   const coarseOnsets = detectOnsetsCoarse(
     processedPcm,
     sampleRate,
     effectiveNoiseGate,
+    {
+      minOnsetIntervalMs: config.minOnsetIntervalMs,
+      postHitMaskingMs: config.postHitMaskingMs,
+      postHitMaskingStrength: config.postHitMaskingStrength,
+      fluxThresholdOffset: config.fluxThresholdOffset,
+    },
     onProgress,
   );
   onProgress?.({ stage: 'coarse-onset', progress: 1 });

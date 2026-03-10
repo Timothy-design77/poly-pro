@@ -22,6 +22,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   accentThreshold: 1.5,
   highPassHz: 0,
   detectionPreset: 'Standard',
+  noiseFloorMultiplier: 5,
+  minOnsetIntervalMs: 60,
+  postHitMaskingMs: 100,
+  postHitMaskingStrength: 10,
+  fluxThresholdOffset: 1.0,
 
   // Calibration
   calibratedOffset: 0,
@@ -66,6 +71,16 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ accentThreshold: value, detectionPreset: 'Custom' }),
   setHighPassHz: (value) =>
     set({ highPassHz: value, detectionPreset: 'Custom' }),
+  setNoiseFloorMultiplier: (value) =>
+    set({ noiseFloorMultiplier: value, detectionPreset: 'Custom' }),
+  setMinOnsetIntervalMs: (value) =>
+    set({ minOnsetIntervalMs: value, detectionPreset: 'Custom' }),
+  setPostHitMaskingMs: (value) =>
+    set({ postHitMaskingMs: value, detectionPreset: 'Custom' }),
+  setPostHitMaskingStrength: (value) =>
+    set({ postHitMaskingStrength: value, detectionPreset: 'Custom' }),
+  setFluxThresholdOffset: (value) =>
+    set({ fluxThresholdOffset: value, detectionPreset: 'Custom' }),
 
   // Preset: fills all sliders from the chosen preset
   setDetectionPreset: (name) => {
@@ -77,6 +92,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         flamMergePct: preset.flamMergePct,
         noiseGate: preset.noiseGate,
         highPassHz: preset.highPassHz,
+        noiseFloorMultiplier: preset.noiseFloorMultiplier,
+        minOnsetIntervalMs: preset.minOnsetIntervalMs,
+        postHitMaskingMs: preset.postHitMaskingMs,
+        postHitMaskingStrength: preset.postHitMaskingStrength,
+        fluxThresholdOffset: preset.fluxThresholdOffset,
       });
     }
   },
@@ -93,6 +113,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     accentThreshold: 1.5,
     highPassHz: 0,
     detectionPreset: 'Standard',
+    noiseFloorMultiplier: 5,
+    minOnsetIntervalMs: 60,
+    postHitMaskingMs: 100,
+    postHitMaskingStrength: 10,
+    fluxThresholdOffset: 1.0,
     includeClickInRecording: true,
     clickVolumeInRecording: 0.15,
     liveWaveform: true,

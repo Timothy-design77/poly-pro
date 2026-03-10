@@ -25,6 +25,18 @@ export function DetectionSettings() {
   const setHighPassHz = useSettingsStore((s) => s.setHighPassHz);
   const setDetectionPreset = useSettingsStore((s) => s.setDetectionPreset);
 
+  const noiseFloorMult = useSettingsStore((s) => s.noiseFloorMultiplier);
+  const minOnsetInterval = useSettingsStore((s) => s.minOnsetIntervalMs);
+  const postHitMasking = useSettingsStore((s) => s.postHitMaskingMs);
+  const maskingStrength = useSettingsStore((s) => s.postHitMaskingStrength);
+  const fluxThreshold = useSettingsStore((s) => s.fluxThresholdOffset);
+
+  const setNoiseFloorMult = useSettingsStore((s) => s.setNoiseFloorMultiplier);
+  const setMinOnsetInterval = useSettingsStore((s) => s.setMinOnsetIntervalMs);
+  const setPostHitMasking = useSettingsStore((s) => s.setPostHitMaskingMs);
+  const setMaskingStrength = useSettingsStore((s) => s.setPostHitMaskingStrength);
+  const setFluxThreshold = useSettingsStore((s) => s.setFluxThresholdOffset);
+
   return (
     <div className="space-y-4">
       {/* Preset picker */}
@@ -118,6 +130,64 @@ export function DetectionSettings() {
         onChange={setHighPassHz}
         help="Filters low-frequency noise before detection. 100-200Hz for noisy rooms."
       />
+
+      {/* ─── Advanced Onset Detection ─── */}
+      <div className="border-t border-border-subtle pt-3 mt-1">
+        <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider mb-3">
+          Onset Detection
+        </p>
+
+        <SliderRow
+          label="Noise Floor ×"
+          value={noiseFloorMult}
+          min={2}
+          max={20}
+          step={1}
+          format={(v) => `${v}×`}
+          onChange={setNoiseFloorMult}
+          help="Multiplier on measured room noise. Higher = more aggressive noise rejection. 5× standard, 10-15× for noisy rooms."
+        />
+        <SliderRow
+          label="Min Onset Gap"
+          value={minOnsetInterval}
+          min={20}
+          max={150}
+          step={5}
+          format={(v) => `${v}ms`}
+          onChange={setMinOnsetInterval}
+          help="Minimum time between detected hits. Prevents re-triggering on drum decay. 60ms standard, 80-100ms for resonant drums."
+        />
+        <SliderRow
+          label="Post-Hit Mask"
+          value={postHitMasking}
+          min={0}
+          max={200}
+          step={10}
+          format={(v) => v === 0 ? 'Off' : `${v}ms`}
+          onChange={setPostHitMasking}
+          help="After detecting a hit, temporarily raise threshold to suppress decay triggers."
+        />
+        <SliderRow
+          label="Mask Strength"
+          value={maskingStrength}
+          min={0}
+          max={30}
+          step={1}
+          format={(v) => `${v}×`}
+          onChange={setMaskingStrength}
+          help="How strongly to suppress after a hit. Higher = fewer false detections from ring-out."
+        />
+        <SliderRow
+          label="Flux Threshold"
+          value={fluxThreshold}
+          min={0.3}
+          max={3.0}
+          step={0.1}
+          format={(v) => v.toFixed(1)}
+          onChange={setFluxThreshold}
+          help="Spectral flux sensitivity. Higher = only detect sharp transients, fewer false positives."
+        />
+      </div>
     </div>
   );
 }

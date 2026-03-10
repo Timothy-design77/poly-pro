@@ -216,6 +216,16 @@ export interface AnalysisConfig {
   inputGain: number;
   /** Sample rate of the recording */
   sampleRate: number;
+  /** Noise floor multiplier — how aggressively to gate above measured noise (default 5, range 2–20) */
+  noiseFloorMultiplier: number;
+  /** Minimum ms between detected onsets — prevents re-triggering on decay (default 60, range 20–150) */
+  minOnsetIntervalMs: number;
+  /** Post-hit masking duration in ms — raises threshold after each hit (default 100, range 0–200) */
+  postHitMaskingMs: number;
+  /** Post-hit masking strength — multiplier on hit peak for threshold boost (default 10, range 0–30) */
+  postHitMaskingStrength: number;
+  /** Spectral flux threshold offset above local median (default 1.0, range 0.3–3.0) */
+  fluxThresholdOffset: number;
 }
 
 export const DEFAULT_ANALYSIS_CONFIG: AnalysisConfig = {
@@ -229,6 +239,11 @@ export const DEFAULT_ANALYSIS_CONFIG: AnalysisConfig = {
   biasCorrection: 0,
   inputGain: 1.0,
   sampleRate: 48000,
+  noiseFloorMultiplier: 5,
+  minOnsetIntervalMs: 60,
+  postHitMaskingMs: 100,
+  postHitMaskingStrength: 10,
+  fluxThresholdOffset: 1.0,
 };
 
 // ─── Detection Presets ───
@@ -241,6 +256,11 @@ export interface DetectionPreset {
   flamMergePct: number;
   noiseGate: number;
   highPassHz: number;
+  noiseFloorMultiplier: number;
+  minOnsetIntervalMs: number;
+  postHitMaskingMs: number;
+  postHitMaskingStrength: number;
+  fluxThresholdOffset: number;
   description: string;
 }
 
@@ -251,15 +271,25 @@ export const DETECTION_PRESETS: DetectionPreset[] = [
     flamMergePct: 45,
     noiseGate: 0.01,
     highPassHz: 0,
-    description: 'Default — sensitive, suits most rooms',
+    noiseFloorMultiplier: 5,
+    minOnsetIntervalMs: 60,
+    postHitMaskingMs: 100,
+    postHitMaskingStrength: 10,
+    fluxThresholdOffset: 1.0,
+    description: 'Default — balanced sensitivity',
   },
   {
     name: 'Strict',
     scoringWindowPct: 2,
     flamMergePct: 25,
-    noiseGate: 0.03,
+    noiseGate: 0.05,
     highPassHz: 0,
-    description: 'Advanced players, quiet rooms, tight windows',
+    noiseFloorMultiplier: 8,
+    minOnsetIntervalMs: 80,
+    postHitMaskingMs: 120,
+    postHitMaskingStrength: 15,
+    fluxThresholdOffset: 1.5,
+    description: 'Advanced — aggressive filtering, tight windows',
   },
   {
     name: 'Forgiving',
@@ -267,6 +297,11 @@ export const DETECTION_PRESETS: DetectionPreset[] = [
     flamMergePct: 60,
     noiseGate: 0.005,
     highPassHz: 0,
+    noiseFloorMultiplier: 3,
+    minOnsetIntervalMs: 40,
+    postHitMaskingMs: 60,
+    postHitMaskingStrength: 5,
+    fluxThresholdOffset: 0.5,
     description: 'Beginners — max sensitivity, wide windows',
   },
   {
@@ -275,7 +310,12 @@ export const DETECTION_PRESETS: DetectionPreset[] = [
     flamMergePct: 45,
     noiseGate: 0.10,
     highPassHz: 150,
-    description: 'Raised gate + 150Hz high-pass for noisy spaces',
+    noiseFloorMultiplier: 10,
+    minOnsetIntervalMs: 80,
+    postHitMaskingMs: 130,
+    postHitMaskingStrength: 15,
+    fluxThresholdOffset: 1.5,
+    description: 'Raised gate + high-pass + aggressive masking',
   },
 ];
 

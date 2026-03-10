@@ -91,6 +91,11 @@ export function useAnalysis() {
             accentThreshold: settings.accentThreshold,
             highPassHz: settings.highPassHz,
             latencyOffsetMs: settings.calibratedOffset + settings.manualAdjustment,
+            noiseFloorMultiplier: settings.noiseFloorMultiplier,
+            minOnsetIntervalMs: settings.minOnsetIntervalMs,
+            postHitMaskingMs: settings.postHitMaskingMs,
+            postHitMaskingStrength: settings.postHitMaskingStrength,
+            fluxThresholdOffset: settings.fluxThresholdOffset,
           },
           onProgress: (progress) => {
             if (!abortRef.current) {
