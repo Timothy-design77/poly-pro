@@ -70,6 +70,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const [containerWidth, setContainerWidth] = useState(350);
   const [spectrogramData, setSpectrogramData] = useState<SpectrogramData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false);
 
   // Band filter toggles (true = visible)
   const [showBass, setShowBass] = useState(true);
@@ -185,6 +186,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
       const audioBuf = ctx.createBuffer(1, pcm.length, sampleRate);
       audioBuf.getChannelData(0).set(pcm);
       audioBufferRef.current = audioBuf;
+      setIsReady(true);
 
       // Compute spectrogram (this may take 1-2s on long recordings)
       const specData = computeSpectrogram(pcm, sampleRate);
@@ -1101,12 +1103,12 @@ export function TimelineTab({ session, hitEvents }: Props) {
         {/* Play/Pause */}
         <button
           onClick={togglePlayback}
-          disabled={!audioBufferRef.current}
+          disabled={!isReady}
           className={`w-10 h-10 rounded-lg flex items-center justify-center touch-manipulation transition-colors
             ${isPlaying
               ? 'bg-white/15 text-white'
               : 'bg-white/8 text-white/70 active:bg-white/12'}
-            ${!audioBufferRef.current ? 'opacity-30' : ''}`}
+            ${!isReady ? 'opacity-30' : ''}`}
         >
           {isPlaying ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -1183,7 +1185,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
       )}
 
       {/* ─── Save / Export ─── */}
-      {audioBufferRef.current && (
+      {isReady && (
         <div className="flex gap-2">
           <button
             onClick={() => saveAudio(false)}
