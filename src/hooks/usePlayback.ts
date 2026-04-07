@@ -1,6 +1,16 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { audioEngine } from '../audio/engine';
+import { useMetronomeStore } from '../store/metronome-store';
+import { MASTER_GAIN_MULTIPLIER } from '../utils/constants';
 import * as db from '../store/db';
+
+/** Same perceptual curve as engine.ts — vol² × multiplier */
+function perceptualGain(vol: number): number {
+  return vol * vol * MASTER_GAIN_MULTIPLIER;
+}
+
+/** Mic boost × user volume = playback gain */
+const MIC_BOOST = 4.0;
 
 /**
  * Plays back session recordings.
@@ -8,11 +18,23 @@ import * as db from '../store/db';
  * Primary: raw Float32 PCM blobs from AudioWorklet capture.
  * Backward compat: also handles old compressed Opus/WebM blobs from
  * the MediaRecorder era (stored as sessionId + '-playback').
+ *
+ * Respects the metronome volume slider in real-time.
  */
 export function usePlayback() {
   const [playingSessionId, setPlayingSessionId] = useState<string | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
+  const unsubRef = useRef<(() => void) | null>(null);
+
+  // Subscribe to volume changes while playing
+  useEffect(() => {
+    return () => {
+      // Cleanup subscription on unmount
+      unsubRef.current?.();
+      unsubRef.current = null;
+    };
+  }, []);
 
   const stopCurrent = useCallback(() => {
     if (sourceRef.current) {
@@ -23,6 +45,9 @@ export function usePlayback() {
       try { gainRef.current.disconnect(); } catch {}
       gainRef.current = null;
     }
+    // Unsubscribe from volume changes
+    unsubRef.current?.();
+    unsubRef.current = null;
     setPlayingSessionId(null);
   }, []);
 
@@ -79,9 +104,10 @@ export function usePlayback() {
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
 
-      // Mic recordings are quiet — boost for playback
+      // Gain node: mic boost × perceptual volume from slider
       const gain = ctx.createGain();
-      gain.gain.value = 4.0;
+      const vol = useMetronomeStore.getState().volume;
+      gain.gain.value = MIC_BOOST * perceptualGain(vol);
       gainRef.current = gain;
 
       source.connect(gain);
@@ -90,6 +116,18 @@ export function usePlayback() {
       source.start();
       sourceRef.current = source;
       setPlayingSessionId(sessionId);
+
+      // Subscribe to volume slider changes during playback
+      unsubRef.current?.();
+      let prevVol = vol;
+      unsubRef.current = useMetronomeStore.subscribe((state) => {
+        if (state.volume !== prevVol) {
+          prevVol = state.volume;
+          if (gainRef.current) {
+            gainRef.current.gain.value = MIC_BOOST * perceptualGain(state.volume);
+          }
+        }
+      });
     } catch (err) {
       console.error('Playback failed:', err);
       stopCurrent();

@@ -18,9 +18,17 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionAnalysis } from '../../analysis/types';
 import { useSettingsStore } from '../../store/settings-store';
+import { useMetronomeStore } from '../../store/metronome-store';
+import { MASTER_GAIN_MULTIPLIER } from '../../utils/constants';
 import { useSessionStore } from '../../store/session-store';
 import { VolumeState, VOLUME_GAINS } from '../../audio/types';
 import * as db from '../../store/db';
+
+/** Same perceptual curve as engine.ts */
+function perceptualGain(vol: number): number {
+  return vol * vol * MASTER_GAIN_MULTIPLIER;
+}
+const MIC_BOOST = 4.0;
 
 interface Props {
   visible: boolean;
@@ -57,6 +65,10 @@ export function ReviewScreen({
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const clickNodesRef = useRef<AudioBufferSourceNode[]>([]);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const clickGainRef = useRef<GainNode | null>(null);
+  const recGainRef = useRef<GainNode | null>(null);
+  const volUnsubRef = useRef<(() => void) | null>(null);
+  const savedClickVolRef = useRef(0.5);
 
   // Settings
   const clickSoundId = useSettingsStore((s) => s.clickSound);
@@ -106,6 +118,16 @@ export function ReviewScreen({
       try { n.stop(); } catch {}
     }
     clickNodesRef.current = [];
+    if (clickGainRef.current) {
+      try { clickGainRef.current.disconnect(); } catch {}
+      clickGainRef.current = null;
+    }
+    if (recGainRef.current) {
+      try { recGainRef.current.disconnect(); } catch {}
+      recGainRef.current = null;
+    }
+    volUnsubRef.current?.();
+    volUnsubRef.current = null;
     setIsPlaying(false);
   }, []);
 
@@ -125,12 +147,26 @@ export function ReviewScreen({
     const source = ctx.createBufferSource();
     source.buffer = audioBufferRef.current;
     const gain = ctx.createGain();
-    gain.gain.value = 4.0;
+    const vol = useMetronomeStore.getState().volume;
+    gain.gain.value = MIC_BOOST * perceptualGain(vol);
     source.connect(gain);
     gain.connect(ctx.destination);
     source.start();
     sourceRef.current = source;
+    recGainRef.current = gain;
     setIsPlaying(true);
+
+    // Subscribe to volume changes during playback
+    volUnsubRef.current?.();
+    let prevVol = vol;
+    volUnsubRef.current = useMetronomeStore.subscribe((state) => {
+      if (state.volume !== prevVol) {
+        prevVol = state.volume;
+        if (recGainRef.current) {
+          recGainRef.current.gain.value = MIC_BOOST * perceptualGain(state.volume);
+        }
+      }
+    });
 
     source.onended = () => {
       setIsPlaying(false);
@@ -150,8 +186,10 @@ export function ReviewScreen({
 
       if (clickBuf) {
         const clickGain = ctx.createGain();
-        clickGain.gain.value = clickVol;
+        clickGain.gain.value = clickOn ? clickVol : 0;
+        savedClickVolRef.current = clickVol;
         clickGain.connect(ctx.destination);
+        clickGainRef.current = clickGain;
 
         const scheduled: AudioBufferSourceNode[] = [];
         let beatTime = 0;
@@ -181,7 +219,22 @@ export function ReviewScreen({
         clickNodesRef.current = scheduled;
       }
     }
-  }, [isPlaying, stopPlayback, analysis, clickOn, clickVol, clickSoundId, accentSoundId, accentThreshold]);
+  }, [isPlaying, stopPlayback, analysis, clickVol, clickSoundId, accentSoundId, accentThreshold]);
+
+  // Mid-playback click toggle: mute/unmute gain node
+  useEffect(() => {
+    if (clickGainRef.current) {
+      clickGainRef.current.gain.value = clickOn ? savedClickVolRef.current : 0;
+    }
+  }, [clickOn]);
+
+  // Click volume slider: update gain in real-time
+  useEffect(() => {
+    savedClickVolRef.current = clickVol;
+    if (clickGainRef.current && clickOn) {
+      clickGainRef.current.gain.value = clickVol;
+    }
+  }, [clickVol, clickOn]);
 
   // ─── Save ───
 
