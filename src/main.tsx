@@ -9,30 +9,29 @@ document.addEventListener('contextmenu', (e) => {
   e.preventDefault();
 });
 
-// ─── Force service worker updates on every load ───
+// ─── Service worker updates ───
+// One update path, three triggers: page load, tab becoming visible, and
+// window focus. (Previously the load handler carried its own duplicated
+// copy of the update logic alongside checkForUpdate.)
 if ('serviceWorker' in navigator) {
   const checkForUpdate = async () => {
     try {
       const reg = await navigator.serviceWorker.getRegistration();
-      if (reg) {
-        await reg.update();
-        if (reg.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
+      if (!reg) return;
+      await reg.update();
+      if (reg.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
     } catch (_) { /* ignore */ }
   };
 
   window.addEventListener('load', async () => {
+    await checkForUpdate();
+
     try {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg) {
-        await reg.update();
-
-        if (reg.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-
+        // Auto-activate any new SW that installs while the app is open
         reg.addEventListener('updatefound', () => {
           const newSW = reg.installing;
           if (!newSW) return;
@@ -44,6 +43,7 @@ if ('serviceWorker' in navigator) {
         });
       }
 
+      // Reload once when the new SW takes control
       let refreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!refreshing) {
