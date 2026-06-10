@@ -1,7 +1,10 @@
 import { openDB, type IDBPDatabase } from 'idb';
+import { DB_NAME, DB_VERSION, upgradeDatabase } from './migrations';
 
-const DB_NAME = 'polypro';
-const DB_VERSION = 4;
+// Canonical snapshot shape now lives in persisted-shapes.ts (derived from
+// store types); re-exported here so existing import sites keep working.
+import type { MetronomeSnapshot } from './persisted-shapes';
+export type { MetronomeSnapshot } from './persisted-shapes';
 
 export interface PolyProDB {
   settings: { key: string; value: unknown };
@@ -23,37 +26,6 @@ export interface CustomSampleRecord {
   durationMs: number;
   /** When recorded/imported */
   createdAt: string;
-}
-
-export interface MetronomeSnapshot {
-  bpm: number;
-  meterNumerator: number;
-  meterDenominator: number;
-  beatGrouping: number[];
-  subdivision: number;
-  volume: number;
-  swing: number;
-  tracks: unknown[]; // TrackConfig[] stored as JSON-safe
-  trainerEnabled: boolean;
-  trainerStartBpm: number;
-  trainerEndBpm: number;
-  trainerBpmStep: number;
-  trainerBarsPerStep: number;
-  countInBars: number;
-  gapClickEnabled: boolean;
-  gapClickProbability: number;
-  randomMuteEnabled: boolean;
-  randomMuteProbability: number;
-  playMuteCycleEnabled: boolean;
-  playMuteCyclePlayBars: number;
-  playMuteCycleMuteBars: number;
-  // Settings
-  clickSound: string;
-  accentSound: string;
-  clickVolume?: number; // DEPRECATED — volume is now only in metronomeStore.volume. Kept optional for IDB backward compat.
-  accentSoundThreshold: number;
-  hapticEnabled: boolean;
-  vibrationIntensity: number;
 }
 
 export interface ProjectRecord {
@@ -217,29 +189,7 @@ function getDB(): Promise<IDBPDatabase> {
 
       openDB(DB_NAME, DB_VERSION, {
         upgrade(db) {
-          if (!db.objectStoreNames.contains('settings')) {
-            db.createObjectStore('settings');
-          }
-          if (!db.objectStoreNames.contains('presets')) {
-            db.createObjectStore('presets', { keyPath: 'id' });
-          }
-          if (!db.objectStoreNames.contains('projects')) {
-            db.createObjectStore('projects', { keyPath: 'id' });
-          }
-          if (!db.objectStoreNames.contains('sessions')) {
-            const store = db.createObjectStore('sessions', { keyPath: 'id' });
-            store.createIndex('projectId', 'projectId');
-            store.createIndex('date', 'date');
-          }
-          if (!db.objectStoreNames.contains('recordings')) {
-            db.createObjectStore('recordings');
-          }
-          if (!db.objectStoreNames.contains('instrumentProfiles')) {
-            db.createObjectStore('instrumentProfiles', { keyPath: 'name' });
-          }
-          if (!db.objectStoreNames.contains('customSamples')) {
-            db.createObjectStore('customSamples', { keyPath: 'id' });
-          }
+          upgradeDatabase(db);
         },
         blocked(currentVersion, blockedVersion) {
           blocked = true;

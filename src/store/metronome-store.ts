@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import { VolumeState } from '../audio/types';
 import type { MetronomeState } from './types';
 import { createDefaultTrack } from './types';
@@ -11,7 +12,7 @@ import {
   DEFAULT_VOLUME,
 } from '../utils/constants';
 
-export const useMetronomeStore = create<MetronomeState>((set, get) => ({
+export const useMetronomeStore = create<MetronomeState>()(subscribeWithSelector((set, get) => ({
   // Playback
   playing: false,
   bpm: BPM_DEFAULT,
@@ -253,4 +254,4 @@ export const useMetronomeStore = create<MetronomeState>((set, get) => ({
       swing: 0,
     });
   },
-}));
+})));

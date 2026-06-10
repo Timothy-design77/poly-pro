@@ -1,115 +1,33 @@
 /**
  * Persistence layer for metronome and settings stores.
- * - Subscribes to Zustand store changes
+ * - Subscribes to Zustand store changes via selectors (persisted fields
+ *   only — transient state like currentBeats/currentBar/playing no longer
+ *   schedules writes on every beat while playing)
  * - Debounce-writes to IndexedDB (500ms)
- * - Hydrates stores from IDB on startup
+ * - Hydrates stores from IDB on startup (migrations applied centrally
+ *   in migrations.ts)
  */
 
+import { shallow } from 'zustand/shallow';
 import { useMetronomeStore } from './metronome-store';
 import { useSettingsStore } from './settings-store';
+import {
+  pickPersistedMetronome,
+  pickPersistedSettings,
+  captureSnapshot,
+  type PersistedMetronome,
+  type PersistedSettings,
+} from './persisted-shapes';
+import {
+  METRONOME_SCHEMA_VERSION,
+  migrateMetronome,
+  migrateSettings,
+} from './migrations';
 import * as db from './db';
 
 // Keys used in the 'settings' IDB store
 const METRONOME_KEY = 'metronome-state';
 const SETTINGS_KEY = 'settings-state';
-
-// ─── Metronome state fields to persist ───
-// (exclude transient fields like playing, currentBeats, playStartTime, currentBar)
-
-interface PersistedMetronome {
-  _schemaVersion?: number; // Added in v2 — used to detect stale data from broken audio era
-  bpm: number;
-  meterNumerator: number;
-  meterDenominator: number;
-  beatGrouping: number[];
-  subdivision: number;
-  volume: number;
-  swing: number;
-  trainerEnabled: boolean;
-  trainerStartBpm: number;
-  trainerEndBpm: number;
-  trainerBpmStep: number;
-  trainerBarsPerStep: number;
-  countInBars: number;
-  gapClickEnabled: boolean;
-  gapClickProbability: number;
-  randomMuteEnabled: boolean;
-  randomMuteProbability: number;
-  playMuteCycleEnabled: boolean;
-  playMuteCyclePlayBars: number;
-  playMuteCycleMuteBars: number;
-}
-
-// Current schema version — bump when persisted shape changes
-const SCHEMA_VERSION = 2;
-
-function pickMetronome(state: ReturnType<typeof useMetronomeStore.getState>): PersistedMetronome {
-  return {
-    _schemaVersion: SCHEMA_VERSION,
-    bpm: state.bpm,
-    meterNumerator: state.meterNumerator,
-    meterDenominator: state.meterDenominator,
-    beatGrouping: state.beatGrouping,
-    subdivision: state.subdivision,
-    volume: state.volume,
-    swing: state.swing,
-    trainerEnabled: state.trainerEnabled,
-    trainerStartBpm: state.trainerStartBpm,
-    trainerEndBpm: state.trainerEndBpm,
-    trainerBpmStep: state.trainerBpmStep,
-    trainerBarsPerStep: state.trainerBarsPerStep,
-    countInBars: state.countInBars,
-    gapClickEnabled: state.gapClickEnabled,
-    gapClickProbability: state.gapClickProbability,
-    randomMuteEnabled: state.randomMuteEnabled,
-    randomMuteProbability: state.randomMuteProbability,
-    playMuteCycleEnabled: state.playMuteCycleEnabled,
-    playMuteCyclePlayBars: state.playMuteCyclePlayBars,
-    playMuteCycleMuteBars: state.playMuteCycleMuteBars,
-  };
-}
-
-interface PersistedSettings {
-  clickSound: string;
-  accentSound: string;
-  accentSoundThreshold: number;
-  hapticEnabled: boolean;
-  vibrationIntensity: number;
-  calibratedOffset: number;
-  manualAdjustment: number;
-  sensitivity: number;
-  // Detection (Phase 5)
-  scoringWindowPct: number;
-  flamMergePct: number;
-  noiseGate: number;
-  accentThreshold: number;
-  highPassHz: number;
-  detectionPreset: string;
-  // Calibration (Phase 6)
-  lastCalibratedAt: string | null;
-  calibrationConsistency: number | null;
-}
-
-function pickSettings(state: ReturnType<typeof useSettingsStore.getState>): PersistedSettings {
-  return {
-    clickSound: state.clickSound,
-    accentSound: state.accentSound,
-    accentSoundThreshold: state.accentSoundThreshold,
-    hapticEnabled: state.hapticEnabled,
-    vibrationIntensity: state.vibrationIntensity,
-    calibratedOffset: state.calibratedOffset,
-    manualAdjustment: state.manualAdjustment,
-    sensitivity: state.sensitivity,
-    scoringWindowPct: state.scoringWindowPct,
-    flamMergePct: state.flamMergePct,
-    noiseGate: state.noiseGate,
-    accentThreshold: state.accentThreshold,
-    highPassHz: state.highPassHz,
-    detectionPreset: state.detectionPreset,
-    lastCalibratedAt: state.lastCalibratedAt,
-    calibrationConsistency: state.calibrationConsistency,
-  };
-}
 
 // ─── Debounced writers ───
 
@@ -120,21 +38,20 @@ let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 function saveMetronome() {
   if (metronomeTimer) clearTimeout(metronomeTimer);
   metronomeTimer = setTimeout(() => {
-    const data = pickMetronome(useMetronomeStore.getState());
+    const data: PersistedMetronome = {
+      _schemaVersion: METRONOME_SCHEMA_VERSION,
+      ...pickPersistedMetronome(useMetronomeStore.getState()),
+    };
     db.setSetting(METRONOME_KEY, data).catch(console.error);
   }, 500);
-  // Also save snapshot to active project
-  saveActiveProjectSnapshot();
 }
 
 function saveSettings() {
   if (settingsTimer) clearTimeout(settingsTimer);
   settingsTimer = setTimeout(() => {
-    const data = pickSettings(useSettingsStore.getState());
+    const data = pickPersistedSettings(useSettingsStore.getState());
     db.setSetting(SETTINGS_KEY, data).catch(console.error);
   }, 500);
-  // Also save snapshot to active project
-  saveActiveProjectSnapshot();
 }
 
 /** Debounced save of full snapshot to the active project in IDB */
@@ -150,40 +67,13 @@ function saveActiveProjectSnapshot() {
     if (!project) return;
 
     const m = useMetronomeStore.getState();
-    const s = useSettingsStore.getState();
-    const snapshot = {
-      bpm: m.bpm,
-      meterNumerator: m.meterNumerator,
-      meterDenominator: m.meterDenominator,
-      beatGrouping: m.beatGrouping,
-      subdivision: m.subdivision,
-      volume: m.volume,
-      swing: m.swing,
-      tracks: m.tracks,
-      trainerEnabled: m.trainerEnabled,
-      trainerStartBpm: m.trainerStartBpm,
-      trainerEndBpm: m.trainerEndBpm,
-      trainerBpmStep: m.trainerBpmStep,
-      trainerBarsPerStep: m.trainerBarsPerStep,
-      countInBars: m.countInBars,
-      gapClickEnabled: m.gapClickEnabled,
-      gapClickProbability: m.gapClickProbability,
-      randomMuteEnabled: m.randomMuteEnabled,
-      randomMuteProbability: m.randomMuteProbability,
-      playMuteCycleEnabled: m.playMuteCycleEnabled,
-      playMuteCyclePlayBars: m.playMuteCyclePlayBars,
-      playMuteCycleMuteBars: m.playMuteCycleMuteBars,
-      clickSound: s.clickSound,
-      accentSound: s.accentSound,
-      accentSoundThreshold: s.accentSoundThreshold,
-      hapticEnabled: s.hapticEnabled,
-      vibrationIntensity: s.vibrationIntensity,
-    };
+    const snapshot = captureSnapshot(m, useSettingsStore.getState());
 
     const updated = { ...project, snapshot, currentBpm: m.bpm };
-    // Update store silently (don't trigger another save cycle)
+    // Update store directly — the project store has no persistence
+    // subscription of its own, so this cannot re-trigger a save cycle.
     useProjectStore.setState({
-      projects: projects.map((p) => p.id === activeProjectId ? updated : p),
+      projects: projects.map((p) => (p.id === activeProjectId ? updated : p)),
     });
     db.putProject(updated).catch(console.error);
   }, 1000); // 1 second debounce — less aggressive than metronome/settings
@@ -198,12 +88,7 @@ export async function hydrateStores(): Promise<void> {
   ]);
 
   if (metronomeData) {
-    // If data is from before schema v2 (the broken audio era), reset volume to safe default
-    if (!metronomeData._schemaVersion || metronomeData._schemaVersion < SCHEMA_VERSION) {
-      console.info('Persistence: upgrading from schema v%d → v%d, resetting volume to default',
-        metronomeData._schemaVersion ?? 1, SCHEMA_VERSION);
-      metronomeData.volume = 0.8; // DEFAULT_VOLUME
-    }
+    migrateMetronome(metronomeData);
 
     // Apply persisted state (only the fields we saved — don't touch transient state)
     useMetronomeStore.setState(metronomeData);
@@ -215,20 +100,31 @@ export async function hydrateStores(): Promise<void> {
   }
 
   if (settingsData) {
-    // Backward compat: migrate old latencyOffset → calibratedOffset
-    const data = settingsData as PersistedSettings & { latencyOffset?: number };
-    if (data.latencyOffset !== undefined && data.calibratedOffset === undefined) {
-      data.calibratedOffset = data.latencyOffset;
-      data.manualAdjustment = 0;
-    }
-    useSettingsStore.setState(data);
+    useSettingsStore.setState(migrateSettings(settingsData));
   }
 }
 
 // ─── Subscribe to changes ───
 
 export function startPersistence(): void {
-  // Subscribe fires on every state change — debounced writes handle the rest
-  useMetronomeStore.subscribe(saveMetronome);
-  useSettingsStore.subscribe(saveSettings);
+  // Metronome: persisted fields drive the global-state write; tracks are
+  // additionally included so accent/sound edits still refresh the active
+  // project snapshot (tracks live in snapshots, not in global state).
+  useMetronomeStore.subscribe(
+    (s) => ({ ...pickPersistedMetronome(s), tracks: s.tracks }),
+    () => {
+      saveMetronome();
+      saveActiveProjectSnapshot();
+    },
+    { equalityFn: shallow },
+  );
+
+  useSettingsStore.subscribe(
+    pickPersistedSettings,
+    () => {
+      saveSettings();
+      saveActiveProjectSnapshot();
+    },
+    { equalityFn: shallow },
+  );
 }
