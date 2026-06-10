@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { audioEngine } from '../audio/engine';
+import { audioEngine } from '../audio';
 import { useMetronomeStore } from '../store/metronome-store';
 import { MASTER_GAIN_MULTIPLIER } from '../utils/constants';
 import * as db from '../store/db';

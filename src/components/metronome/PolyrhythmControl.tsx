@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { SOUND_CATALOG } from '../../audio/sounds';
-import { audioEngine } from '../../audio/engine';
+import { audioEngine } from '../../audio';
 
 /** Track ring colors — same as Dial */
 const TRACK_COLORS = ['white', '#2DD4BF', '#FBBF24', '#FB7185'];

@@ -13,7 +13,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { audioEngine } from '../audio/engine';
+import { audioEngine } from '../audio';
 import { getPreferredMicStream } from '../utils/mic';
 import {
   createChirpBuffer,

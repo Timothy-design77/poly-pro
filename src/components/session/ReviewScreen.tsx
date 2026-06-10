@@ -92,7 +92,7 @@ export function ReviewScreen({
     db.getRecording(sessionId).then(async (blob) => {
       if (!blob) return;
       try {
-        const { audioEngine } = await import('../../audio/engine');
+        const { audioEngine } = await import('../../audio');
         const ctx = await audioEngine.initContext();
         const pcm = new Float32Array(await blob.arrayBuffer());
         const buf = ctx.createBuffer(1, pcm.length, 48000);
@@ -139,7 +139,7 @@ export function ReviewScreen({
 
     if (!audioBufferRef.current) return;
 
-    const { audioEngine } = await import('../../audio/engine');
+    const { audioEngine } = await import('../../audio');
     const { getBuffer } = await import('../../audio/sounds');
     const ctx = await audioEngine.initContext();
 

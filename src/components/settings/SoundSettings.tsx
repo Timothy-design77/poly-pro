@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { SOUND_CATALOG } from '../../audio/sounds';
-import { audioEngine } from '../../audio/engine';
+import { audioEngine } from '../../audio';
 import { VolumeState } from '../../audio/types';
 import * as db from '../../store/db';
 import type { CustomSampleRecord } from '../../store/db';

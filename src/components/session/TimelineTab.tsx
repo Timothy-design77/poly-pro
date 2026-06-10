@@ -181,7 +181,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
       rawPcmRef.current = pcm;
 
       // Build AudioBuffer for playback
-      const { audioEngine } = await import('../../audio/engine');
+      const { audioEngine } = await import('../../audio');
       const ctx = await audioEngine.initContext();
       const audioBuf = ctx.createBuffer(1, pcm.length, sampleRate);
       audioBuf.getChannelData(0).set(pcm);
@@ -234,7 +234,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
 
   const startPlayback = useCallback(async () => {
     if (!audioBufferRef.current) return;
-    const { audioEngine } = await import('../../audio/engine');
+    const { audioEngine } = await import('../../audio');
     const ctx = await audioEngine.initContext();
     if (ctx.state === 'suspended') await ctx.resume();
 
@@ -361,7 +361,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const togglePlayback = useCallback(async () => {
     if (isPlaying) {
       // Pause: save current position
-      const { audioEngine } = await import('../../audio/engine');
+      const { audioEngine } = await import('../../audio');
       const ctx = audioEngine.getContext();
       if (ctx) {
         playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
@@ -376,7 +376,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const skip = useCallback(async (deltaS: number) => {
     const durationS = session.durationMs / 1000;
     if (isPlaying) {
-      const { audioEngine } = await import('../../audio/engine');
+      const { audioEngine } = await import('../../audio');
       const ctx = audioEngine.getContext();
       if (ctx) {
         playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
@@ -395,7 +395,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
   useEffect(() => {
     if (prevLatencyRef.current !== latencyOffsetMs && isPlaying) {
       const restart = async () => {
-        const { audioEngine: eng } = await import('../../audio/engine');
+        const { audioEngine: eng } = await import('../../audio');
         const ctx = eng.getContext();
         if (ctx) {
           playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;

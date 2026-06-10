@@ -1,8 +1,12 @@
 /**
  * AudioEngine — the heart of Poly Pro.
  *
- * Singleton. 25ms/100ms lookahead scheduler.
- * Reads config from Zustand stores via getState().
+ * 25ms/100ms lookahead scheduler.
+ *
+ * Decoupled from app state: all configuration is read and all transport
+ * events are reported through the EngineHost interface (dependency
+ * inversion). The Zustand-backed host and the app singleton live in
+ * ./index.ts. This class is constructible with a fake host for tests.
  *
  * Phase 2 additions:
  * - Trainer mode: auto-increment BPM after N bars
@@ -16,8 +20,8 @@
 import { VolumeState, VOLUME_GAINS } from './types';
 import type { ScheduledBeat, BeatEvent } from './types';
 import { getBuffer, loadAllSounds } from './sounds';
-import { useMetronomeStore } from '../store/metronome-store';
-import { useSettingsStore } from '../store/settings-store';
+import type { EngineHost, EngineMetronomeConfig } from './engine-host';
+import { computeTrackIOI, computeSwingOffsetS, perceptualGain as basePerceptualGain } from './scheduling';
 import {
   SCHEDULE_INTERVAL_MS,
   SCHEDULE_AHEAD_S,
@@ -33,14 +37,19 @@ import {
 type BeatCallback = (event: BeatEvent) => void;
 
 /** Convert linear slider (0–1) to perceptual gain.
- *  vol² gives wide dynamic range through the compressor:
  *  10%→0.08, 25%→0.5, 50%→2.0, 80%→5.12, 100%→8.0 masterGain.
  *  Low end actually gets quiet, high end stays loud. */
 function perceptualGain(vol: number): number {
-  return vol * vol * MASTER_GAIN_MULTIPLIER;
+  return basePerceptualGain(vol, MASTER_GAIN_MULTIPLIER);
 }
 
-class AudioEngine {
+export class AudioEngine {
+  private readonly host: EngineHost;
+
+  constructor(host: EngineHost) {
+    this.host = host;
+  }
+
   private audioCtx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
@@ -121,7 +130,7 @@ class AudioEngine {
     this.outputGain.gain.value = OUTPUT_GAIN;
 
     this.masterGain = this.audioCtx.createGain();
-    const vol = useMetronomeStore.getState().volume;
+    const vol = this.host.getMetronome().volume;
     this.masterGain.gain.value = perceptualGain(vol);
 
     this.masterGain.connect(this.compressor);
@@ -146,7 +155,7 @@ class AudioEngine {
 
     this.isRunning = true;
     const ctx = this.audioCtx;
-    const state = useMetronomeStore.getState();
+    const state = this.host.getMetronome();
 
     this.nextNoteTime = {};
     this.currentBeat = {};
@@ -158,11 +167,11 @@ class AudioEngine {
     this.gapMuteMap = {};
 
     // Session timer + bar counter
-    useMetronomeStore.setState({ playStartTime: Date.now(), currentBar: 0 });
+    this.host.onPlayStart(Date.now());
 
     // Trainer: set starting BPM
     if (state.trainerEnabled) {
-      useMetronomeStore.getState().setBpm(state.trainerStartBpm);
+      this.host.setBpm(state.trainerStartBpm);
     }
 
     // Count-in
@@ -180,7 +189,7 @@ class AudioEngine {
     }
 
     if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(useMetronomeStore.getState().volume);
+      this.masterGain.gain.value = perceptualGain(this.host.getMetronome().volume);
     }
 
     this.schedule();
@@ -217,10 +226,8 @@ class AudioEngine {
     this.countInActive = false;
     this.countInRemaining = 0;
     // Clear all per-track beat indicators
-    const state = useMetronomeStore.getState();
-    const cleared: Record<string, number> = {};
-    for (const t of state.tracks) cleared[t.id] = -1;
-    useMetronomeStore.setState({ currentBeats: cleared, playStartTime: 0 });
+    const state = this.host.getMetronome();
+    this.host.onStop(state.tracks.map((t) => t.id));
   }
 
   get running(): boolean {
@@ -238,11 +245,11 @@ class AudioEngine {
     if (!this.isRunning || !this.audioCtx) return;
 
     const ctx = this.audioCtx;
-    const state = useMetronomeStore.getState();
-    const settings = useSettingsStore.getState();
+    const state = this.host.getMetronome();
+    const settings = this.host.getSettings();
 
     if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(useMetronomeStore.getState().volume);
+      this.masterGain.gain.value = perceptualGain(state.volume);
     }
 
     const now = ctx.currentTime;
@@ -330,37 +337,19 @@ class AudioEngine {
 
   // ─── Beat Advancement ───
 
-  private advanceBeat(trackId: string, state: ReturnType<typeof useMetronomeStore.getState>): void {
+  private advanceBeat(trackId: string, state: EngineMetronomeConfig): void {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
 
     const beatIndex = this.currentBeat[trackId];
     const totalBeats = track.beats;
-    const bpm = state.bpm;
-    const subdivision = state.subdivision;
 
-    let ioi: number;
-    if (trackId === 'track-0') {
-      // Main track: IOI based on BPM and subdivision
-      ioi = 60 / bpm / subdivision;
-    } else {
-      // Poly track: fit track.beats into one measure
-      // Measure duration = (60/bpm) * meterNumerator (from track-0)
-      const measureDuration = (60 / bpm) * state.meterNumerator;
-      ioi = measureDuration / totalBeats;
-    }
+    const ioi = computeTrackIOI(trackId, state.bpm, state.subdivision, state.meterNumerator, totalBeats);
 
     // Per-track swing: delays offbeats (odd-indexed beats/subdivisions)
     // Swing 0% = straight (50/50), Swing 100% = full triplet feel (67/33)
-    let swingOffset = 0;
     const swingVal = track.swing || (trackId === 'track-0' ? state.swing : 0);
-    if (swingVal > 0 && beatIndex % 2 === 1) {
-      // For main track: only swing if subdivision > 1
-      // For poly tracks: always swingable (beats are their own grid)
-      if (trackId !== 'track-0' || subdivision > 1) {
-        swingOffset = ioi * swingVal * 0.33;
-      }
-    }
+    const swingOffset = computeSwingOffsetS(trackId, beatIndex, ioi, swingVal, state.subdivision);
 
     this.nextNoteTime[trackId] += ioi + swingOffset;
     this.currentBeat[trackId] = (beatIndex + 1) % totalBeats;
@@ -387,7 +376,7 @@ class AudioEngine {
 
       // Update bar counter (only count non-count-in bars)
       if (!this.countInActive) {
-        useMetronomeStore.setState({ currentBar: this.measureCount });
+        this.host.onBarAdvance(this.measureCount);
       }
 
       // Trainer mode: increment BPM after N bars
@@ -401,7 +390,7 @@ class AudioEngine {
             ? Math.min(newBpm, state.trainerEndBpm)
             : Math.max(newBpm, state.trainerEndBpm);
           if (clamped !== state.bpm) {
-            useMetronomeStore.getState().setBpm(clamped);
+            this.host.setBpm(clamped);
           }
         }
       }
@@ -463,7 +452,7 @@ class AudioEngine {
   ): void {
     if (!this.audioCtx || !this.masterGain) return;
 
-    const settings = useSettingsStore.getState();
+    const settings = this.host.getSettings();
 
     // Priority: per-beat override → track/settings sounds
     const override = track.soundOverrides[beatIndex];
@@ -552,5 +541,3 @@ class AudioEngine {
     this._warmedUp = false;
   }
 }
-
-export const audioEngine = new AudioEngine();

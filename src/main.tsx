@@ -63,7 +63,7 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('focus', checkForUpdate);
 }
 
-import { audioEngine } from './audio/engine';
+import { audioEngine } from './audio';
 
 // ─── Audio warm-up: init AudioContext on first user gesture ───
 // Web Audio API requires a user gesture to create/resume a context.
