@@ -20,8 +20,8 @@ export function NumberInput({
   onSubmit,
   onLiveChange,
   initialValue,
-  min = 20,
-  max = 300,
+  min = 10,
+  max = 400,
   step = 0.5,
   label = 'BPM',
 }: NumberInputProps) {

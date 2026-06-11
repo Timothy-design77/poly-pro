@@ -107,8 +107,8 @@ describe('getGroupBoundaries', () => {
 
 describe('clampBpm', () => {
   it('clamps to range', () => {
-    expect(clampBpm(5)).toBe(20);
-    expect(clampBpm(999)).toBe(300);
+    expect(clampBpm(5)).toBe(10);
+    expect(clampBpm(999)).toBe(400);
   });
 
   it('rounds to 0.5 step', () => {

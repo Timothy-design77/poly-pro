@@ -181,21 +181,21 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
         </div>
 
         <TuneSlider label="Scoring Window" value={config.scoringWindowPct}
-          min={2} max={10} step={0.5}
-          format={(v) => `${v}% IOI (±${scoringMs.toFixed(0)}ms)`}
+          min={0.25} max={25} step={0.25}
+          format={(v) => `${v}% IOI (±${scoringMs < 10 ? scoringMs.toFixed(1) : scoringMs.toFixed(0)}ms)`}
           defaultValue={DEFAULT_ANALYSIS_CONFIG.scoringWindowPct}
           onChange={(v) => updateConfig({ scoringWindowPct: v })}
           help="How close to the beat a hit must land to count as scored." />
 
         <TuneSlider label="Flam Merge" value={config.flamMergePct}
-          min={20} max={60} step={1}
+          min={5} max={80} step={1}
           format={(v) => `${v}% sub (${flamMs.toFixed(0)}ms)`}
           defaultValue={DEFAULT_ANALYSIS_CONFIG.flamMergePct}
           onChange={(v) => updateConfig({ flamMergePct: v })}
           help="Two hits closer than this get merged into one." />
 
         <TuneSlider label="Noise Gate" value={config.noiseGate}
-          min={0.005} max={0.30} step={0.005}
+          min={0.001} max={0.50} step={0.001}
           format={(v) => v.toFixed(3)}
           defaultValue={DEFAULT_ANALYSIS_CONFIG.noiseGate}
           onChange={(v) => updateConfig({ noiseGate: v })}
@@ -226,13 +226,13 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
                 onReset={() => resetGroup('latency')}
               >
                 <TuneSlider label="Latency Offset" value={config.latencyOffsetMs}
-                  min={-100} max={300} step={0.5}
+                  min={-300} max={600} step={0.5}
                   format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}ms`}
                   defaultValue={settings.calibratedOffset + settings.manualAdjustment}
                   onChange={(v) => updateConfig({ latencyOffsetMs: v })}
                   help="Compensates for speaker→mic round-trip delay. Set by calibration." />
                 <TuneSlider label="Bias Correction" value={config.biasCorrection}
-                  min={-50} max={50} step={0.5}
+                  min={-150} max={150} step={0.5}
                   format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}ms`}
                   defaultValue={0}
                   onChange={(v) => updateConfig({ biasCorrection: v })}
@@ -246,13 +246,13 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
                 onReset={() => resetGroup('sensitivity')}
               >
                 <TuneSlider label="Input Gain" value={config.inputGain}
-                  min={0.5} max={3.0} step={0.1}
+                  min={0.1} max={10.0} step={0.1}
                   format={(v) => `${v.toFixed(1)}×`}
                   defaultValue={1.0}
                   onChange={(v) => updateConfig({ inputGain: v })}
                   help="Multiplies input signal before detection. Raise for quiet instruments." />
                 <TuneSlider label="Accent Threshold" value={config.accentThreshold}
-                  min={1.0} max={3.0} step={0.05}
+                  min={1.0} max={6.0} step={0.05}
                   format={(v) => `${v.toFixed(2)}×`}
                   defaultValue={DEFAULT_ANALYSIS_CONFIG.accentThreshold}
                   onChange={(v) => updateConfig({ accentThreshold: v })}
@@ -266,13 +266,13 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
                 onReset={() => resetGroup('filtering')}
               >
                 <TuneSlider label="High-Pass Cutoff" value={config.highPassHz}
-                  min={0} max={500} step={5}
+                  min={0} max={2000} step={5}
                   format={(v) => v === 0 ? 'Off' : `${v} Hz`}
                   defaultValue={0}
                   onChange={(v) => updateConfig({ highPassHz: v })}
                   help="Filters out low-frequency rumble. 100-200Hz for noisy rooms." />
                 <TuneSlider label="Band-Pass Center" value={config.bandPassHz}
-                  min={0} max={8000} step={50}
+                  min={0} max={16000} step={50}
                   format={(v) => v === 0 ? 'Off' : `${v} Hz`}
                   defaultValue={0}
                   onChange={(v) => updateConfig({ bandPassHz: v })}
@@ -290,37 +290,37 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
                   your next recording. Use "Save as Default" to keep them.
                 </p>
                 <TuneSlider label="Noise Gate" value={config.noiseGate}
-                  min={0.005} max={0.20} step={0.005}
+                  min={0.001} max={0.50} step={0.001}
                   format={(v) => v.toFixed(3)}
                   defaultValue={DEFAULT_ANALYSIS_CONFIG.noiseGate}
                   onChange={(v) => updateConfig({ noiseGate: v })}
                   help="Minimum peak amplitude to count as a hit. Raise to reject background noise." />
                 <TuneSlider label="Noise Floor ×" value={config.noiseFloorMultiplier}
-                  min={2} max={20} step={1}
+                  min={1} max={50} step={1}
                   format={(v) => `${v}×`}
                   defaultValue={DEFAULT_ANALYSIS_CONFIG.noiseFloorMultiplier}
                   onChange={(v) => updateConfig({ noiseFloorMultiplier: v })}
                   help="Multiplier on measured room noise. Higher = more aggressive filtering. 5× is standard, 10-15× for noisy rooms." />
                 <TuneSlider label="Min Onset Gap" value={config.minOnsetIntervalMs}
-                  min={20} max={150} step={5}
+                  min={5} max={300} step={1}
                   format={(v) => `${v}ms`}
                   defaultValue={DEFAULT_ANALYSIS_CONFIG.minOnsetIntervalMs}
                   onChange={(v) => updateConfig({ minOnsetIntervalMs: v })}
                   help="Minimum time between detected hits. Prevents re-triggering on drum decay. 60ms is standard, raise to 80-100ms for resonant drums." />
                 <TuneSlider label="Post-Hit Masking" value={config.postHitMaskingMs}
-                  min={0} max={200} step={10}
+                  min={0} max={400} step={5}
                   format={(v) => v === 0 ? 'Off' : `${v}ms`}
                   defaultValue={DEFAULT_ANALYSIS_CONFIG.postHitMaskingMs}
                   onChange={(v) => updateConfig({ postHitMaskingMs: v })}
                   help="After each detected hit, temporarily raise the detection threshold. Prevents false detections during drum ring-out." />
                 <TuneSlider label="Masking Strength" value={config.postHitMaskingStrength}
-                  min={0} max={30} step={1}
+                  min={0} max={60} step={1}
                   format={(v) => `${v}×`}
                   defaultValue={DEFAULT_ANALYSIS_CONFIG.postHitMaskingStrength}
                   onChange={(v) => updateConfig({ postHitMaskingStrength: v })}
                   help="How strongly to mask after a hit. Higher = more aggressive suppression of decay triggers." />
                 <TuneSlider label="Flux Threshold" value={config.fluxThresholdOffset}
-                  min={0.3} max={3.0} step={0.1}
+                  min={0.1} max={6.0} step={0.1}
                   format={(v) => v.toFixed(1)}
                   defaultValue={DEFAULT_ANALYSIS_CONFIG.fluxThresholdOffset}
                   onChange={(v) => updateConfig({ fluxThresholdOffset: v })}

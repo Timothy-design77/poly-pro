@@ -93,8 +93,8 @@ export function CalibrationSettings() {
           </span>
         </div>
         <PrecisionSlider
-          min={-50}
-          max={50}
+          min={-150}
+          max={150}
           step={0.5}
           value={manualAdjustment}
           onChange={setManualAdjustment}

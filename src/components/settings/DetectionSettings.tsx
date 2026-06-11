@@ -80,9 +80,9 @@ export function DetectionSettings() {
       <SliderRow
         label="Scoring Window"
         value={scoringWindowPct}
-        min={2}
-        max={10}
-        step={0.5}
+        min={0.25}
+        max={25}
+        step={0.25}
         format={(v) => `${v}% IOI`}
         onChange={setScoringWindowPct}
         help="How close to the beat a hit must land to be scored."
@@ -90,8 +90,8 @@ export function DetectionSettings() {
       <SliderRow
         label="Flam Merge"
         value={flamMergePct}
-        min={20}
-        max={60}
+        min={5}
+        max={80}
         step={1}
         format={(v) => `${v}% sub`}
         onChange={setFlamMergePct}
@@ -102,9 +102,9 @@ export function DetectionSettings() {
       <SliderRow
         label="Noise Gate"
         value={noiseGate}
-        min={0.005}
-        max={0.30}
-        step={0.005}
+        min={0.001}
+        max={0.50}
+        step={0.001}
         format={(v) => v.toFixed(3)}
         onChange={setNoiseGate}
         help="Sounds below this energy are ignored. Raise for noisy rooms."
@@ -115,7 +115,7 @@ export function DetectionSettings() {
         label="Accent Threshold"
         value={accentThreshold}
         min={1.0}
-        max={3.0}
+        max={6.0}
         step={0.05}
         format={(v) => `${v.toFixed(2)}×`}
         onChange={setAccentThreshold}
@@ -127,7 +127,7 @@ export function DetectionSettings() {
         label="High-Pass"
         value={highPassHz}
         min={0}
-        max={500}
+        max={2000}
         step={5}
         format={(v) => v === 0 ? 'Off' : `${v} Hz`}
         onChange={setHighPassHz}
@@ -143,8 +143,8 @@ export function DetectionSettings() {
         <SliderRow
           label="Noise Floor ×"
           value={noiseFloorMult}
-          min={2}
-          max={20}
+          min={1}
+          max={50}
           step={1}
           format={(v) => `${v}×`}
           onChange={setNoiseFloorMult}
@@ -153,9 +153,9 @@ export function DetectionSettings() {
         <SliderRow
           label="Min Onset Gap"
           value={minOnsetInterval}
-          min={20}
-          max={150}
-          step={5}
+          min={5}
+          max={300}
+          step={1}
           format={(v) => `${v}ms`}
           onChange={setMinOnsetInterval}
           help="Minimum time between detected hits. Prevents re-triggering on drum decay. 60ms standard, 80-100ms for resonant drums."
@@ -164,8 +164,8 @@ export function DetectionSettings() {
           label="Post-Hit Mask"
           value={postHitMasking}
           min={0}
-          max={200}
-          step={10}
+          max={400}
+          step={5}
           format={(v) => v === 0 ? 'Off' : `${v}ms`}
           onChange={setPostHitMasking}
           help="After detecting a hit, temporarily raise threshold to suppress decay triggers."
@@ -174,7 +174,7 @@ export function DetectionSettings() {
           label="Mask Strength"
           value={maskingStrength}
           min={0}
-          max={30}
+          max={60}
           step={1}
           format={(v) => `${v}×`}
           onChange={setMaskingStrength}
@@ -183,8 +183,8 @@ export function DetectionSettings() {
         <SliderRow
           label="Flux Threshold"
           value={fluxThreshold}
-          min={0.3}
-          max={3.0}
+          min={0.1}
+          max={6.0}
           step={0.1}
           format={(v) => v.toFixed(1)}
           onChange={setFluxThreshold}

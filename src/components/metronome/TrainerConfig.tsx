@@ -31,7 +31,7 @@ export function TrainerConfig() {
               <input
                 type="number"
                 value={startBpm}
-                onChange={(e) => setConfig({ trainerStartBpm: Math.max(20, Math.min(300, Number(e.target.value))) })}
+                onChange={(e) => setConfig({ trainerStartBpm: Math.max(10, Math.min(400, Number(e.target.value))) })}
                 className="w-full h-[44px] bg-bg-surface border border-border-subtle rounded-xl
                            px-3 font-mono text-base text-text-primary text-center outline-none
                            focus:border-border-emphasis"
@@ -48,7 +48,7 @@ export function TrainerConfig() {
               <input
                 type="number"
                 value={endBpm}
-                onChange={(e) => setConfig({ trainerEndBpm: Math.max(20, Math.min(300, Number(e.target.value))) })}
+                onChange={(e) => setConfig({ trainerEndBpm: Math.max(10, Math.min(400, Number(e.target.value))) })}
                 className="w-full h-[44px] bg-bg-surface border border-border-subtle rounded-xl
                            px-3 font-mono text-base text-text-primary text-center outline-none
                            focus:border-border-emphasis"

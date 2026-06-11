@@ -254,8 +254,8 @@ export function HomePage() {
         onSubmit={setBpm}
         onLiveChange={setBpm}
         initialValue={bpm}
-        min={20}
-        max={300}
+        min={10}
+        max={400}
         step={0.5}
         label="BPM"
       />

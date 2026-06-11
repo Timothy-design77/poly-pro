@@ -151,7 +151,7 @@ export function getGroupBoundaries(grouping: number[]): number[] {
 /**
  * Clamp a BPM value to valid range with step precision.
  */
-export function clampBpm(bpm: number, min = 20, max = 300, step = 0.5): number {
+export function clampBpm(bpm: number, min = 10, max = 400, step = 0.5): number {
   const clamped = Math.max(min, Math.min(max, bpm));
   return Math.round(clamped / step) * step;
 }
