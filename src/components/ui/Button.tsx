@@ -30,6 +30,7 @@ export function Button({
       className={`
         flex items-center justify-center gap-2 font-bold tracking-wider
         transition-all touch-manipulation select-none
+        active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none
         ${variantStyles[variant]}
         ${sizeStyles[size]}
         ${className}

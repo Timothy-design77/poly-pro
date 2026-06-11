@@ -43,14 +43,18 @@ export function App() {
 
   if (!ready) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-text-muted text-sm">Loading...</div>
+      <div className="h-full flex flex-col items-center justify-center gap-4">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-[rgba(255,255,255,0.85)] animate-splash-pulse" />
+          <span className="text-lg font-bold tracking-wide text-text-primary">Poly Pro</span>
+        </div>
+        <span className="text-[11px] text-text-muted tracking-wider uppercase">Loading your setup</span>
       </div>
     );
   }
 
   return (
-    <>
+    <div className="h-full animate-app-enter">
       <UpdateBanner />
       <SwipeNavigation
         pages={[
@@ -62,6 +66,6 @@ export function App() {
         initialPage={1}
         settingsContent={<SettingsContent />}
       />
-    </>
+    </div>
   );
 }

@@ -250,10 +250,11 @@ export function SwipeNavigation({
           <button
             key={label}
             onClick={() => { setCurrentPage(i); setDragX(0); }}
+            aria-current={i === currentPage ? 'page' : undefined}
             className={`px-3 py-1 text-xs font-medium rounded-pill transition-all duration-200 min-h-[28px]
               ${i === currentPage
                 ? 'text-bg-primary bg-[rgba(255,255,255,0.85)]'
-                : 'text-text-muted'
+                : 'text-text-muted active:text-text-secondary active:bg-accent-dim'
               }`}
           >
             {label}

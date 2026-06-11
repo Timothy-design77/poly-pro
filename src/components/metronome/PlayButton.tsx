@@ -30,6 +30,7 @@ export function PlayButton() {
 
   return (
     <button
+      aria-label={playing ? 'Stop metronome' : 'Start metronome'}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
       className={`

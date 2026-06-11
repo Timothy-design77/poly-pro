@@ -95,6 +95,15 @@ input, textarea {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
+/* Visible keyboard focus (mouse/touch unaffected) */
+:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Shared motion ─── */
+
 /* Keypad slide-up animation */
 @keyframes slide-up {
   from { transform: translateY(100%); }
@@ -102,6 +111,81 @@ input, textarea {
 }
 .animate-slide-up {
   animation: slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Backdrop / overlay fade */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Modal pop: slight scale + fade */
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-modal-pop {
+  animation: modal-pop 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Full-screen sheet enter (review, session detail) */
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-sheet-up {
+  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* App content fade after splash */
+@keyframes app-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-app-enter {
+  animation: app-enter 0.3s ease-out;
+}
+
+/* Splash pulse */
+@keyframes splash-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+.animate-splash-pulse {
+  animation: splash-pulse 1.2s ease-in-out infinite;
+}
+
+/* Collapsible expand/collapse via grid-rows */
+.collapse-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.collapse-grid.is-open {
+  grid-template-rows: 1fr;
+}
+.collapse-grid > .collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+  visibility: hidden;
+  transition: visibility 0.25s;
+}
+.collapse-grid.is-open > .collapse-inner {
+  visibility: visible;
+  transition: none;
+}
+
+/* Respect reduced motion: collapse all animation to instant */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Safe area padding bottom utility */
