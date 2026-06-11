@@ -53,7 +53,16 @@ export function SwipeNavigation({
 
   // ─── Main content: HORIZONTAL swipe only (no vertical — that's for page scrolling) ───
 
+  // Elements that own their own drag gestures — never page-swipe from these.
+  const isGestureOwned = (target: EventTarget | null) =>
+    target instanceof Element &&
+    !!target.closest('[data-no-swipe], input, textarea, select, canvas');
+
+  const suppressedRef = useRef(false);
+
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    suppressedRef.current = isGestureOwned(e.target);
+    if (suppressedRef.current) return;
     const t = e.touches[0];
     startXRef.current = t.clientX;
     startYRef.current = t.clientY;
@@ -64,6 +73,7 @@ export function SwipeNavigation({
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
+      if (suppressedRef.current) return;
       const t = e.touches[0];
       const dx = t.clientX - startXRef.current;
       const dy = t.clientY - startYRef.current;
@@ -88,6 +98,7 @@ export function SwipeNavigation({
   );
 
   const handleTouchEnd = useCallback(() => {
+    if (suppressedRef.current) { suppressedRef.current = false; return; }
     if (!isDragging) return;
     setIsDragging(false);
 
@@ -156,7 +167,8 @@ export function SwipeNavigation({
     const onStart = (e: TouchEvent) => {
       startY = e.touches[0].clientY;
       startTime = Date.now();
-      mode = null;
+      // Controls with their own drag gestures can never dismiss the panel
+      mode = isGestureOwned(e.target) ? 'scroll' : null;
       offset = 0;
     };
 
@@ -251,7 +263,7 @@ export function SwipeNavigation({
             key={label}
             onClick={() => { setCurrentPage(i); setDragX(0); }}
             aria-current={i === currentPage ? 'page' : undefined}
-            className={`px-3 py-1 text-xs font-medium rounded-pill transition-all duration-200 min-h-[28px]
+            className={`px-3.5 py-1.5 text-xs font-medium rounded-pill transition-all duration-200 min-h-[32px]
               ${i === currentPage
                 ? 'text-bg-primary bg-[rgba(255,255,255,0.85)]'
                 : 'text-text-muted active:text-text-secondary active:bg-accent-dim'

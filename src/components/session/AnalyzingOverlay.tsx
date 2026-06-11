@@ -36,6 +36,7 @@ export default function AnalyzingOverlay({ visible, progress }: Props) {
 
   return createPortal(
     <div
+      data-no-swipe
       className="fixed inset-0 z-50 flex flex-col items-center justify-center animate-fade-in"
       style={{ backgroundColor: 'rgba(12, 12, 14, 0.95)' }}
     >

@@ -343,7 +343,7 @@ export function ReviewScreen({
     : `${durationSec}s`;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9998] bg-bg-primary flex flex-col animate-sheet-up" style={{ touchAction: 'none' }}>
+    <div data-no-swipe className="fixed inset-0 z-[9998] bg-bg-primary flex flex-col animate-sheet-up" style={{ touchAction: 'none' }}>
       {/* Header */}
       <div className="px-4 py-3 text-center border-b border-border-subtle">
         <p className="text-xs text-text-muted">Session Complete</p>

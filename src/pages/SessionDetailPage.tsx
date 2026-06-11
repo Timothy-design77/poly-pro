@@ -172,6 +172,7 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
 
   return createPortal(
     <div
+      data-no-swipe
       className="fixed inset-0 z-50 flex flex-col animate-sheet-up"
       style={{ backgroundColor: '#0C0C0E' }}
     >

@@ -98,6 +98,7 @@ export function NumberInput({
 
   return createPortal(
     <div
+      data-no-swipe
       className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 animate-fade-in"
       onClick={onClose}
     >

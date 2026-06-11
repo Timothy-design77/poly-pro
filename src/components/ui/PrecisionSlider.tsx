@@ -224,7 +224,7 @@ export function PrecisionSlider({
                 step={step}
                 min={min}
                 max={max}
-                className="w-16 px-1.5 py-0.5 bg-bg-primary border border-accent rounded text-xs font-mono text-text-primary text-right outline-none"
+                className="w-20 px-1.5 py-0.5 bg-bg-primary border border-accent rounded text-xs font-mono text-text-primary text-right outline-none"
               />
               {unit && <span className="text-text-muted text-xs">{unit}</span>}
             </div>
@@ -235,7 +235,8 @@ export function PrecisionSlider({
       {/* Track */}
       <div
         ref={trackRef}
-        className="relative h-8 flex items-center touch-manipulation select-none"
+        data-no-swipe
+        className="relative h-10 flex items-center touch-manipulation select-none"
         style={{ touchAction: 'pan-y' }} // Allow vertical scroll passthrough
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
