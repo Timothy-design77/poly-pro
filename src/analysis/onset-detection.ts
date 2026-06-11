@@ -299,10 +299,13 @@ export function detectOnsetsCoarse(
 
     // Peak: above threshold AND local maximum
     if (flux > threshold && flux >= fluxValues[hop - 1] && flux >= fluxValues[hop + 1]) {
-      const time = (hop * hopSize) / sampleRate;
-      onsetCandidates.push({ hopIndex: hop, flux, time });
-
-      // Track for masking
+      // Amplitude gate BEFORE accepting the candidate.
+      //
+      // Bug fix: this gate previously ran only after the candidate loop, so
+      // sub-noise-floor flux peaks (pure noise) still claimed lastOnsetHop and
+      // consumed the minimum-interval window — silently suppressing genuine
+      // hits that landed within minOnsetIntervalMs of a noise-flux peak.
+      // Gating here means noise peaks never block real onsets.
       const samplePos = hop * hopSize;
       let peak = 0;
       const peakEnd = Math.min(pcm.length, samplePos + 192);
@@ -310,12 +313,19 @@ export function detectOnsetsCoarse(
         const abs = Math.abs(pcm[i]);
         if (abs > peak) peak = abs;
       }
+      if (peak < noiseFloor) continue;
+
+      const time = (hop * hopSize) / sampleRate;
+      onsetCandidates.push({ hopIndex: hop, flux, time });
+
+      // Track for masking
       lastOnsetHop = hop;
       lastOnsetPeak = peak;
     }
   }
 
-  // Convert candidates to DetectedOnset with peak amplitude
+  // Convert candidates to DetectedOnset with peak amplitude.
+  // (All candidates already passed the noise-floor amplitude gate above.)
   const onsets: DetectedOnset[] = [];
   for (const cand of onsetCandidates) {
     const samplePos = cand.hopIndex * hopSize;
@@ -327,14 +337,12 @@ export function detectOnsetsCoarse(
       if (abs > peak) peak = abs;
     }
 
-    if (peak >= noiseFloor) {
-      onsets.push({
-        time: cand.time,
-        peak,
-        flux: cand.flux,
-        isFlam: false,
-      });
-    }
+    onsets.push({
+      time: cand.time,
+      peak,
+      flux: cand.flux,
+      isFlam: false,
+    });
   }
 
   return onsets;

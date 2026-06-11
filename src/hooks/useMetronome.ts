@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { audioEngine } from '../audio/engine';
+import { audioEngine } from '../audio';
 import { useMetronomeStore } from '../store/metronome-store';
 
 /**

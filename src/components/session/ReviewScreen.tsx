@@ -92,7 +92,7 @@ export function ReviewScreen({
     db.getRecording(sessionId).then(async (blob) => {
       if (!blob) return;
       try {
-        const { audioEngine } = await import('../../audio/engine');
+        const { audioEngine } = await import('../../audio');
         const ctx = await audioEngine.initContext();
         const pcm = new Float32Array(await blob.arrayBuffer());
         const buf = ctx.createBuffer(1, pcm.length, 48000);
@@ -139,7 +139,7 @@ export function ReviewScreen({
 
     if (!audioBufferRef.current) return;
 
-    const { audioEngine } = await import('../../audio/engine');
+    const { audioEngine } = await import('../../audio');
     const { getBuffer } = await import('../../audio/sounds');
     const ctx = await audioEngine.initContext();
 
@@ -343,7 +343,7 @@ export function ReviewScreen({
     : `${durationSec}s`;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9998] bg-bg-primary flex flex-col" style={{ touchAction: 'none' }}>
+    <div className="fixed inset-0 z-[9998] bg-bg-primary flex flex-col animate-sheet-up" style={{ touchAction: 'none' }}>
       {/* Header */}
       <div className="px-4 py-3 text-center border-b border-border-subtle">
         <p className="text-xs text-text-muted">Session Complete</p>

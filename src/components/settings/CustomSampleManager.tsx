@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as db from '../../store/db';
 import type { CustomSampleRecord } from '../../store/db';
-import { audioEngine } from '../../audio/engine';
+import { audioEngine } from '../../audio';
 import { registerCustomBuffer } from '../../audio/sounds';
 import { HelpTip } from '../ui/HelpTip';
 

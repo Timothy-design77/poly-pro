@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ProjectRecord, PresetRecord, MetronomeSnapshot } from './db';
+import { captureSnapshot as captureSnapshotFromStores } from './persisted-shapes';
 import * as db from './db';
 import { useMetronomeStore } from './metronome-store';
 import { useSettingsStore } from './settings-store';
@@ -7,36 +8,7 @@ import type { TrackConfig } from '../audio/types';
 
 /** Capture current metronome + settings state as a snapshot */
 function captureSnapshot(): MetronomeSnapshot {
-  const m = useMetronomeStore.getState();
-  const s = useSettingsStore.getState();
-  return {
-    bpm: m.bpm,
-    meterNumerator: m.meterNumerator,
-    meterDenominator: m.meterDenominator,
-    beatGrouping: m.beatGrouping,
-    subdivision: m.subdivision,
-    volume: m.volume,
-    swing: m.swing,
-    tracks: m.tracks,
-    trainerEnabled: m.trainerEnabled,
-    trainerStartBpm: m.trainerStartBpm,
-    trainerEndBpm: m.trainerEndBpm,
-    trainerBpmStep: m.trainerBpmStep,
-    trainerBarsPerStep: m.trainerBarsPerStep,
-    countInBars: m.countInBars,
-    gapClickEnabled: m.gapClickEnabled,
-    gapClickProbability: m.gapClickProbability,
-    randomMuteEnabled: m.randomMuteEnabled,
-    randomMuteProbability: m.randomMuteProbability,
-    playMuteCycleEnabled: m.playMuteCycleEnabled,
-    playMuteCyclePlayBars: m.playMuteCyclePlayBars,
-    playMuteCycleMuteBars: m.playMuteCycleMuteBars,
-    clickSound: s.clickSound,
-    accentSound: s.accentSound,
-    accentSoundThreshold: s.accentSoundThreshold,
-    hapticEnabled: s.hapticEnabled,
-    vibrationIntensity: s.vibrationIntensity,
-  };
+  return captureSnapshotFromStores(useMetronomeStore.getState(), useSettingsStore.getState());
 }
 
 /** Restore a snapshot into metronome + settings stores */

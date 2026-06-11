@@ -1,10 +1,11 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import type { SettingsState } from './types';
 import { VolumeState } from '../audio/types';
 import { DEFAULT_CLICK_SOUND, DEFAULT_ACCENT_SOUND } from '../utils/constants';
 import { DETECTION_PRESETS } from '../analysis/types';
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>()(subscribeWithSelector((set) => ({
   // Sound
   clickSound: DEFAULT_CLICK_SOUND,
   accentSound: DEFAULT_ACCENT_SOUND,
@@ -124,4 +125,4 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     audioAfterAnalysis: 'compress' as const,
     rawPcmRetentionDays: 30,
   }),
-}));
+})));

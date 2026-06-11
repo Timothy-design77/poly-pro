@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { SOUND_CATALOG } from '../../audio/sounds';
-import { audioEngine } from '../../audio/engine';
+import { audioEngine } from '../../audio';
 
 interface SoundPickerSheetProps {
   isOpen: boolean;
