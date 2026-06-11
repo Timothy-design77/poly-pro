@@ -197,7 +197,7 @@ export function PrecisionSlider({
   );
 
   return (
-    <div className={`space-y-1 ${className}`}>
+    <div data-no-swipe className={`space-y-1 ${className}`}>
       {/* Label + value row */}
       {(label || showValue) && (
         <div className="flex items-center justify-between">

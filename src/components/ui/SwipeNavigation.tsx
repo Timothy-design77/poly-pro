@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import { useNavStore } from '../../store/nav-store';
+import { useSettingsStore } from '../../store/settings-store';
 
 interface SwipeNavigationProps {
   pages: ReactNode[];
@@ -19,6 +20,7 @@ export function SwipeNavigation({
   initialPage = 1,
   settingsContent,
 }: SwipeNavigationProps) {
+  const swipeNavEnabled = useSettingsStore((st) => st.swipeNavEnabled);
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -61,7 +63,8 @@ export function SwipeNavigation({
   const suppressedRef = useRef(false);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    suppressedRef.current = isGestureOwned(e.target);
+    suppressedRef.current =
+      !swipeNavEnabled || e.touches.length > 1 || isGestureOwned(e.target);
     if (suppressedRef.current) return;
     const t = e.touches[0];
     startXRef.current = t.clientX;
@@ -69,7 +72,7 @@ export function SwipeNavigation({
     startTimeRef.current = Date.now();
     directionRef.current = null;
     setIsDragging(true);
-  }, []);
+  }, [swipeNavEnabled]);
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
@@ -79,8 +82,18 @@ export function SwipeNavigation({
       const dy = t.clientY - startYRef.current;
 
       if (directionRef.current === null) {
-        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-          directionRef.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+        // A second finger landing mid-gesture (pinch) cancels page swiping
+        if (e.touches.length > 1) {
+          suppressedRef.current = true;
+          setIsDragging(false);
+          return;
+        }
+        // Horizontal must clearly dominate to start a page swipe;
+        // anything ambiguous or vertical is treated as scrolling.
+        if (Math.abs(dx) >= 16 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          directionRef.current = 'h';
+        } else if (Math.abs(dy) >= 10) {
+          directionRef.current = 'v';
         }
         return;
       }

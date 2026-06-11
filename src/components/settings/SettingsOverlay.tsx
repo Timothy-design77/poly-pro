@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react';
+import { Toggle } from '../ui/Toggle';
+import { useSettingsStore } from '../../store/settings-store';
 import { SoundSettings } from './SoundSettings';
 import { VibrationSettings } from './VibrationSettings';
 import { DetectionSettings } from './DetectionSettings';
@@ -6,7 +8,6 @@ import { CalibrationSettings } from './CalibrationSettings';
 import { InstrumentSettings } from './InstrumentSettings';
 import { DataSettings } from './DataSettings';
 import { CloudSettings } from './CloudSettings';
-import { useSettingsStore } from '../../store/settings-store';
 import { HelpTip } from '../ui/HelpTip';
 
 interface SectionProps {
@@ -301,6 +302,21 @@ export function SettingsContent() {
         <VibrationSettings />
       </CollapsibleSection>
 
+      {/* Section: Interface */}
+      <CollapsibleSection
+        title="Interface"
+        help="How the app responds to touch."
+        icon={
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="5" y="2" width="14" height="20" rx="2" />
+            <path d="M12 18h.01" />
+          </svg>
+        }
+      >
+        <InterfaceSettings />
+      </CollapsibleSection>
+
       {/* Section 5: Calibration */}
       <CollapsibleSection
         title="Calibration"
@@ -359,6 +375,26 @@ export function SettingsContent() {
       >
         <CloudSettings />
       </CollapsibleSection>
+    </div>
+  );
+}
+
+function InterfaceSettings() {
+  const swipeNavEnabled = useSettingsStore((st) => st.swipeNavEnabled);
+  const setSwipeNavEnabled = useSettingsStore((st) => st.setSwipeNavEnabled);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm text-text-primary">Swipe Between Pages</div>
+          <div className="text-[10px] text-text-muted mt-0.5 leading-relaxed">
+            Off = pages only change via the pills at the top. Turn off if you
+            keep changing pages accidentally while using controls.
+          </div>
+        </div>
+        <Toggle enabled={swipeNavEnabled} onChange={setSwipeNavEnabled} />
+      </div>
     </div>
   );
 }

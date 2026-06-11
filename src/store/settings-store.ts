@@ -15,6 +15,9 @@ export const useSettingsStore = create<SettingsState>()(subscribeWithSelector((s
   hapticEnabled: true,
   vibrationIntensity: 0.5,
 
+  // Interface
+  swipeNavEnabled: true,
+
   // Detection — defaults match "Standard" preset
   sensitivity: 0.5,
   scoringWindowPct: 5,
@@ -48,10 +51,11 @@ export const useSettingsStore = create<SettingsState>()(subscribeWithSelector((s
   setAccentSound: (id) => set({ accentSound: id }),
   setAccentSoundThreshold: (level) => set({ accentSoundThreshold: level }),
   setHapticEnabled: (enabled) => set({ hapticEnabled: enabled }),
+  setSwipeNavEnabled: (enabled) => set({ swipeNavEnabled: enabled }),
   setVibrationIntensity: (intensity) =>
     set({ vibrationIntensity: Math.max(0, Math.min(1, intensity)) }),
   setCalibratedOffset: (offset) => set({ calibratedOffset: offset }),
-  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-50, Math.min(50, adj)) }),
+  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-150, Math.min(150, adj)) }),
   setLastCalibratedAt: (date) => set({ lastCalibratedAt: date }),
   setCalibrationConsistency: (value) => set({ calibrationConsistency: value }),
   setSensitivity: (value) => set({ sensitivity: Math.max(0, Math.min(1, value)) }),

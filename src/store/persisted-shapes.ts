@@ -41,6 +41,7 @@ export const PERSISTED_SETTINGS_KEYS = [
   'accentSound',
   'accentSoundThreshold',
   'hapticEnabled',
+  'swipeNavEnabled',
   'vibrationIntensity',
   'calibratedOffset',
   'manualAdjustment',

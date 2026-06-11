@@ -86,6 +86,7 @@ export interface SettingsState {
 
   // Vibration
   hapticEnabled: boolean;
+  swipeNavEnabled: boolean;
   vibrationIntensity: number;
 
   // Detection
@@ -127,6 +128,7 @@ export interface SettingsState {
   setAccentSound: (id: string) => void;
   setAccentSoundThreshold: (level: number) => void;
   setHapticEnabled: (enabled: boolean) => void;
+  setSwipeNavEnabled: (enabled: boolean) => void;
   setVibrationIntensity: (intensity: number) => void;
   setCalibratedOffset: (offset: number) => void;
   setManualAdjustment: (adj: number) => void;
