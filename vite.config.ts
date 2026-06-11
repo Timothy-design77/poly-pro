@@ -2,7 +2,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const buildId =
+  (process.env.GITHUB_SHA ?? '').slice(0, 7) ||
+  'dev-' + new Date().toISOString().slice(5, 16).replace('T', ' ');
+
 export default defineConfig({
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+  },
   base: '/poly-pro/',
   plugins: [
     react(),

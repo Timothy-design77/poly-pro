@@ -375,6 +375,10 @@ export function SettingsContent() {
       >
         <CloudSettings />
       </CollapsibleSection>
+      {/* Build stamp — verify which version is running */}
+      <p className="text-center text-[10px] text-text-faint font-mono pt-2 pb-6">
+        build {__BUILD_ID__}
+      </p>
     </div>
   );
 }

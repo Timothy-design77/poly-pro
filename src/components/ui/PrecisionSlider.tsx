@@ -15,6 +15,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { beginControlDrag, endControlDrag } from '../../utils/gesture-lock';
 
 interface Props {
   min: number;
@@ -66,6 +67,12 @@ export function PrecisionSlider({
   const activeRef = useRef(false); // true once direction locked to horizontal
 
   const trackWidth = useRef(0);
+  const lockHeldRef = useRef(false);
+
+  // Safety: never leave the global lock held if we unmount mid-drag
+  useEffect(() => () => {
+    if (lockHeldRef.current) { endControlDrag(); lockHeldRef.current = false; }
+  }, []);
 
   // Measure track on mount / resize
   useEffect(() => {
@@ -102,6 +109,8 @@ export function PrecisionSlider({
     setPrecisionLevel(1);
 
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    beginControlDrag();
+    lockHeldRef.current = true;
   }, [value, isEditing]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -119,6 +128,7 @@ export function PrecisionSlider({
         // Vertical — let scroll happen, release the slider
         directionRef.current = 'v';
         touchIdRef.current = null;
+        if (lockHeldRef.current) { endControlDrag(); lockHeldRef.current = false; }
         return;
       }
       directionRef.current = 'h';
@@ -167,6 +177,7 @@ export function PrecisionSlider({
     activeRef.current = false;
     setIsDragging(false);
     setPrecisionLevel(1);
+    if (lockHeldRef.current) { endControlDrag(); lockHeldRef.current = false; }
   }, [min, max, onChange, clampAndStep]);
 
   // ─── Tap-to-type ───

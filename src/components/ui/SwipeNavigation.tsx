@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import { useNavStore } from '../../store/nav-store';
 import { useSettingsStore } from '../../store/settings-store';
+import { isControlDragActive, ownsGesture } from '../../utils/gesture-lock';
 
 interface SwipeNavigationProps {
   pages: ReactNode[];
@@ -55,16 +56,27 @@ export function SwipeNavigation({
 
   // ─── Main content: HORIZONTAL swipe only (no vertical — that's for page scrolling) ───
 
-  // Elements that own their own drag gestures — never page-swipe from these.
-  const isGestureOwned = (target: EventTarget | null) =>
-    target instanceof Element &&
-    !!target.closest('[data-no-swipe], input, textarea, select, canvas');
-
   const suppressedRef = useRef(false);
+  const nativeOwnedRef = useRef(false);
+
+  // Layer 1 (ground truth): capture-phase native listener fires before any
+  // React handler and records whether the touch began on a gesture-owning
+  // element, immune to any synthetic-event quirks.
+  useEffect(() => {
+    const onCapture = (e: TouchEvent) => {
+      nativeOwnedRef.current = ownsGesture(e.target);
+    };
+    document.addEventListener('touchstart', onCapture, { capture: true, passive: true });
+    return () => document.removeEventListener('touchstart', onCapture, true);
+  }, []);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     suppressedRef.current =
-      !swipeNavEnabled || e.touches.length > 1 || isGestureOwned(e.target);
+      !swipeNavEnabled ||
+      e.touches.length > 1 ||
+      nativeOwnedRef.current ||
+      ownsGesture(e.target) ||
+      isControlDragActive();
     if (suppressedRef.current) return;
     const t = e.touches[0];
     startXRef.current = t.clientX;
@@ -77,6 +89,15 @@ export function SwipeNavigation({
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
       if (suppressedRef.current) return;
+      // A control drag taking over at ANY point freezes the page for the
+      // rest of this gesture, and snaps back any partial page drag.
+      if (isControlDragActive()) {
+        suppressedRef.current = true;
+        directionRef.current = null;
+        setDragX(0);
+        setIsDragging(false);
+        return;
+      }
       const t = e.touches[0];
       const dx = t.clientX - startXRef.current;
       const dy = t.clientY - startYRef.current;
@@ -91,6 +112,12 @@ export function SwipeNavigation({
         // Horizontal must clearly dominate to start a page swipe;
         // anything ambiguous or vertical is treated as scrolling.
         if (Math.abs(dx) >= 16 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          const under = document.elementFromPoint(t.clientX, t.clientY);
+          if (ownsGesture(under)) {
+            suppressedRef.current = true;
+            setIsDragging(false);
+            return;
+          }
           directionRef.current = 'h';
         } else if (Math.abs(dy) >= 10) {
           directionRef.current = 'v';
@@ -181,7 +208,7 @@ export function SwipeNavigation({
       startY = e.touches[0].clientY;
       startTime = Date.now();
       // Controls with their own drag gestures can never dismiss the panel
-      mode = isGestureOwned(e.target) ? 'scroll' : null;
+      mode = ownsGesture(e.target) || isControlDragActive() ? 'scroll' : null;
       offset = 0;
     };
 
