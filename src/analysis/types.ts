@@ -147,6 +147,13 @@ export interface SessionAnalysis {
   maxDrift: number;
   /** Auto-generated text headlines with chart link tags */
   headlines: HeadlineItem[];
+  /**
+   * The beat grid the onsets were scored against (recording-relative
+   * times). Persisted with hit events so re-scoring can reuse the REAL
+   * grid — a regenerated one would start at t=0, but recordings don't
+   * begin on a beat, so it would carry a phase error.
+   */
+  gridBeats?: GridBeat[];
 
   // ─── Phase 9: Groove Metrics ───
   /** Swing ratio: long/short 8th-note pair ratio. 1.0 = straight */

@@ -140,6 +140,19 @@ export interface HitEventsRecord {
     flux: number;
     isFlam: boolean;
   }>;
+  /**
+   * Beat grid used for the original scoring (recording-relative times).
+   * Optional — older records lack it and re-scoring falls back to a
+   * regenerated grid.
+   */
+  gridBeats?: Array<{
+    time: number;
+    beatIndex: number;
+    measure: number;
+    isMainBeat: boolean;
+    isDownbeat: boolean;
+    trackId: string;
+  }>;
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;

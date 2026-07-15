@@ -46,6 +46,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     await db.deleteSession(id);
     await db.deleteRecording(id);
     await db.deleteHitEvents(id);
+    // Legacy compressed playback blob from the MediaRecorder era
+    await db.deleteRecording(id + '-playback');
     set((s) => ({
       sessions: s.sessions.filter((ses) => ses.id !== id),
     }));

@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionRecord, HitEventsRecord } from '../store/db';
 import * as db from '../store/db';
+import { useSessionStore } from '../store/session-store';
 import { ScoreTab } from '../components/session/ScoreTab';
 import { TimelineTab } from '../components/session/TimelineTab';
 import { ChartsTab } from '../components/session/ChartsTab';
@@ -60,9 +61,8 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
   const handleDelete = useCallback(async () => {
     if (!session) return;
     try {
-      await db.deleteRecording(session.id);
-      await db.deleteHitEvents(session.id);
-      await db.deleteSession(session.id);
+      // Store handles record + recording + hit events + legacy blobs
+      await useSessionStore.getState().deleteSession(session.id);
       setShowDeleteConfirm(false);
       onDelete?.(session.id);
       onClose();

@@ -322,9 +322,8 @@ export function ReviewScreen({
   const handleDelete = useCallback(async () => {
     stopPlayback();
     try {
-      await db.deleteRecording(sessionId);
-      await db.deleteHitEvents(sessionId);
-      await db.deleteSession(sessionId);
+      // Store handles record + recording + hit events + legacy blobs
+      await useSessionStore.getState().deleteSession(sessionId);
       onDelete();
     } catch (err) {
       console.error('Delete failed:', err);

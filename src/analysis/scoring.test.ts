@@ -118,4 +118,25 @@ describe('computeSessionAnalysis', () => {
     expect(a.sigma).toBe(0);
     expect(a.hitRate).toBe(0);
   });
+
+  it('perfectPct is measured over all detected onsets, not just scored ones', () => {
+    // 16 perfect hits + 1 spurious hit far from any beat
+    const onsets = [...grid.map((b) => onset(b.time)), onset(0.25)];
+    const a = computeSessionAnalysis(onsets, grid, config, bpm, 1, 8000);
+    expect(a.totalDetected).toBe(17);
+    expect(a.totalScored).toBe(16);
+    expect(a.perfectPct).toBeCloseTo((16 / 17) * 100, 5);
+    expect(a.perfectPct).toBeLessThan(100);
+  });
+
+  it('goodPct includes near-misses within 1.5× the scoring window', () => {
+    // Window at 120 BPM sub=1 with default pct: check a hit just outside
+    // the window but inside 1.5× counts as good, not perfect.
+    const windowS = (60 / bpm) * (config.scoringWindowPct / 100);
+    const nearMiss = onset(grid[4].time + windowS * 1.2);
+    const others = grid.filter((_, i) => i !== 4).map((b) => onset(b.time));
+    const a = computeSessionAnalysis([...others, nearMiss], grid, config, bpm, 1, 8000);
+    expect(a.goodPct).toBeGreaterThan(a.perfectPct);
+    expect(a.goodPct).toBeCloseTo(100, 5);
+  });
 });

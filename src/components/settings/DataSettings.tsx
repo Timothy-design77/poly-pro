@@ -151,6 +151,8 @@ export function DataSettings() {
         await db.deleteSession(s.id);
         await db.deleteRecording(s.id);
         await db.deleteHitEvents(s.id);
+        // Legacy compressed playback blob from the MediaRecorder era
+        await db.deleteRecording(s.id + '-playback');
       }
       const allProjects = await db.getAllProjects();
       for (const p of allProjects) {

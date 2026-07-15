@@ -175,7 +175,11 @@ export const useMetronomeStore = create<MetronomeState>()(subscribeWithSelector(
   addTrack: (beats) => {
     const { tracks } = get();
     if (tracks.length >= 4) return; // max 4 tracks
-    const idx = tracks.length;
+    // Pick the first free index — array length alone would collide with
+    // surviving IDs after a mid-list removal (add 1,2 → remove 1 → add
+    // would duplicate 'track-2').
+    let idx = tracks.length;
+    while (tracks.some((t) => t.id === `track-${idx}`)) idx++;
     const id = `track-${idx}`;
     const accents: VolumeState[] = [];
     for (let i = 0; i < beats; i++) {

@@ -8,7 +8,7 @@ import { BpmControl } from '../components/metronome/BpmControl';
 import { TapTempo } from '../components/metronome/TapTempo';
 import { RecordButton } from '../components/metronome/RecordButton';
 import { WaveformDisplay } from '../components/metronome/WaveformDisplay';
-import { useRecording } from '../hooks/useRecording';
+import { useRecording, type RecordingResult } from '../hooks/useRecording';
 import { useAnalysis } from '../hooks/useAnalysis';
 import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
@@ -50,30 +50,39 @@ export function HomePage() {
   const [reviewAnalysis, setReviewAnalysis] = useState<SessionAnalysis | null>(null);
   const [detailSession, setDetailSession] = useState<SessionRecord | null>(null);
 
+  // Shared post-recording path: run analysis, then show the review screen.
+  const processRecordingResult = useCallback(async (result: RecordingResult) => {
+    const analysisResult = await analysis.analyze(result.sessionId, {
+      bpm: result.bpm,
+      meterNumerator: result.meterNumerator,
+      meterDenominator: result.meterDenominator,
+      subdivision: result.subdivision,
+      durationMs: result.durationMs,
+      scheduledBeats: result.scheduledBeats,
+      recordingStartTime: result.recordingStartTime,
+      recordingEndTime: result.recordingEndTime,
+    });
+    if (analysisResult) {
+      setReviewSessionId(result.sessionId);
+      setReviewAnalysis(analysisResult);
+    } else {
+      console.warn('Analysis produced no result');
+    }
+  }, [analysis.analyze]);
+
   // Handle recording toggle: toggleRecording uses a ref internally (always current).
   // If it returns a RecordingResult, recording just stopped → run analysis → show review.
   const handleRecordToggle = useCallback(async () => {
     const result = await recording.toggleRecording();
-    if (result) {
-      // Recording stopped — run post-processing analysis
-      const analysisResult = await analysis.analyze(result.sessionId, {
-        bpm: result.bpm,
-        meterNumerator: result.meterNumerator,
-        meterDenominator: result.meterDenominator,
-        subdivision: result.subdivision,
-        durationMs: result.durationMs,
-        scheduledBeats: result.scheduledBeats,
-        recordingStartTime: result.recordingStartTime,
-        recordingEndTime: result.recordingEndTime,
-      });
-      if (analysisResult) {
-        setReviewSessionId(result.sessionId);
-        setReviewAnalysis(analysisResult);
-      } else {
-        console.warn('Analysis produced no result');
-      }
-    }
-  }, [recording.toggleRecording, analysis.analyze]);
+    if (result) await processRecordingResult(result);
+  }, [recording.toggleRecording, processRecordingResult]);
+
+  // The 30-minute auto-stop bypasses the toggle handler — hook its result
+  // into the same analysis → review flow.
+  useEffect(() => {
+    recording.setOnAutoStop(processRecordingResult);
+    return () => recording.setOnAutoStop(null);
+  }, [recording.setOnAutoStop, processRecordingResult]);
 
   const handleReviewViewDetails = useCallback(async () => {
     if (!reviewSessionId) return;

@@ -120,6 +120,9 @@ export async function analyzeSession(
   analysis.noiseFloor = detectionResult.noiseFloor;
   analysis.autoLatencyMs = detectionResult.autoLatencyMs;
 
+  // Carry the real grid so re-scoring can reuse it (phase-accurate)
+  analysis.gridBeats = grid;
+
   // Attach spectral features to scored onsets (Phase 8)
   // Map features from detection order to scored onsets by matching onset times
   if (detectionResult.spectralFeatures.length > 0) {

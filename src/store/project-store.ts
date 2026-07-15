@@ -59,6 +59,18 @@ interface ProjectState {
   setActiveProject: (id: string) => void;
   getActiveProject: () => ProjectRecord | null;
 
+  /**
+   * Feed a completed session's result into a project's auto-advance
+   * tracker. A session passes when its score meets the project's
+   * accuracy target at (or above) the project's current BPM; after
+   * `advanceAfterN` consecutive passes the project BPM steps up.
+   */
+  recordSessionResult: (
+    projectId: string,
+    score: number,
+    sessionBpm: number,
+  ) => Promise<{ advanced: boolean; newBpm: number | null }>;
+
   // Presets
   savePreset: (preset: Omit<PresetRecord, 'id' | 'created'>) => Promise<string>;
   deletePreset: (id: string) => Promise<void>;
@@ -69,11 +81,17 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-// Debounce IDB writes
-let writeTimer: ReturnType<typeof setTimeout> | null = null;
-function debouncedWrite(fn: () => Promise<void>) {
-  if (writeTimer) clearTimeout(writeTimer);
-  writeTimer = setTimeout(() => fn(), 500);
+// Debounce IDB writes — keyed per write target so writes to different
+// records (e.g. the activeProjectId setting vs. a project record) never
+// cancel each other; only rapid re-writes of the SAME target coalesce.
+const writeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function debouncedWrite(key: string, fn: () => Promise<void>) {
+  const existing = writeTimers.get(key);
+  if (existing) clearTimeout(existing);
+  writeTimers.set(key, setTimeout(() => {
+    writeTimers.delete(key);
+    fn().catch(console.error);
+  }, 500));
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -151,7 +169,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ projects: updated });
     const project = updated.find((p) => p.id === id);
     if (project) {
-      debouncedWrite(() => db.putProject(project));
+      debouncedWrite(`project:${id}`, () => db.putProject(project));
     }
   },
 
@@ -179,7 +197,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     // 2. Switch active project
     set({ activeProjectId: id });
-    debouncedWrite(() => db.setSetting('activeProjectId', id));
+    debouncedWrite('active-project-id', () => db.setSetting('activeProjectId', id));
 
     // 3. Restore snapshot from the NEW project (or defaults from project config)
     const newProject = projects.find((p) => p.id === id);
@@ -195,13 +213,48 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Update lastOpened
       const updated = { ...newProject, lastOpened: new Date().toISOString() };
       set((s) => ({ projects: s.projects.map((p) => p.id === id ? updated : p) }));
-      debouncedWrite(() => db.putProject(updated));
+      debouncedWrite(`project:${id}`, () => db.putProject(updated));
     }
   },
 
   getActiveProject: () => {
     const { projects, activeProjectId } = get();
     return projects.find((p) => p.id === activeProjectId) || null;
+  },
+
+  recordSessionResult: async (projectId, score, sessionBpm) => {
+    const project = get().projects.find((p) => p.id === projectId);
+    if (!project || !project.autoAdvance) {
+      return { advanced: false, newBpm: null };
+    }
+
+    // Sessions played below the project's current BPM don't count toward
+    // (or against) the streak — they're warm-ups, not attempts.
+    if (sessionBpm < project.currentBpm) {
+      return { advanced: false, newBpm: null };
+    }
+
+    const passed = score >= project.accuracyTarget;
+    if (!passed) {
+      if (project.consecutiveCount > 0) {
+        await get().updateProject(projectId, { consecutiveCount: 0 });
+      }
+      return { advanced: false, newBpm: null };
+    }
+
+    const streak = project.consecutiveCount + 1;
+    const canAdvance = project.currentBpm < project.goalBpm;
+    if (streak >= project.advanceAfterN && canAdvance) {
+      const newBpm = Math.min(project.currentBpm + project.bpmStep, project.goalBpm);
+      await get().updateProject(projectId, {
+        consecutiveCount: 0,
+        currentBpm: newBpm,
+      });
+      return { advanced: true, newBpm };
+    }
+
+    await get().updateProject(projectId, { consecutiveCount: streak });
+    return { advanced: false, newBpm: null };
   },
 
   savePreset: async (input) => {

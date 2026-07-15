@@ -402,17 +402,21 @@ export function computeSessionAnalysis(
   const expectedBeats = grid.length;
   const hitRate = expectedBeats > 0 ? scored.length / expectedBeats : 0;
 
-  // Perfect: within scoring window
-  const perfectCount = scored.filter(
-    (o) => o.absDelta <= scoringWindowMs,
-  ).length;
-  const perfectPct = scored.length > 0 ? (perfectCount / scored.length) * 100 : 0;
+  // Perfect / good percentages are measured over ALL detected onsets —
+  // measuring over scored onsets only would always yield 100%, since
+  // "scored" already means "within the scoring window".
+  //   Perfect: matched a beat within the scoring window (i.e. scored)
+  //   Good: within 1.5× the scoring window (includes near-misses)
+  const totalOnsets = scoredOnsets.length;
+  const perfectCount = scored.length;
+  const perfectPct = totalOnsets > 0 ? (perfectCount / totalOnsets) * 100 : 0;
 
-  // Good: within 1.5× scoring window
-  const goodCount = scored.filter(
-    (o) => o.absDelta <= scoringWindowMs * 1.5,
+  const goodCount = scoredOnsets.filter(
+    (o) =>
+      o.scored ||
+      (o.matchedBeatIndex >= 0 && o.absDelta <= scoringWindowMs * 1.5),
   ).length;
-  const goodPct = scored.length > 0 ? (goodCount / scored.length) * 100 : 0;
+  const goodPct = totalOnsets > 0 ? (goodCount / totalOnsets) * 100 : 0;
 
   // Compute score
   // Fatigue

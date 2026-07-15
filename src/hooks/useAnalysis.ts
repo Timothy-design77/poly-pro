@@ -15,7 +15,11 @@ import type { ScheduledBeat } from '../audio/types';
 import { useSessionStore } from '../store/session-store';
 import { useSettingsStore } from '../store/settings-store';
 import { useInstrumentStore } from '../store/instrument-store';
+import { useProjectStore } from '../store/project-store';
 import * as db from '../store/db';
+
+/** Minimum scored hits for a session to count toward project auto-advance */
+const AUTO_ADVANCE_MIN_HITS = 8;
 
 export interface AnalysisState {
   isAnalyzing: boolean;
@@ -128,6 +132,29 @@ export function useAnalysis() {
           }
         }
 
+        // Project auto-advance: feed the score into the session's project
+        // BEFORE saving headlines, so an advancement headline is included.
+        const sessionRecord = useSessionStore
+          .getState()
+          .sessions.find((s) => s.id === sessionId);
+        if (
+          sessionRecord?.projectId &&
+          result.totalScored >= AUTO_ADVANCE_MIN_HITS
+        ) {
+          try {
+            const adv = await useProjectStore
+              .getState()
+              .recordSessionResult(sessionRecord.projectId, result.score, params.bpm);
+            if (adv.advanced && adv.newBpm !== null) {
+              result.headlines.unshift({
+                text: `Project advanced to ${adv.newBpm} BPM 🎉`,
+              });
+            }
+          } catch (e) {
+            console.warn('Auto-advance check failed:', e);
+          }
+        }
+
         // Save analysis results to session record
         await useSessionStore.getState().updateSession(sessionId, {
           analyzed: true,
@@ -187,6 +214,8 @@ export function useAnalysis() {
             flux: o.flux,
             isFlam: o.isFlam,
           })),
+          // Persist the real grid so re-scoring stays phase-accurate
+          gridBeats: result.gridBeats,
         });
 
         // Track sessions since last backup (for auto-backup prompt)

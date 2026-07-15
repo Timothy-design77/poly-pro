@@ -34,6 +34,9 @@ import {
   MASTER_GAIN_MULTIPLIER,
 } from '../utils/constants';
 
+/** Keep scheduledBeats for 35 min — recordings cap at 30 min. */
+const SCHEDULED_BEATS_RETENTION_S = 35 * 60;
+
 type BeatCallback = (event: BeatEvent) => void;
 
 /** Convert linear slider (0–1) to perceptual gain.
@@ -254,10 +257,21 @@ export class AudioEngine {
 
     const now = ctx.currentTime;
 
+    // Trim beats that can no longer matter (recordings max out at 30 min,
+    // so anything older than 35 min is unreachable). Prevents unbounded
+    // memory growth during long practice sessions.
+    if (
+      this.scheduledBeats.length > 4096 &&
+      this.scheduledBeats[0].time < now - SCHEDULED_BEATS_RETENTION_S
+    ) {
+      this.scheduledBeats = this.scheduledBeats.filter(
+        (b) => b.time >= now - SCHEDULED_BEATS_RETENTION_S,
+      );
+    }
+
     for (const track of state.tracks) {
       // During count-in, only play track-0
       if (this.countInActive && track.id !== 'track-0') continue;
-      if (track.muted) continue;
 
       if (this.nextNoteTime[track.id] === undefined) {
         this.nextNoteTime[track.id] = now;
@@ -289,8 +303,11 @@ export class AudioEngine {
           volumeState = track.accents[beatIndex] ?? VolumeState.SOFT;
         }
 
-        // Determine if this beat should be muted
-        let muted = false;
+        // Determine if this beat should be muted.
+        // A muted track keeps its clock advancing (beats are scheduled
+        // silently) so unmuting resumes in time instead of bursting
+        // through every beat missed while muted.
+        let muted = track.muted;
 
         // Play/Mute cycle or Random mute: entire measure silenced
         if (this.measureMuted && !this.countInActive) {

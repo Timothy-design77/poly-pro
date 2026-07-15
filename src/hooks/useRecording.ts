@@ -70,11 +70,14 @@ export function useRecording() {
 
   // Phase 5: capture engine state for analysis
   const recordingStartCtxTimeRef = useRef(0);
-  const scheduledBeatsStartIdxRef = useRef(0);
   const realtimeOnsetCountRef = useRef(0);
 
   // Callback for real-time onset events (Mode 1 visual feedback)
   const onRealtimeOnsetRef = useRef<((time: number, peak: number) => void) | null>(null);
+
+  // Callback fired when the 30-minute limit auto-stops the recording —
+  // gives the caller the RecordingResult so analysis/review still run.
+  const onAutoStopRef = useRef<((result: RecordingResult) => void) | null>(null);
 
   useEffect(() => {
     return () => {
@@ -148,9 +151,8 @@ export function useRecording() {
       workletNode.connect(silentGain);
       silentGain.connect(ctx.destination);
 
-      // Phase 5: capture AudioContext time and scheduledBeats index at recording start
+      // Phase 5: capture AudioContext time at recording start
       recordingStartCtxTimeRef.current = ctx.currentTime;
-      scheduledBeatsStartIdxRef.current = audioEngine.scheduledBeats.length;
       realtimeOnsetCountRef.current = 0;
 
       // Listen for PCM chunks, mic levels, and onset events from worklet
@@ -201,7 +203,9 @@ export function useRecording() {
           warning = 'Recording will auto-stop at 30:00';
         }
         if (Date.now() - startTimeRef.current > MAX_RECORDING_MS) {
-          stopRecording();
+          stopRecording().then((result) => {
+            if (result) onAutoStopRef.current?.(result);
+          });
           return;
         }
 
@@ -242,10 +246,13 @@ export function useRecording() {
     const recordingEndTime = ctx?.currentTime ?? 0;
     const recordingStartTime = recordingStartCtxTimeRef.current;
 
-    // Phase 5: snapshot scheduledBeats from engine (beats during recording only)
-    const allBeats = audioEngine.scheduledBeats;
-    const startIdx = scheduledBeatsStartIdxRef.current;
-    const scheduledBeats = allBeats.slice(startIdx);
+    // Phase 5: snapshot scheduledBeats from engine (beats during recording
+    // only). Filter by time rather than index — the engine may have
+    // restarted (resetting the array) or trimmed old beats, which would
+    // invalidate a start index captured at recording start.
+    const scheduledBeats = audioEngine.scheduledBeats.filter(
+      (b) => b.time >= recordingStartTime - 0.05,
+    );
 
     // Tell worklet to stop and flush remaining samples
     if (workletNodeRef.current) {
@@ -366,6 +373,14 @@ export function useRecording() {
     [],
   );
 
+  /** Register callback for the 30-minute auto-stop (receives the result) */
+  const setOnAutoStop = useCallback(
+    (cb: ((result: RecordingResult) => void) | null) => {
+      onAutoStopRef.current = cb;
+    },
+    [],
+  );
+
   const clearError = useCallback(() => {
     setState((s) => ({ ...s, error: null }));
   }, []);
@@ -376,6 +391,7 @@ export function useRecording() {
     stopRecording,
     toggleRecording,
     setOnRealtimeOnset,
+    setOnAutoStop,
     clearError,
   };
 }
