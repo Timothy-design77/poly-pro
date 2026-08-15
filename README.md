@@ -35,10 +35,11 @@ npm run dev
 
 ```bash
 npm run lint
+npm run test:run
 npm run build
 ```
 
-After the CI hardening pull request is merged, the automated test suite is also available through `npm run test:run`.
+Pull requests and production deployments are gated by automated type-checking, regression tests, and a production build.
 
 ## Source of truth
 
