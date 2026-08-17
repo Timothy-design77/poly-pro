@@ -18,6 +18,10 @@ const DIRECTION_LOCK = 12;
  * bar itself does: swipe left/right on the bar to move one destination at a
  * time. Settings is a first-class destination so the bar remains visible and
  * there is no top-corner Done button to reach for.
+ *
+ * App pages remain mounted while another destination is selected so active
+ * playback/recording hooks are never torn down by navigation. Settings mounts
+ * only while visible because its control tree is comparatively heavy.
  */
 export function SwipeNavigation({
   pages,
@@ -55,6 +59,7 @@ export function SwipeNavigation({
 
   const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (!event.isPrimary) return;
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
     pointerRef.current = {
       id: event.pointerId,
       startX: event.clientX,
@@ -96,48 +101,46 @@ export function SwipeNavigation({
       setNavDragX(0);
     }
 
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
     pointerRef.current = null;
   };
 
-  const cancelSwipe = () => {
+  const cancelSwipe = (event?: React.PointerEvent<HTMLElement>) => {
+    if (event) {
+      try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
+    }
     pointerRef.current = null;
     setNavDragX(0);
-  };
-
-  const renderDestination = () => {
-    if (currentPage === settingsIndex) {
-      return (
-        <section className="h-full overflow-y-auto overscroll-contain bg-bg-primary" aria-label="Settings">
-          <div className="w-full max-w-xl mx-auto pb-8">
-            <div className="px-4 pt-4 pb-2">
-              <h1 className="text-lg font-semibold text-text-primary">Settings</h1>
-              <p className="text-xs text-text-muted mt-0.5">App, recording, analysis, and data controls</p>
-            </div>
-            {settingsContent || (
-              <div className="flex items-center justify-center h-40 text-text-muted text-sm">
-                No settings available
-              </div>
-            )}
-          </div>
-        </section>
-      );
-    }
-
-    return pages.map((page, index) => (
-      <section
-        key={pageLabels[index] ?? index}
-        className={index === currentPage ? 'h-full' : 'hidden'}
-        aria-hidden={index !== currentPage}
-      >
-        {page}
-      </section>
-    ));
   };
 
   return (
     <div className="relative h-full w-full overflow-hidden flex flex-col bg-bg-primary">
       <main className="flex-1 min-h-0 overflow-hidden" aria-live="polite">
-        {renderDestination()}
+        {pages.map((page, index) => (
+          <section
+            key={pageLabels[index] ?? index}
+            className={index === currentPage ? 'h-full' : 'hidden'}
+            aria-hidden={index !== currentPage}
+          >
+            {page}
+          </section>
+        ))}
+
+        {currentPage === settingsIndex && (
+          <section className="h-full overflow-y-auto overscroll-contain bg-bg-primary" aria-label="Settings">
+            <div className="w-full max-w-xl mx-auto pb-8">
+              <div className="px-4 pt-4 pb-2">
+                <h1 className="text-lg font-semibold text-text-primary">Settings</h1>
+                <p className="text-xs text-text-muted mt-0.5">App, recording, analysis, and data controls</p>
+              </div>
+              {settingsContent || (
+                <div className="flex items-center justify-center h-40 text-text-muted text-sm">
+                  No settings available
+                </div>
+              )}
+            </div>
+          </section>
+        )}
       </main>
 
       <nav
