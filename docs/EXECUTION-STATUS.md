@@ -1,8 +1,9 @@
 # Poly Pro — Execution Status
 
 **Repository:** `Timothy-design77/poly-pro`  
-**Working branch:** `agent/no-swipe-navigation`  
-**User-testing policy:** Device/user testing was intentionally deferred until implementation and automated verification were complete.
+**Production branch:** `main`  
+**Production URL:** `https://timothy-design77.github.io/poly-pro/`  
+**User-testing policy:** Device/user testing was intentionally deferred until implementation, automated verification, merge, and production deployment were complete.
 
 This file is the short-form progress ledger for the current production-alignment pass. The larger historical architecture document remains `docs/IMPLEMENTATION-PLAN.md`.
 
@@ -44,7 +45,7 @@ This file is the short-form progress ledger for the current production-alignment
 - Advanced controls remain vertically scrollable below.
 
 ### D. Interaction hardening — COMPLETE
-- Removed stale swipe-navigation state and migrate old persisted values away.
+- Removed stale swipe-navigation state and migrated old persisted values away.
 - BPM adjustment is scroll-safe: tap = 0.5 BPM; intentional hold accelerates; vertical movement cancels/reverts.
 - Project selection uses normal taps with explicit Edit rather than long-press-only editing.
 - Precision sliders direction-lock vertical scrolling from horizontal adjustment.
@@ -78,16 +79,15 @@ Reachability confirmed after the navigation redesign:
 - Settings > Cloud Enhancement remains optional and consent-gated.
 - Main Home retains meter/grouping/subdivision, pattern, polyrhythm, trainer, count-in, swing, gap click, random mute, and play/mute cycle controls.
 
-### H. Automated verification — COMPLETE
-Final implementation head `f6c01c8` passed GitHub Actions CI run 58:
-- Type-check: PASS
-- Vitest regression suite: PASS
-- Production build: PASS
+### H. Automated verification and deployment — COMPLETE
+- Implementation head `f6c01c8`: GitHub Actions CI run 58 — type-check PASS, Vitest PASS, production build PASS.
+- Final PR head `bdbbb32`: GitHub Actions CI run 59 — type-check PASS, Vitest PASS, production build PASS.
+- PR #4 merged to `main` with merge commit `bd4dbc3`, preserving the complete nine-commit implementation history.
+- GitHub Pages deployment run 132 on merged `main`: dependency install PASS, type-check PASS, tests PASS, production build PASS, Pages artifact upload PASS, Pages deployment PASS.
+- Production Pages endpoint is public, HTTPS-enforced, workflow-backed, and sourced from `main`.
 
-The final status-only commit must pass the same CI gate before merge; it contains no runtime code changes.
-
-### I. Final device/user verification — READY AFTER MERGE/DEPLOY
-This is the first point where manual Fold 7 testing is requested:
+### I. Final device/user verification — READY NOW
+This is the first manual Fold 7 testing gate:
 - Layout/vertical scroll/touch behavior.
 - Metronome playback and BPM controls.
 - Recording → analysis → review → session detail.
@@ -108,4 +108,6 @@ This is the first point where manual Fold 7 testing is requested:
 - 2026-08-17: Quick Start converted into a first-class no-project mode with session history.
 - 2026-08-17: Independent section resets and light-theme precision/settings controls implemented.
 - 2026-08-17: Residual Session Detail swipe track removed; advanced feature reachability audited.
-- 2026-08-17: Final implementation head passed type-check, regression tests, and production build; manual testing remains deferred until deployed acceptance.
+- 2026-08-17: Final PR head passed type-check, regression tests, and production build.
+- 2026-08-17: PR #4 merged to `main` with full commit history preserved.
+- 2026-08-17: Production deployment run 132 completed successfully on GitHub Pages; final Fold 7 acceptance testing is now authorized.
