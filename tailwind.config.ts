@@ -12,19 +12,21 @@ export default {
           input: '#0A0A0C',
         },
         border: {
-          subtle: '#2A2A2E',
-          emphasis: '#3A3A40',
+          subtle: '#3A3A40',
+          emphasis: '#52525B',
         },
         text: {
-          primary: '#E8E8EC',
-          secondary: '#8B8B94',
-          muted: '#4A4A52',
-          faint: '#2E2E34',
+          primary: '#F1F1F4',
+          secondary: '#B0B0B8',
+          // Both muted and faint remain WCAG AA against the raised surface,
+          // the lightest dark background used by the application.
+          muted: '#8F8F98',
+          faint: '#85858E',
         },
         accent: {
-          DEFAULT: 'rgba(255,255,255,0.85)',
-          hover: 'rgba(255,255,255,0.95)',
-          dim: 'rgba(255,255,255,0.12)',
+          DEFAULT: 'rgba(255,255,255,0.88)',
+          hover: 'rgba(255,255,255,0.98)',
+          dim: 'rgba(255,255,255,0.16)',
         },
         success: {
           DEFAULT: '#4ADE80',
