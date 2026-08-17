@@ -14,7 +14,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       manifest: {
         name: 'Poly Pro',
         short_name: 'PolyPro',
@@ -40,8 +40,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wav}'],
-        skipWaiting: true,
-        clientsClaim: true,
+        // Activation is coordinated by updateCoordinator.ts so a deployment
+        // can never reload the app during recording, analysis, import/export,
+        // or instrument training.
+        skipWaiting: false,
+        clientsClaim: false,
         cleanupOutdatedCaches: true,
         navigateFallback: 'index.html',
         navigateFallbackAllowlist: [/^\/poly-pro\//],
