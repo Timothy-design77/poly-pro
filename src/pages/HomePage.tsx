@@ -27,14 +27,23 @@ import { useSessionStore } from '../store/session-store';
 import type { SessionAnalysis } from '../analysis/types';
 import type { SessionRecord } from '../store/db';
 
+const PREPARATION_STATUS = {
+  microphone: 'Requesting microphone…',
+  'bluetooth-check': 'Checking audio devices…',
+  'audio-context': 'Starting audio engine…',
+  'audio-worklet': 'Loading raw capture…',
+  'audio-graph': 'Connecting microphone…',
+  transport: 'Starting metronome…',
+} as const;
+
 export function HomePage() {
-  const bpm = useMetronomeStore((s) => s.bpm);
-  const setBpm = useMetronomeStore((s) => s.setBpm);
-  const playing = useMetronomeStore((s) => s.playing);
-  const playStartTime = useMetronomeStore((s) => s.playStartTime);
-  const activeProject = useProjectStore((s) => {
-    return s.projects.find((p) => p.id === s.activeProjectId) || null;
-  });
+  const bpm = useMetronomeStore((state) => state.bpm);
+  const setBpm = useMetronomeStore((state) => state.setBpm);
+  const playing = useMetronomeStore((state) => state.playing);
+  const playStartTime = useMetronomeStore((state) => state.playStartTime);
+  const activeProject = useProjectStore((state) => (
+    state.projects.find((project) => project.id === state.activeProjectId) || null
+  ));
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
@@ -42,15 +51,13 @@ export function HomePage() {
 
   const recording = useRecording();
   const analysis = useAnalysis();
-  const sessions = useSessionStore((s) => s.sessions);
-  const loadSessions = useSessionStore((s) => s.loadFromDB);
+  const sessions = useSessionStore((state) => state.sessions);
+  const loadSessions = useSessionStore((state) => state.loadFromDB);
 
-  // ─── Review screen state ───
   const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
   const [reviewAnalysis, setReviewAnalysis] = useState<SessionAnalysis | null>(null);
   const [detailSession, setDetailSession] = useState<SessionRecord | null>(null);
 
-  // Shared post-recording path: run analysis, then show the review screen.
   const processRecordingResult = useCallback(async (result: RecordingResult) => {
     const analysisResult = await analysis.analyze(result.sessionId, {
       bpm: result.bpm,
@@ -70,15 +77,11 @@ export function HomePage() {
     }
   }, [analysis.analyze]);
 
-  // Handle recording toggle: toggleRecording uses a ref internally (always current).
-  // If it returns a RecordingResult, recording just stopped → run analysis → show review.
   const handleRecordToggle = useCallback(async () => {
     const result = await recording.toggleRecording();
     if (result) await processRecordingResult(result);
   }, [recording.toggleRecording, processRecordingResult]);
 
-  // The 30-minute auto-stop bypasses the toggle handler — hook its result
-  // into the same analysis → review flow.
   useEffect(() => {
     recording.setOnAutoStop(processRecordingResult);
     return () => recording.setOnAutoStop(null);
@@ -87,9 +90,10 @@ export function HomePage() {
   const handleReviewViewDetails = useCallback(async () => {
     if (!reviewSessionId) return;
     await loadSessions();
-    const s = sessions.find((s) => s.id === reviewSessionId) || null;
-    // Re-fetch in case loadSessions updated
-    const fresh = useSessionStore.getState().sessions.find((s) => s.id === reviewSessionId) || s;
+    const existing = sessions.find((session) => session.id === reviewSessionId) || null;
+    const fresh = useSessionStore.getState().sessions.find(
+      (session) => session.id === reviewSessionId,
+    ) || existing;
     setReviewSessionId(null);
     setReviewAnalysis(null);
     setDetailSession(fresh);
@@ -106,7 +110,6 @@ export function HomePage() {
     setReviewAnalysis(null);
   }, [loadSessions]);
 
-  // Session timer — ticks every second while playing
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (!playing || !playStartTime) {
@@ -128,10 +131,9 @@ export function HomePage() {
 
   useEffect(() => {
     const measure = () => {
-      const el = dialContainerRef.current;
-      if (!el) return;
-      const w = el.clientWidth;
-      const size = Math.round(w * 0.8);
+      const element = dialContainerRef.current;
+      if (!element) return;
+      const size = Math.round(element.clientWidth * 0.8);
       setDialSize(Math.max(160, Math.min(360, size)));
     };
     measure();
@@ -139,15 +141,25 @@ export function HomePage() {
     return () => window.removeEventListener('resize', measure);
   }, []);
 
+  const isRecordingBusy = recording.phase === 'preparing'
+    || recording.phase === 'stopping'
+    || recording.phase === 'saving';
+  const busyLabel = recording.phase === 'preparing'
+    ? PREPARATION_STATUS[recording.preparationStage ?? 'microphone']
+    : recording.phase === 'stopping'
+      ? 'Finishing recording…'
+      : recording.phase === 'saving'
+        ? 'Saving session…'
+        : null;
+
   return (
     <div className="h-full overflow-y-auto">
       <BackupBanner />
       <div className="px-4 pb-4">
-        {/* Header: project context + recording/timer indicator */}
-        <div className="flex items-center gap-2 py-1.5">
+        <div className="flex items-center gap-2 py-1.5" aria-live="polite">
           {recording.isRecording ? (
             <>
-              <span className="w-2 h-2 rounded-full bg-danger animate-pulse shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-danger animate-pulse shrink-0" aria-hidden="true" />
               <span className="text-sm font-bold text-danger">REC</span>
               <span className="font-mono text-xs text-text-secondary ml-1">
                 {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
@@ -156,9 +168,14 @@ export function HomePage() {
                 <span className="text-[9px] text-warning ml-auto">{recording.warning}</span>
               )}
             </>
+          ) : isRecordingBusy ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-warning animate-pulse shrink-0" aria-hidden="true" />
+              <span className="text-xs font-semibold text-warning">{busyLabel}</span>
+            </>
           ) : (
             <>
-              <span className="text-base">{activeProject?.icon || '🥁'}</span>
+              <span className="text-base" aria-hidden="true">{activeProject?.icon || '🥁'}</span>
               <span className="text-sm font-medium text-text-secondary truncate">
                 {activeProject?.name || 'Poly Pro'}
               </span>
@@ -177,37 +194,40 @@ export function HomePage() {
           )}
         </div>
 
-        {/* Dial */}
         <div ref={dialContainerRef} className="flex items-center justify-center pt-1 relative">
           <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
         </div>
 
-        {/* Controls */}
         <div className="flex flex-col gap-2 pt-6">
           <BpmControl />
           <PlayButton />
           <div className="flex gap-2 items-center">
-            <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
+            <RecordButton
+              phase={recording.phase}
+              preparationStage={recording.preparationStage}
+              onToggle={handleRecordToggle}
+            />
             <TapTempo />
           </div>
 
-          {/* Live waveform during recording */}
           <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
 
-          {/* Mic error message */}
           {recording.error && (
-            <div className="bg-danger-dim border border-danger/30 rounded-md p-2 mt-1">
+            <div
+              className="bg-danger-dim border border-danger/30 rounded-md p-2 mt-1"
+              role="alert"
+            >
               <p className="text-danger text-xs">{recording.error}</p>
               <button
+                type="button"
                 onClick={recording.clearError}
-                className="text-danger/60 text-[10px] mt-1"
+                className="text-danger text-xs underline underline-offset-2 mt-2 min-h-[36px] px-1"
               >
                 Dismiss
               </button>
             </div>
           )}
 
-          {/* BT earbuds tip */}
           {recording.btTip && (
             <div className="text-[11px] text-warning bg-warning/10 rounded-lg px-3 py-2 mt-2">
               {recording.btTip}
@@ -215,11 +235,13 @@ export function HomePage() {
           )}
         </div>
 
-        {/* ─── Collapsible sections ─── */}
         <div className="mt-4 space-y-2">
-          {/* Meter & Subdivision */}
-          <CollapsibleCard title="Meter & Subdivision" badge={meterBadge} defaultOpen
-            help="Set the time signature and subdivision. The metronome subdivides each beat into smaller pulses (8ths, triplets, 16ths).">
+          <CollapsibleCard
+            title="Meter & Subdivision"
+            badge={meterBadge}
+            defaultOpen
+            help="Set the time signature and subdivision. The metronome subdivides each beat into smaller pulses (8ths, triplets, 16ths)."
+          >
             <div className="space-y-4">
               <MeterControl />
               <SubdivisionPicker />
@@ -227,36 +249,42 @@ export function HomePage() {
             </div>
           </CollapsibleCard>
 
-          {/* Pattern Grid */}
-          <CollapsibleCard title="Pattern" defaultOpen
-            help="Tap cells to set accent levels for each beat. 6 levels: OFF, GHOST, SOFT, MED, LOUD, ACCENT. Long-press a cell to change its sound.">
+          <CollapsibleCard
+            title="Pattern"
+            defaultOpen
+            help="Tap cells to set accent levels for each beat. Six levels are available. Long-press a cell to change its sound."
+          >
             <BeatGrid />
           </CollapsibleCard>
 
-          {/* Polyrhythm */}
-          <CollapsibleCard title="Polyrhythm" badge={polyBadge}
-            help="Add extra tracks with different beat counts to create polyrhythmic patterns (e.g. 4 against 3). Each track plays its beats evenly across the measure.">
+          <CollapsibleCard
+            title="Polyrhythm"
+            badge={polyBadge}
+            help="Add extra tracks with different beat counts to create polyrhythmic patterns. Each track plays evenly across the measure."
+          >
             <PolyrhythmControl />
           </CollapsibleCard>
 
-          {/* Trainer */}
-          <CollapsibleCard title="Trainer" badge={trainerBadge}
-            help="Automatically increase BPM after a set number of bars. Great for building speed gradually. Set start BPM, end BPM, step size, and bars per step.">
+          <CollapsibleCard
+            title="Trainer"
+            badge={trainerBadge}
+            help="Automatically increase BPM after a set number of bars. Set start BPM, end BPM, step size, and bars per step."
+          >
             <TrainerConfig />
           </CollapsibleCard>
 
-          {/* Practice Modes */}
-          <CollapsibleCard title="Practice Modes" badge={practiceBadge}
-            help="Count-in plays click-only bars before starting. Gap click randomly mutes beats. Random mute silences entire measures. Play/Mute cycles structured silence for internalization.">
+          <CollapsibleCard
+            title="Practice Modes"
+            badge={practiceBadge}
+            help="Count-in plays click-only bars before starting. Gap click randomly mutes beats. Random mute silences measures."
+          >
             <PracticeModes />
           </CollapsibleCard>
         </div>
 
-        {/* Bottom padding */}
         <div className="h-[60px]" />
       </div>
 
-      {/* BPM Keypad */}
       <NumberInput
         isOpen={showKeypad}
         onClose={() => setShowKeypad(false)}
@@ -269,16 +297,11 @@ export function HomePage() {
         label="BPM"
       />
 
-      {/* Analysis overlay — shown after recording stops */}
-      <AnalyzingOverlay
-        visible={analysis.isAnalyzing}
-        progress={analysis.progress}
-      />
+      <AnalyzingOverlay visible={analysis.isAnalyzing} progress={analysis.progress} />
 
-      {/* Post-recording review screen */}
       {reviewSessionId && reviewAnalysis && (
         <ReviewScreen
-          visible={true}
+          visible
           sessionId={reviewSessionId}
           analysis={reviewAnalysis}
           onViewDetails={handleReviewViewDetails}
@@ -287,7 +310,6 @@ export function HomePage() {
         />
       )}
 
-      {/* Session detail (opened from review → View Details) */}
       <SessionDetailPage
         session={detailSession}
         visible={detailSession !== null}
