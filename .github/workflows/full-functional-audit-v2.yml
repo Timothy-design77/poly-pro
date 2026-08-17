@@ -1,0 +1,83 @@
+name: Refined Browser Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/full-functional-audit
+
+permissions:
+  contents: read
+
+jobs:
+  browser-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Create evidence directory
+        run: mkdir -p audit-artifacts-v2
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Build production PWA
+        run: npm run build
+
+      - name: Install isolated browser dependencies
+        run: npm install --no-save --no-package-lock playwright@1.55.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate deterministic fake microphone input
+        run: node tests/generate-fake-audio.mjs /tmp/poly-pro-fake-mic.wav | tee audit-artifacts-v2/fake-audio.json
+
+      - name: Start production preview
+        shell: bash
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > audit-artifacts-v2/preview.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4173/poly-pro/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat audit-artifacts-v2/preview.log
+          exit 1
+
+      - name: Run refined browser verification
+        id: verification
+        shell: bash
+        run: |
+          set +e
+          AUDIT_BASE_URL=http://127.0.0.1:4173/poly-pro/ \
+          AUDIT_FAKE_AUDIO=/tmp/poly-pro-fake-mic.wav \
+          AUDIT_OUTPUT_DIR=audit-artifacts-v2 \
+          node tests/browser-audit-v2.mjs 2>&1 | tee audit-artifacts-v2/browser-audit-v2.log
+          status=${PIPESTATUS[0]}
+          echo "$status" > audit-artifacts-v2/exit-code.txt
+          exit 0
+
+      - name: Upload refined evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: poly-pro-refined-browser-verification-${{ github.sha }}
+          path: audit-artifacts-v2
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Fail on confirmed browser defects
+        if: always()
+        shell: bash
+        run: |
+          status="$(cat audit-artifacts-v2/exit-code.txt 2>/dev/null || echo 1)"
+          exit "$status"
