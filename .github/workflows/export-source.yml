@@ -1,0 +1,27 @@
+name: Export Source Snapshot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/architecture-hardening
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare source snapshot
+        shell: bash
+        run: |
+          rm -rf .git node_modules dist audit-artifacts audit-artifacts-v2 audit-artifacts-v3 audit-artifacts-v4 audit-recording-trace
+          tar -czf /tmp/poly-pro-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: poly-pro-source-${{ github.sha }}
+          path: /tmp/poly-pro-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
