@@ -1,0 +1,56 @@
+name: Targeted Functional Diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/full-functional-audit
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: mkdir -p audit-artifacts-v3
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright@1.55.0
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/generate-fake-audio.mjs /tmp/poly-pro-fake-mic.wav | tee audit-artifacts-v3/fake-audio.json
+      - name: Start preview
+        shell: bash
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > audit-artifacts-v3/preview.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:4173/poly-pro/ >/dev/null && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Run diagnostics
+        shell: bash
+        run: |
+          set +e
+          AUDIT_BASE_URL=http://127.0.0.1:4173/poly-pro/ \
+          AUDIT_FAKE_AUDIO=/tmp/poly-pro-fake-mic.wav \
+          AUDIT_OUTPUT_DIR=audit-artifacts-v3 \
+          node tests/browser-audit-v3.mjs 2>&1 | tee audit-artifacts-v3/browser-audit-v3.log
+          echo ${PIPESTATUS[0]} > audit-artifacts-v3/exit-code.txt
+          exit 0
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: poly-pro-targeted-functional-diagnostics-${{ github.sha }}
+          path: audit-artifacts-v3
+          if-no-files-found: error
+          retention-days: 30
+      - if: always()
+        shell: bash
+        run: exit "$(cat audit-artifacts-v3/exit-code.txt 2>/dev/null || echo 1)"
