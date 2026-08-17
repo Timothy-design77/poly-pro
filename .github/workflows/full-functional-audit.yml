@@ -1,0 +1,128 @@
+name: Full Functional Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/full-functional-audit
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Static, dependency, PWA, and browser audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Create artifact directory
+        run: mkdir -p audit-artifacts
+
+      - name: Install application dependencies
+        run: npm ci 2>&1 | tee audit-artifacts/npm-ci.log
+
+      - name: Capture dependency and test inventory
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > audit-artifacts/npm-audit-full.json
+          echo "$?" > audit-artifacts/npm-audit-full-exit-code.txt
+          npm audit --omit=dev --json > audit-artifacts/npm-audit-production.json
+          echo "$?" > audit-artifacts/npm-audit-production-exit-code.txt
+          npm outdated --json > audit-artifacts/npm-outdated.json
+          npm ls --depth=0 --json > audit-artifacts/npm-top-level-dependencies.json
+          find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print | sort > audit-artifacts/test-files.txt
+          grep -RInE 'TODO|FIXME|HACK|XXX' src public tests > audit-artifacts/code-markers.txt 2>/dev/null
+          set -e
+
+      - name: Type-check
+        run: npm run lint 2>&1 | tee audit-artifacts/typecheck.log
+
+      - name: Run unit and regression tests
+        run: npm run test:run -- --reporter=verbose 2>&1 | tee audit-artifacts/unit-tests.log
+
+      - name: Build production PWA
+        run: npm run build 2>&1 | tee audit-artifacts/build.log
+
+      - name: Install isolated browser-audit dependencies
+        run: npm install --no-save --no-package-lock playwright@1.55.0 axe-core@4.10.3 2>&1 | tee audit-artifacts/browser-dependencies.log
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium 2>&1 | tee audit-artifacts/playwright-install.log
+
+      - name: Generate deterministic fake microphone input
+        run: node tests/generate-fake-audio.mjs /tmp/poly-pro-fake-mic.wav | tee audit-artifacts/fake-audio.json
+
+      - name: Start production preview
+        shell: bash
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > audit-artifacts/preview.log 2>&1 &
+          echo $! > audit-artifacts/preview.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/poly-pro/ >/dev/null; then
+              echo "Preview ready after ${attempt} checks"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Preview failed to become ready"
+          cat audit-artifacts/preview.log
+          exit 1
+
+      - name: Run browser-driven functional audit
+        id: browser_audit
+        shell: bash
+        run: |
+          set +e
+          AUDIT_BASE_URL=http://127.0.0.1:4173/poly-pro/ \
+          AUDIT_DEPLOYED_URL=https://timothy-design77.github.io/poly-pro/ \
+          AUDIT_FAKE_AUDIO=/tmp/poly-pro-fake-mic.wav \
+          AUDIT_OUTPUT_DIR=audit-artifacts \
+          node tests/browser-audit.mjs 2>&1 | tee audit-artifacts/browser-audit.log
+          status=${PIPESTATUS[0]}
+          echo "${status}" > audit-artifacts/browser-audit-exit-code.txt
+          echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Capture final environment state
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "Node: $(node --version)"
+            echo "npm: $(npm --version)"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Branch: ${GITHUB_REF_NAME}"
+            echo "Generated: $(date --iso-8601=seconds)"
+          } > audit-artifacts/environment.txt
+          git status --short > audit-artifacts/git-status.txt
+          find dist -type f -printf '%s %p\n' | sort -nr > audit-artifacts/dist-file-sizes.txt
+
+      - name: Upload complete audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: poly-pro-full-functional-audit-${{ github.sha }}
+          path: audit-artifacts
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Fail job when browser checks found defects
+        if: always()
+        shell: bash
+        run: |
+          status="$(cat audit-artifacts/browser-audit-exit-code.txt 2>/dev/null || echo 1)"
+          if [ "$status" != "0" ]; then
+            echo "Browser audit reported one or more failed checks. See uploaded evidence."
+            exit "$status"
+          fi
