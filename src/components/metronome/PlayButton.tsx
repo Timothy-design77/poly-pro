@@ -2,54 +2,53 @@ import { useCallback, useRef } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { useMetronome } from '../../hooks/useMetronome';
 
-/**
- * Full-width START/STOP button.
- *
- * LATENCY: Uses onPointerDown (fires on finger TOUCH, not release).
- * No transition on bg/color — visual state snaps instantly.
- */
 export function PlayButton() {
-  const playing = useMetronomeStore((s) => s.playing);
+  const playing = useMetronomeStore((state) => state.playing);
   const { togglePlay } = useMetronome();
-  const firedRef = useRef(false);
+  const pointerFiredRef = useRef(false);
 
-  // Fire on pointer DOWN — instant, no waiting for finger lift
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    firedRef.current = true;
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
+    pointerFiredRef.current = true;
     togglePlay();
   }, [togglePlay]);
 
-  // Prevent click from double-firing after pointerdown
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    if (firedRef.current) {
-      e.preventDefault();
-      firedRef.current = false;
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (pointerFiredRef.current) {
+      event.preventDefault();
+      pointerFiredRef.current = false;
+      return;
     }
-  }, []);
+    // Keyboard activation does not produce the pointerdown path.
+    togglePlay();
+  }, [togglePlay]);
 
   return (
     <button
+      type="button"
       aria-label={playing ? 'Stop metronome' : 'Start metronome'}
+      aria-pressed={playing}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
       className={`
         w-full rounded-[14px] text-sm font-bold tracking-wider
         flex items-center justify-center gap-2.5 h-[52px]
         touch-manipulation select-none
+        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white
         ${playing
           ? 'bg-bg-raised text-text-primary border border-border-emphasis'
-          : 'bg-[rgba(255,255,255,0.85)] text-bg-primary'
+          : 'bg-[rgba(255,255,255,0.88)] text-bg-primary'
         }
       `}
     >
       {playing ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <rect x="5" y="4" width="5" height="16" rx="1" />
           <rect x="14" y="4" width="5" height="16" rx="1" />
         </svg>
       ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <polygon points="5 3 19 12 5 21" />
         </svg>
       )}
