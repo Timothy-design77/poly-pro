@@ -124,8 +124,8 @@ export function HomePage() {
     const measure = () => {
       const el = dialContainerRef.current;
       if (!el) return;
-      const size = Math.round(el.clientWidth * 0.68);
-      setDialSize(Math.max(180, Math.min(300, size)));
+      const size = Math.round(el.clientWidth * 0.66);
+      setDialSize(Math.max(176, Math.min(292, size)));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -188,8 +188,8 @@ export function HomePage() {
   return (
     <div className="h-full overflow-y-auto bg-bg-primary">
       <BackupBanner />
-      <div className="w-full max-w-xl mx-auto px-4 pb-6">
-        <div className="min-h-[38px] flex items-center justify-center gap-2 py-2 text-center" aria-live="polite">
+      <div className="w-full max-w-xl mx-auto px-4 pb-8">
+        <div className="min-h-[36px] flex items-center justify-center gap-2 py-1.5 text-center" aria-live="polite">
           {recording.isRecording ? (
             <>
               <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
@@ -220,96 +220,112 @@ export function HomePage() {
           )}
         </div>
 
-        <div ref={dialContainerRef} className="flex flex-col items-center justify-center relative">
+        <div ref={dialContainerRef} className="flex items-center justify-center relative">
           <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
-          <button
-            type="button"
-            onClick={() => setShowKeypad(true)}
-            className="-mt-1 min-h-[36px] rounded-pill border border-border-subtle bg-bg-surface px-4
-                       text-[11px] font-bold tracking-wide text-text-primary active:bg-bg-raised"
-          >
-            SET BPM <span className="font-normal text-text-muted">(keypad)</span>
-          </button>
         </div>
 
-        <div className="flex flex-col gap-2.5 pt-4">
+        {/* Tempo tools stay together directly under the BPM display. */}
+        <div className="space-y-2.5 pt-2">
+          <BpmControl />
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setShowKeypad(true)}
+              className="h-[44px] rounded-xl border-[1.5px] border-border-subtle bg-bg-surface
+                         text-xs font-bold tracking-wide text-text-primary active:bg-bg-raised transition-colors duration-75"
+            >
+              SET BPM
+              <span className="block text-[9px] font-medium tracking-normal text-text-muted">keypad</span>
+            </button>
+            <TapTempo />
+          </div>
+        </div>
+
+        {/* Transport is one compact row: play and record are the two primary actions. */}
+        <div className="grid grid-cols-2 gap-2 pt-3">
           <PlayButton />
           <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
-          <div className="pt-1"><BpmControl /></div>
-          <div className="flex"><TapTempo /></div>
-
-          <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
-
-          {recording.error && (
-            <div className="bg-danger-dim border border-danger/30 rounded-md p-3 mt-1 text-center">
-              <p className="text-danger text-xs">{recording.error}</p>
-              <button
-                type="button"
-                onClick={recording.clearError}
-                className="text-danger text-[11px] font-semibold mt-2 min-h-[32px] px-3"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {recording.btTip && (
-            <div className="text-[11px] text-warning bg-warning-dim border border-warning/20 rounded-lg px-3 py-2 mt-1 text-center">
-              {recording.btTip}
-            </div>
-          )}
         </div>
 
-        <div className="mt-5 space-y-2">
-          <CollapsibleCard
-            title="Meter & Subdivision"
-            badge={meterBadge}
-            defaultOpen
-            onReset={resetMeterSection}
-            help="Set the time signature and subdivision. Reset returns this section to 4/4 with no subdivision."
-          >
-            <div className="space-y-4">
-              <MeterControl />
-              <SubdivisionPicker />
-              <GroupingPicker />
-            </div>
-          </CollapsibleCard>
+        <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
 
-          <CollapsibleCard
-            title="Pattern"
-            defaultOpen
-            onReset={resetPatternSection}
-            help="Tap cells to set accent levels for each beat. Reset rebuilds the default accent pattern while keeping the selected main-track sounds."
-          >
-            <BeatGrid />
-          </CollapsibleCard>
+        {recording.error && (
+          <div className="bg-danger-dim border border-danger/30 rounded-md p-3 mt-2 text-center">
+            <p className="text-danger text-xs">{recording.error}</p>
+            <button
+              type="button"
+              onClick={recording.clearError}
+              className="text-danger text-[11px] font-semibold mt-2 min-h-[32px] px-3"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
-          <CollapsibleCard
-            title="Polyrhythm"
-            badge={polyBadge}
-            onReset={resetPolyrhythmSection}
-            help="Add extra tracks with different beat counts. Reset removes extra tracks and restores the main track to an unmuted, straight state."
-          >
-            <PolyrhythmControl />
-          </CollapsibleCard>
+        {recording.btTip && (
+          <div className="text-[11px] text-warning bg-warning-dim border border-warning/20 rounded-lg px-3 py-2 mt-2 text-center">
+            {recording.btTip}
+          </div>
+        )}
 
-          <CollapsibleCard
-            title="Trainer"
-            badge={trainerBadge}
-            onReset={resetTrainerSection}
-            help="Automatically increase BPM after a set number of bars. Reset disables Trainer and restores 80→140, +5 BPM every 4 bars."
-          >
-            <TrainerConfig />
-          </CollapsibleCard>
+        {/* Advanced controls are intentionally below the primary practice surface. */}
+        <div className="mt-8 pt-5 border-t border-border-subtle">
+          <div className="mb-3 px-1">
+            <h2 className="text-sm font-semibold text-text-primary">Advanced controls</h2>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              Meter, patterns, practice modes, trainer, and polyrhythms
+            </p>
+          </div>
 
-          <CollapsibleCard
-            title="Practice Modes"
-            badge={practiceBadge}
-            onReset={resetPracticeSection}
-            help="Count-in, swing, gap click, random mute, and play/mute cycles. Reset disables all practice modes and restores their default probabilities."
-          >
-            <PracticeModes />
-          </CollapsibleCard>
+          <div className="space-y-2">
+            <CollapsibleCard
+              title="Meter & Subdivision"
+              badge={meterBadge}
+              onReset={resetMeterSection}
+              help="Set the time signature and subdivision. Reset returns this section to 4/4 with no subdivision."
+            >
+              <div className="space-y-4">
+                <MeterControl />
+                <SubdivisionPicker />
+                <GroupingPicker />
+              </div>
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Pattern"
+              onReset={resetPatternSection}
+              help="Tap cells to set accent levels for each beat. Reset rebuilds the default accent pattern while keeping the selected main-track sounds."
+            >
+              <BeatGrid />
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Practice Modes"
+              badge={practiceBadge}
+              onReset={resetPracticeSection}
+              help="Count-in, swing, gap click, random mute, and play/mute cycles. Reset disables all practice modes and restores their default probabilities."
+            >
+              <PracticeModes />
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Trainer"
+              badge={trainerBadge}
+              onReset={resetTrainerSection}
+              help="Automatically increase BPM after a set number of bars. Reset disables Trainer and restores 80→140, +5 BPM every 4 bars."
+            >
+              <TrainerConfig />
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Polyrhythm"
+              badge={polyBadge}
+              onReset={resetPolyrhythmSection}
+              help="Add extra tracks with different beat counts. Reset removes extra tracks and restores the main track to an unmuted, straight state."
+            >
+              <PolyrhythmControl />
+            </CollapsibleCard>
+          </div>
         </div>
 
         <div className="h-6" />
