@@ -1,8 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import { DB_NAME, DB_VERSION, upgradeDatabase } from './migrations';
-
-// Canonical snapshot shape now lives in persisted-shapes.ts (derived from
-// store types); re-exported here so existing import sites keep working.
 import type { MetronomeSnapshot } from './persisted-shapes';
 export type { MetronomeSnapshot } from './persisted-shapes';
 
@@ -11,20 +8,14 @@ export interface PolyProDB {
   presets: { key: string; value: PresetRecord };
   projects: { key: string; value: ProjectRecord };
   sessions: { key: string; value: SessionRecord };
-  recordings: { key: string; value: Blob };
+  recordings: { key: string; value: Blob | string };
 }
 
-/** A user-recorded custom sound sample */
 export interface CustomSampleRecord {
-  /** Unique ID, prefixed with 'custom:' */
   id: string;
-  /** Display name */
   name: string;
-  /** Raw audio blob (WAV) */
   blob: Blob;
-  /** Duration in ms */
   durationMs: number;
-  /** When recorded/imported */
   createdAt: string;
 }
 
@@ -44,7 +35,6 @@ export interface ProjectRecord {
   consecutiveCount: number;
   presetId: string | null;
   sessionIds: string[];
-  /** Full metronome + settings snapshot, auto-saved on project switch */
   snapshot: MetronomeSnapshot | null;
 }
 
@@ -74,7 +64,6 @@ export interface SessionRecord {
   stdDev: number;
   perfectPct: number;
   hasRecording: boolean;
-  // Phase 5 analysis fields (populated after post-processing)
   analyzed?: boolean;
   score?: number;
   sigma?: number;
@@ -92,24 +81,19 @@ export interface SessionRecord {
   fatigueRatio?: number;
   maxDrift?: number;
   headlines?: Array<{ text: string; link?: string }> | string[];
-  // Phase 9: Groove
   swingRatio?: number;
   swingSigma?: number;
   hasSwing?: boolean;
   grooveConsistency?: number | null;
-  // Phase 9: Dynamics
   accentAdherence?: number | null;
   dynamicRange?: number | null;
   velocityDecaySlope?: number | null;
   velocityDecayLabel?: string;
-  /** Sample rate of stored recording (default 48000, lower if compressed) */
   recordingSampleRate?: number;
 }
 
-/** Onset data stored separately from session metadata (can be large) */
 export interface HitEventsRecord {
   sessionId: string;
-  /** Scored onsets with deviations (serializable) */
   scoredOnsets: Array<{
     time: number;
     delta: number;
@@ -119,7 +103,6 @@ export interface HitEventsRecord {
     matchedBeatIndex: number;
     scored: boolean;
     measurePosition: number;
-    /** Spectral features (Phase 8) */
     spectralFeatures?: {
       centroid: number;
       bandwidth: number;
@@ -128,23 +111,16 @@ export interface HitEventsRecord {
       bandEnergy: [number, number, number, number, number];
       attackTime: number;
     } | null;
-    /** Instrument classification (Phase 8) */
     instrumentLabel?: string;
     instrumentConfidence?: number;
     instrumentCandidates?: Array<{ label: string; score: number }>;
   }>;
-  /** Raw detected onsets (for re-analysis) */
   rawOnsets: Array<{
     time: number;
     peak: number;
     flux: number;
     isFlam: boolean;
   }>;
-  /**
-   * Beat grid used for the original scoring (recording-relative times).
-   * Optional — older records lack it and re-scoring falls back to a
-   * regenerated grid.
-   */
   gridBeats?: Array<{
     time: number;
     beatIndex: number;
@@ -155,183 +131,232 @@ export interface HitEventsRecord {
   }>;
 }
 
+export class DatabaseUnavailableError extends Error {
+  readonly code = 'DATABASE_UNAVAILABLE';
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'DatabaseUnavailableError';
+  }
+}
+
+const REQUIRED_STORES = ['settings', 'projects', 'sessions', 'recordings'] as const;
+const DB_SOFT_TIMEOUT_MS = 3_000;
+const DB_HARD_TIMEOUT_MS = 10_000;
+
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
+function hasRequiredStores(database: IDBPDatabase): boolean {
+  return REQUIRED_STORES.every((store) => database.objectStoreNames.contains(store));
+}
+
 function getDB(): Promise<IDBPDatabase> {
-  if (!dbPromise) {
-    dbPromise = new Promise<IDBPDatabase>((resolve, reject) => {
-      // Timeout: if the upgrade is blocked, try progressively harder recovery
-      let blocked = false;
-      let resolved = false;
+  if (dbPromise) return dbPromise;
 
-      // Attempt 1: at 3s, try closing stale service worker connections
-      const softTimeout = setTimeout(async () => {
-        if (!blocked || resolved) return;
-        console.warn('[db] IDB upgrade blocked for 3s — trying to close stale connections');
-        try {
-          // Force service worker to release its connection
-          const reg = await navigator.serviceWorker?.getRegistration();
-          if (reg?.waiting) {
-            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-          }
-        } catch { /* ignore */ }
-      }, 3000);
+  dbPromise = new Promise<IDBPDatabase>((resolve, reject) => {
+    let blocked = false;
+    let settled = false;
 
-      // Attempt 2: at 8s, give up waiting and resolve with a fresh connection
-      // WITHOUT deleting the database. The upgrade will happen next launch.
-      const hardTimeout = setTimeout(() => {
-        if (resolved) return;
-        if (blocked) {
-          console.error('[db] IDB upgrade still blocked after 8s — opening at current version');
-          dbPromise = null;
-          // Open WITHOUT version upgrade — works with existing stores
-          openDB(DB_NAME).then((db) => {
-            resolved = true;
-            resolve(db);
-          }).catch(() => {
-            // Absolute last resort: delete and recreate
-            console.error('[db] Cannot open DB at all — deleting and recreating');
-            indexedDB.deleteDatabase(DB_NAME);
-            setTimeout(() => {
-              dbPromise = null;
-              getDB().then(resolve, reject);
-            }, 200);
-          });
+    const finishResolve = (database: IDBPDatabase) => {
+      if (settled) {
+        database.close();
+        return;
+      }
+      settled = true;
+      clearTimeout(softTimeout);
+      clearTimeout(hardTimeout);
+      resolve(database);
+    };
+
+    const finishReject = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(softTimeout);
+      clearTimeout(hardTimeout);
+      dbPromise = null;
+      reject(error instanceof DatabaseUnavailableError
+        ? error
+        : new DatabaseUnavailableError('Poly Pro could not open local storage.', { cause: error }));
+    };
+
+    const softTimeout = window.setTimeout(() => {
+      if (settled) return;
+      const reason = blocked
+        ? 'A previous Poly Pro tab or service worker still holds an older database connection.'
+        : 'The browser has not completed the local-storage request.';
+      console.warn(`[db] Local storage is taking longer than expected. ${reason}`);
+    }, DB_SOFT_TIMEOUT_MS);
+
+    const hardTimeout = window.setTimeout(() => {
+      if (settled) return;
+
+      if (!blocked) {
+        finishReject(new DatabaseUnavailableError(
+          'Local storage did not respond. User data was left untouched; reload the app or free browser storage before retrying.',
+        ));
+        return;
+      }
+
+      // A blocked upgrade may still allow the current schema to open safely.
+      // Use it only when all stores required by the running app already exist.
+      openDB(DB_NAME).then((database) => {
+        if (!hasRequiredStores(database)) {
+          database.close();
+          finishReject(new DatabaseUnavailableError(
+            'A database upgrade is blocked by another Poly Pro tab. Close other Poly Pro windows and reload. No data was deleted.',
+          ));
+          return;
         }
-      }, 8000);
-
-      openDB(DB_NAME, DB_VERSION, {
-        upgrade(db) {
-          upgradeDatabase(db);
-        },
-        blocked(currentVersion, blockedVersion) {
-          blocked = true;
-          console.warn(`[db] IDB upgrade blocked: v${currentVersion} → v${blockedVersion}. Old connection still open.`);
-        },
-      }).then((db) => {
-        clearTimeout(softTimeout);
-        clearTimeout(hardTimeout);
-        resolved = true;
-        resolve(db);
-      }).catch((err) => {
-        clearTimeout(softTimeout);
-        clearTimeout(hardTimeout);
-        resolved = true;
-        reject(err);
+        console.warn('[db] Using the current database schema until the blocked upgrade can complete.');
+        finishResolve(database);
+      }).catch((error) => {
+        finishReject(new DatabaseUnavailableError(
+          'Poly Pro could not open its existing database. No automatic reset was performed.',
+          { cause: error },
+        ));
       });
-    });
-  }
+    }, DB_HARD_TIMEOUT_MS);
+
+    openDB(DB_NAME, DB_VERSION, {
+      upgrade(database) {
+        upgradeDatabase(database);
+      },
+      blocked(currentVersion, blockedVersion) {
+        blocked = true;
+        console.warn(
+          `[db] Database upgrade blocked: v${currentVersion} → v${blockedVersion}. Close other Poly Pro tabs.`,
+        );
+      },
+      blocking() {
+        // Cooperate with newer tabs by releasing this connection. The next DB
+        // operation will reopen through getDB().
+        void closeDatabaseConnection();
+      },
+      terminated() {
+        dbPromise = null;
+        console.error('[db] Browser terminated the database connection.');
+      },
+    }).then((database) => {
+      if (!hasRequiredStores(database)) {
+        database.close();
+        finishReject(new DatabaseUnavailableError(
+          'Local storage opened without required stores. No data was modified.',
+        ));
+        return;
+      }
+      finishResolve(database);
+    }).catch(finishReject);
+  });
+
   return dbPromise;
 }
 
-// ─── Settings ───
+export async function closeDatabaseConnection(): Promise<void> {
+  const pending = dbPromise;
+  dbPromise = null;
+  if (!pending) return;
+  try {
+    const database = await pending;
+    database.close();
+  } catch {
+    // The connection was already unavailable; resetting the cached promise is
+    // enough to permit an explicit retry.
+  }
+}
 
 export async function getSetting<T>(key: string): Promise<T | undefined> {
-  const db = await getDB();
-  return db.get('settings', key) as Promise<T | undefined>;
+  const database = await getDB();
+  return database.get('settings', key) as Promise<T | undefined>;
 }
 
 export async function setSetting<T>(key: string, value: T): Promise<void> {
-  const db = await getDB();
-  await db.put('settings', value, key);
+  const database = await getDB();
+  await database.put('settings', value, key);
 }
 
-// ─── Projects ───
-
 export async function getAllProjects(): Promise<ProjectRecord[]> {
-  const db = await getDB();
-  return db.getAll('projects');
+  const database = await getDB();
+  return database.getAll('projects');
 }
 
 export async function putProject(project: ProjectRecord): Promise<void> {
-  const db = await getDB();
-  await db.put('projects', project);
+  const database = await getDB();
+  await database.put('projects', project);
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete('projects', id);
+  const database = await getDB();
+  await database.delete('projects', id);
 }
 
-// ─── Presets ───
-
 export async function getAllPresets(): Promise<PresetRecord[]> {
-  const db = await getDB();
-  return db.getAll('presets');
+  const database = await getDB();
+  return database.getAll('presets');
 }
 
 export async function putPreset(preset: PresetRecord): Promise<void> {
-  const db = await getDB();
-  await db.put('presets', preset);
+  const database = await getDB();
+  await database.put('presets', preset);
 }
 
 export async function deletePreset(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete('presets', id);
+  const database = await getDB();
+  await database.delete('presets', id);
 }
 
-// ─── Sessions ───
-
 export async function getAllSessions(): Promise<SessionRecord[]> {
-  const db = await getDB();
-  return db.getAll('sessions');
+  const database = await getDB();
+  return database.getAll('sessions');
 }
 
 export async function getSessionsByProject(projectId: string): Promise<SessionRecord[]> {
-  const db = await getDB();
-  return db.getAllFromIndex('sessions', 'projectId', projectId);
+  const database = await getDB();
+  return database.getAllFromIndex('sessions', 'projectId', projectId);
 }
 
 export async function putSession(session: SessionRecord): Promise<void> {
-  const db = await getDB();
-  await db.put('sessions', session);
+  const database = await getDB();
+  await database.put('sessions', session);
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete('sessions', id);
+  const database = await getDB();
+  await database.delete('sessions', id);
 }
 
-// ─── Recordings ───
-
 export async function putRecording(sessionId: string, blob: Blob): Promise<void> {
-  const db = await getDB();
-  await db.put('recordings', blob, sessionId);
+  const database = await getDB();
+  await database.put('recordings', blob, sessionId);
 }
 
 export async function getRecording(sessionId: string): Promise<Blob | undefined> {
-  const db = await getDB();
-  return db.get('recordings', sessionId);
+  const database = await getDB();
+  return database.get('recordings', sessionId);
 }
 
 export async function deleteRecording(sessionId: string): Promise<void> {
-  const db = await getDB();
-  await db.delete('recordings', sessionId);
+  const database = await getDB();
+  await database.delete('recordings', sessionId);
 }
 
-// ─── Hit Events (stored in recordings store with key prefix) ───
-
 export async function putHitEvents(record: HitEventsRecord): Promise<void> {
-  const db = await getDB();
+  const database = await getDB();
   const json = JSON.stringify(record);
-  await db.put('recordings', json, `hitevents:${record.sessionId}`);
-  console.log(`Saved hitEvents for ${record.sessionId}: ${record.scoredOnsets.length} scored, ${record.rawOnsets.length} raw (${(json.length / 1024).toFixed(1)}KB)`);
+  await database.put('recordings', json, `hitevents:${record.sessionId}`);
+  console.log(
+    `Saved hitEvents for ${record.sessionId}: ${record.scoredOnsets.length} scored, ${record.rawOnsets.length} raw (${(json.length / 1024).toFixed(1)}KB)`,
+  );
 }
 
 export async function getHitEvents(sessionId: string): Promise<HitEventsRecord | undefined> {
-  const db = await getDB();
-  const stored = await db.get('recordings', `hitevents:${sessionId}`);
+  const database = await getDB();
+  const stored = await database.get('recordings', `hitevents:${sessionId}`);
   if (!stored) return undefined;
   try {
-    // Handle both string (new) and Blob (legacy) formats
     let text: string;
-    if (typeof stored === 'string') {
-      text = stored;
-    } else if (stored instanceof Blob) {
-      text = await stored.text();
-    } else {
-      return undefined;
-    }
+    if (typeof stored === 'string') text = stored;
+    else if (stored instanceof Blob) text = await stored.text();
+    else return undefined;
     return JSON.parse(text) as HitEventsRecord;
   } catch {
     return undefined;
@@ -339,17 +364,12 @@ export async function getHitEvents(sessionId: string): Promise<HitEventsRecord |
 }
 
 export async function deleteHitEvents(sessionId: string): Promise<void> {
-  const db = await getDB();
-  await db.delete('recordings', `hitevents:${sessionId}`);
+  const database = await getDB();
+  await database.delete('recordings', `hitevents:${sessionId}`);
 }
 
-// ─── Instrument Profiles ───
-
-/** IDB record for an instrument profile */
 export interface InstrumentProfileRecord {
-  /** Instrument name (key) */
   name: string;
-  /** Training samples: features + label */
   samples: Array<{
     features: {
       centroid: number;
@@ -361,60 +381,56 @@ export interface InstrumentProfileRecord {
     };
     label: string;
   }>;
-  /** Cross-validation accuracy (0–1) */
   accuracy: number;
-  /** ISO timestamp of last training */
   lastTrained: string;
 }
 
 export async function getAllInstrumentProfiles(): Promise<InstrumentProfileRecord[]> {
-  const db = await getDB();
-  return db.getAll('instrumentProfiles');
+  const database = await getDB();
+  return database.getAll('instrumentProfiles');
 }
 
 export async function getInstrumentProfile(name: string): Promise<InstrumentProfileRecord | undefined> {
-  const db = await getDB();
-  return db.get('instrumentProfiles', name);
+  const database = await getDB();
+  return database.get('instrumentProfiles', name);
 }
 
 export async function putInstrumentProfile(profile: InstrumentProfileRecord): Promise<void> {
-  const db = await getDB();
-  await db.put('instrumentProfiles', profile);
+  const database = await getDB();
+  await database.put('instrumentProfiles', profile);
 }
 
 export async function deleteInstrumentProfile(name: string): Promise<void> {
-  const db = await getDB();
-  await db.delete('instrumentProfiles', name);
+  const database = await getDB();
+  await database.delete('instrumentProfiles', name);
 }
 
 export async function clearAllInstrumentProfiles(): Promise<void> {
-  const db = await getDB();
-  await db.clear('instrumentProfiles');
+  const database = await getDB();
+  await database.clear('instrumentProfiles');
 }
 
-// ─── Custom Samples ───
-
 export async function getAllCustomSamples(): Promise<CustomSampleRecord[]> {
-  const db = await getDB();
-  return db.getAll('customSamples');
+  const database = await getDB();
+  return database.getAll('customSamples');
 }
 
 export async function getCustomSample(id: string): Promise<CustomSampleRecord | undefined> {
-  const db = await getDB();
-  return db.get('customSamples', id);
+  const database = await getDB();
+  return database.get('customSamples', id);
 }
 
 export async function putCustomSample(record: CustomSampleRecord): Promise<void> {
-  const db = await getDB();
-  await db.put('customSamples', record);
+  const database = await getDB();
+  await database.put('customSamples', record);
 }
 
 export async function deleteCustomSample(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete('customSamples', id);
+  const database = await getDB();
+  await database.delete('customSamples', id);
 }
 
 export async function clearAllCustomSamples(): Promise<void> {
-  const db = await getDB();
-  await db.clear('customSamples');
+  const database = await getDB();
+  await database.clear('customSamples');
 }
