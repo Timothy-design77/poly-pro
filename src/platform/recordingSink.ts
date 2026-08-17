@@ -1,5 +1,6 @@
 const MAX_MEMORY_RECORDING_BYTES = 512 * 1024 * 1024;
-const TEMP_DIRECTORY = 'recording-staging';
+const RECORDING_DIRECTORY = 'recording-staging';
+const MANAGED_FILE_PREFIX = 'recording-';
 
 export type RecordingSinkKind = 'opfs' | 'memory';
 
@@ -9,13 +10,11 @@ export interface RecordingSink {
   append(samples: Float32Array): void;
   finalize(): Promise<Blob>;
   discard(): Promise<void>;
+  /** Release transient resources after the finalized Blob/File is durable. */
   release(): Promise<void>;
 }
 
 function toOwnedArrayBuffer(samples: Float32Array): ArrayBuffer {
-  // AudioWorklet messages normally arrive in transferable ArrayBuffers. Copy
-  // one bounded chunk so queued file writes never depend on mutable views or a
-  // SharedArrayBuffer rejected by Blob/FileSystem APIs.
   return samples.slice().buffer as ArrayBuffer;
 }
 
@@ -87,8 +86,8 @@ class OpfsRecordingSink implements RecordingSink {
   static async create(): Promise<OpfsRecordingSink> {
     const storage = navigator.storage as StorageManagerWithDirectory;
     const root = await storage.getDirectory();
-    const directory = await root.getDirectoryHandle(TEMP_DIRECTORY, { create: true });
-    const fileName = `recording-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}.pcm`;
+    const directory = await root.getDirectoryHandle(RECORDING_DIRECTORY, { create: true });
+    const fileName = `${MANAGED_FILE_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}.pcm`;
     const handle = await directory.getFileHandle(fileName, { create: true });
     const writable = await handle.createWritable({ keepExistingData: false });
     return new OpfsRecordingSink(directory, fileName, handle, writable);
@@ -104,8 +103,7 @@ class OpfsRecordingSink implements RecordingSink {
     this.bytes += buffer.byteLength;
 
     this.writeQueue = this.writeQueue.then(async () => {
-      if (this.closed) return;
-      await this.writable.write(buffer);
+      if (!this.closed) await this.writable.write(buffer);
     }).catch((error: unknown) => {
       this.writeError = error instanceof Error ? error : new Error(String(error));
     });
@@ -133,27 +131,40 @@ class OpfsRecordingSink implements RecordingSink {
       }
       this.closed = true;
     }
-    await this.removeFile();
+    await removeManagedRecordingFile(this.fileName);
   }
 
   async release(): Promise<void> {
-    await this.removeFile();
-  }
-
-  private async removeFile(): Promise<void> {
-    try {
-      await this.directory.removeEntry(this.fileName);
-    } catch (error) {
-      if (!(error instanceof DOMException) || error.name !== 'NotFoundError') {
-        console.warn('[recording] Could not remove temporary OPFS file:', error);
-      }
-    }
+    // The File stored in IndexedDB remains backed by this OPFS entry. Removing
+    // it here invalidates later playback and analysis with NotFoundError.
+    // Explicit recording deletion owns physical-file cleanup instead.
   }
 }
 
 function supportsOpfs(): boolean {
   const storage = navigator.storage as Partial<StorageManagerWithDirectory> | undefined;
   return typeof storage?.getDirectory === 'function';
+}
+
+export function getManagedRecordingFileName(blob: Blob | undefined): string | null {
+  if (!(blob instanceof File)) return null;
+  if (!blob.name.startsWith(MANAGED_FILE_PREFIX) || !blob.name.endsWith('.pcm')) return null;
+  return blob.name;
+}
+
+export async function removeManagedRecordingFile(fileName: string): Promise<void> {
+  if (!supportsOpfs() || !fileName.startsWith(MANAGED_FILE_PREFIX)) return;
+
+  try {
+    const storage = navigator.storage as StorageManagerWithDirectory;
+    const root = await storage.getDirectory();
+    const directory = await root.getDirectoryHandle(RECORDING_DIRECTORY);
+    await directory.removeEntry(fileName);
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== 'NotFoundError') {
+      console.warn('[recording] Could not remove managed OPFS recording:', error);
+    }
+  }
 }
 
 /**
