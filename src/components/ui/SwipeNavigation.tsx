@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavStore } from '../../store/nav-store';
 
 interface SwipeNavigationProps {
@@ -8,13 +8,16 @@ interface SwipeNavigationProps {
   settingsContent?: ReactNode;
 }
 
+const SWIPE_DISTANCE = 34;
+const DIRECTION_LOCK = 12;
+
 /**
- * Tap-only application navigation.
+ * Persistent bottom navigation.
  *
- * The component keeps the historical export name so existing imports remain
- * stable, but horizontal page swiping and swipe-to-open settings are
- * intentionally disabled. Mobile navigation is explicit and predictable:
- * page buttons live at the bottom and Settings opens from a dedicated button.
+ * Main content never owns a horizontal swipe gesture. The bottom navigation
+ * bar itself does: swipe left/right on the bar to move one destination at a
+ * time. Settings is a first-class destination so the bar remains visible and
+ * there is no top-corner Done button to reach for.
  */
 export function SwipeNavigation({
   pages,
@@ -22,115 +25,159 @@ export function SwipeNavigation({
   initialPage = 1,
   settingsContent,
 }: SwipeNavigationProps) {
+  const settingsIndex = pages.length;
+  const destinationLabels = [...pageLabels, 'Settings'];
   const [currentPage, setCurrentPage] = useState(initialPage);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [navDragX, setNavDragX] = useState(0);
+
+  const pointerRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    direction: 'h' | 'v' | null;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
 
   const targetPage = useNavStore((s) => s.targetPage);
   const clearTarget = useNavStore((s) => s.clearTarget);
 
   useEffect(() => {
     if (targetPage === null) return;
-
-    if (targetPage >= 0 && targetPage < pages.length) {
-      setCurrentPage(targetPage);
-      setSettingsOpen(false);
-    }
+    if (targetPage >= 0 && targetPage < pages.length) setCurrentPage(targetPage);
     clearTarget();
   }, [targetPage, pages.length, clearTarget]);
 
-  useEffect(() => {
-    if (!settingsOpen) return;
+  const navigateTo = (index: number) => {
+    const clamped = Math.max(0, Math.min(destinationLabels.length - 1, index));
+    setCurrentPage(clamped);
+    setNavDragX(0);
+  };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSettingsOpen(false);
+  const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    if (!event.isPrimary) return;
+    pointerRef.current = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      direction: null,
     };
+    setNavDragX(0);
+  };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settingsOpen]);
+  const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    const pointer = pointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
 
-  const navigateToPage = (index: number) => {
-    setCurrentPage(index);
-    setSettingsOpen(false);
+    const dx = event.clientX - pointer.startX;
+    const dy = event.clientY - pointer.startY;
+
+    if (pointer.direction === null) {
+      if (Math.hypot(dx, dy) < DIRECTION_LOCK) return;
+      pointer.direction = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+    }
+
+    if (pointer.direction === 'h') {
+      setNavDragX(Math.max(-56, Math.min(56, dx)));
+    }
+  };
+
+  const finishSwipe = (event: React.PointerEvent<HTMLElement>) => {
+    const pointer = pointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+
+    const dx = event.clientX - pointer.startX;
+    const didSwipe = pointer.direction === 'h' && Math.abs(dx) >= SWIPE_DISTANCE;
+
+    if (didSwipe) {
+      suppressClickRef.current = true;
+      navigateTo(currentPage + (dx < 0 ? 1 : -1));
+      window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    } else {
+      setNavDragX(0);
+    }
+
+    pointerRef.current = null;
+  };
+
+  const cancelSwipe = () => {
+    pointerRef.current = null;
+    setNavDragX(0);
+  };
+
+  const renderDestination = () => {
+    if (currentPage === settingsIndex) {
+      return (
+        <section className="h-full overflow-y-auto overscroll-contain bg-bg-primary" aria-label="Settings">
+          <div className="w-full max-w-xl mx-auto pb-8">
+            <div className="px-4 pt-4 pb-2">
+              <h1 className="text-lg font-semibold text-text-primary">Settings</h1>
+              <p className="text-xs text-text-muted mt-0.5">App, recording, analysis, and data controls</p>
+            </div>
+            {settingsContent || (
+              <div className="flex items-center justify-center h-40 text-text-muted text-sm">
+                No settings available
+              </div>
+            )}
+          </div>
+        </section>
+      );
+    }
+
+    return pages.map((page, index) => (
+      <section
+        key={pageLabels[index] ?? index}
+        className={index === currentPage ? 'h-full' : 'hidden'}
+        aria-hidden={index !== currentPage}
+      >
+        {page}
+      </section>
+    ));
   };
 
   return (
     <div className="relative h-full w-full overflow-hidden flex flex-col bg-bg-primary">
-      {/* Active page. No horizontal track, touch handlers, or page-swipe gestures. */}
       <main className="flex-1 min-h-0 overflow-hidden" aria-live="polite">
-        {pages.map((page, index) => (
-          <section
-            key={pageLabels[index] ?? index}
-            className={index === currentPage ? 'h-full' : 'hidden'}
-            aria-hidden={index !== currentPage}
-          >
-            {page}
-          </section>
-        ))}
+        {renderDestination()}
       </main>
 
-      {/* Bottom navigation keeps page changes deliberate and away from the BPM controls. */}
       <nav
-        className="shrink-0 border-t border-border-subtle bg-bg-surface px-2 pt-2 pb-safe"
-        aria-label="Primary navigation"
+        className="shrink-0 border-t border-border-subtle bg-bg-surface px-2 pt-2 pb-safe select-none"
+        aria-label="Primary navigation. Swipe left or right on this bar to change section."
+        style={{ touchAction: 'pan-y' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishSwipe}
+        onPointerCancel={cancelSwipe}
+        onClickCapture={(event) => {
+          if (!suppressClickRef.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
       >
         <div className="grid grid-cols-4 gap-1.5 max-w-lg mx-auto">
-          {pageLabels.map((label, index) => {
-            const active = index === currentPage && !settingsOpen;
+          {destinationLabels.map((label, index) => {
+            const active = index === currentPage;
             return (
               <button
                 key={label}
                 type="button"
-                onClick={() => navigateToPage(index)}
+                onClick={() => navigateTo(index)}
                 aria-current={active ? 'page' : undefined}
-                className={`min-h-[48px] rounded-md px-2 py-2 text-xs font-semibold transition-colors ${
+                className={`min-h-[50px] rounded-md px-2 py-2 text-xs font-semibold transition-colors duration-75 ${
                   active
                     ? 'bg-accent text-bg-primary'
                     : 'bg-bg-raised text-text-secondary active:bg-accent-dim active:text-text-primary'
                 }`}
+                style={active && navDragX !== 0
+                  ? { transform: `translateX(${navDragX / 12}px)` }
+                  : undefined}
               >
                 {label}
               </button>
             );
           })}
-
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            aria-expanded={settingsOpen}
-            className={`min-h-[48px] rounded-md px-2 py-2 text-xs font-semibold transition-colors ${
-              settingsOpen
-                ? 'bg-accent text-bg-primary'
-                : 'bg-bg-raised text-text-secondary active:bg-accent-dim active:text-text-primary'
-            }`}
-          >
-            Settings
-          </button>
         </div>
       </nav>
-
-      {settingsOpen && (
-        <div className="absolute inset-0 z-50 flex flex-col bg-bg-primary animate-fade-in">
-          <header className="shrink-0 flex items-center justify-between gap-4 px-4 py-3 border-b border-border-subtle bg-bg-surface">
-            <h2 className="text-lg font-semibold text-text-primary">Settings</h2>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(false)}
-              className="min-h-[44px] min-w-[72px] rounded-md bg-bg-raised px-3 text-sm font-semibold text-text-primary active:bg-accent-dim"
-            >
-              Done
-            </button>
-          </header>
-
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-            {settingsContent || (
-              <div className="flex items-center justify-center h-full text-text-muted text-sm">
-                No settings available
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
