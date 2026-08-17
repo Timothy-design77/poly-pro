@@ -34,28 +34,29 @@ This file is the short-form progress ledger for the current production-alignment
 - Reworked the canvas dial for light-theme contrast.
 - Removed the fabricated 87% home-screen accuracy arc.
 
-### C. Home workflow alignment — PLANNED
-- Keep BPM visually dominant and compact near the top.
-- Preserve keypad BPM entry and 0.5 BPM precision.
-- Keep START primary and RECORD immediately below/adjacent as the second primary action.
-- Keep controls centered and full-width where appropriate.
-- Maintain vertical-only advanced controls below the primary workflow.
+### C. Home workflow alignment — COMPLETE
+- BPM remains the dominant top-screen control with explicit keypad access.
+- START is the first full-width primary action.
+- RECORD is the next full-width primary action directly below START.
+- BPM touch controls and Tap Tempo follow the primary workflow.
+- Advanced metronome controls remain vertically scrollable below.
 
-### D. Interaction hardening — IN PROGRESS
-- Eliminate stale swipe-navigation settings/state.
-- Make BPM adjustment scroll-safe: tap = 0.5 BPM; intentional hold accelerates; scroll cancels/reverts.
-- Preserve large touch targets and non-selectable controls.
-- Keep precise sliders/number entry for settings that require exact adjustment.
+### D. Interaction hardening — COMPLETE
+- Removed stale swipe-navigation settings/state and migrated old persisted values away.
+- BPM adjustment is scroll-safe: tap = 0.5 BPM; intentional hold accelerates; scroll cancels/reverts.
+- Project selection uses normal taps with an explicit Edit action rather than long-press-only editing.
+- Preserved large touch targets and non-selectable controls.
 
 ### E. Preset/reset consistency — PLANNED
 - Audit configurable sections for a clear revert/default action.
 - Avoid destructive global resets when a local section reset is sufficient.
 - Preserve existing detection presets and project/metronome state semantics.
 
-### F. Project/session workflow audit — PLANNED
-- Confirm project switching/creation remains within the three-action target.
-- Keep quick-start usable with no project ceremony.
-- Preserve session timestamps, recording review, analytics, and project progress.
+### F. Project/session workflow audit — COMPLETE
+- Quick Start is a first-class no-project mode; the app no longer auto-creates or forces a project.
+- Quick Start recordings are stored with `projectId: null` and remain visible in Progress.
+- Projects can be entered and returned from within the three-action target.
+- Project switching preserves/restores per-project metronome snapshots.
 
 ### G. Advanced-feature completeness audit — PLANNED
 - Verify the existing recording, detection, calibration, analytics, instrument, groove/dynamics, backup/export, cloud-enhancement, and custom-sample surfaces remain reachable after UX changes.
@@ -83,3 +84,6 @@ Only after A–H are complete:
 - 2026-08-17: Production-alignment execution ledger added to Git.
 - 2026-08-17: Light/high-contrast semantic color system committed; PWA theme chrome updated.
 - 2026-08-17: Home dial converted to light-theme rendering and false placeholder accuracy removed.
+- 2026-08-17: BPM controls made scroll-safe; retired swipe state removed from settings and persistence.
+- 2026-08-17: Home primary workflow reordered around BPM → START → RECORD.
+- 2026-08-17: Quick Start converted from a label into a first-class no-project mode with untracked session history.
