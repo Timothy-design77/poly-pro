@@ -1,0 +1,91 @@
+name: Apply Production Hardening v2
+
+on:
+  push:
+    branches:
+      - agent/production-hardening-v2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-production-hardening-v2
+  cancel-in-progress: false
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply deterministic source transformation
+        run: python scripts/apply-production-hardening.py
+
+      - name: Remove one-time transformation infrastructure
+        run: |
+          rm -f scripts/apply-production-hardening.py
+          rm -f .github/workflows/apply-production-hardening-v2.yml
+          rm -rf .hardening
+          rm -f .github/workflows/source-snapshot.yml
+          git diff --check
+
+      - name: Regenerate dependency lockfile
+        run: npm install
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Unit and regression tests
+        run: npm run test:run -- --reporter=verbose
+
+      - name: Production build
+        run: npm run build
+
+      - name: Production dependency security audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser, offline, tempo, and accessibility regression tests
+        run: npm run test:browser
+
+      - name: Capture validation evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p hardening-evidence
+          git diff --stat > hardening-evidence/diff-stat.txt
+          git status --short > hardening-evidence/git-status.txt
+          npm audit --json > hardening-evidence/npm-audit.json || true
+          npm ls --depth=0 --json > hardening-evidence/dependencies.json || true
+          cp -r test-results hardening-evidence/test-results 2>/dev/null || true
+          cp -r playwright-report hardening-evidence/playwright-report 2>/dev/null || true
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-hardening-v2-${{ github.sha }}
+          path: hardening-evidence
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Commit validated implementation
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Apply production hardening fixes'
+          git push origin HEAD:agent/production-hardening-v2
