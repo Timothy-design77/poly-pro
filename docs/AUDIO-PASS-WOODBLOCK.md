@@ -22,6 +22,12 @@ The production app already loads `public/sounds/woodblock.wav` into an `AudioBuf
 
 The replacement is imported **bit-for-bit from the upstream VCSL WAV** into the existing path. A one-shot branch-only GitHub Actions importer verifies the downloaded file with `git hash-object` against the known upstream blob SHA before committing it. The importer deletes itself in the same generated commit, leaving no runtime network dependency and no permanent import workflow.
 
+## Import verification — PASS
+
+- Branch `public/sounds/woodblock.wav` Git blob SHA is `f625cb9b072b8a88ad588f8c125654f31e8c36cb`, exactly matching the upstream VCSL file.
+- Temporary `.github/workflows/import-vcsl-woodblock.yml` is absent after the generated import commit; importer self-cleanup succeeded.
+- Compared with `main`, the only net runtime change is the bundled `public/sounds/woodblock.wav`; `src/audio/sounds.ts` and the audio engine are unchanged.
+
 ## Automated verification
 
 Before merge:
@@ -29,7 +35,7 @@ Before merge:
 - TypeScript type-check must pass.
 - Vitest regression suite must pass.
 - Production build must pass.
-- Imported `public/sounds/woodblock.wav` Git blob SHA must equal upstream `f625cb9b072b8a88ad588f8c125654f31e8c36cb`.
+- Imported `public/sounds/woodblock.wav` Git blob SHA must remain upstream `f625cb9b072b8a88ad588f8c125654f31e8c36cb`.
 
 ## Manual verification
 
