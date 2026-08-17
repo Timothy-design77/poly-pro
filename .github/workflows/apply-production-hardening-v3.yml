@@ -1,0 +1,146 @@
+name: Apply Corrected Production Hardening v3
+
+on:
+  push:
+    branches:
+      - agent/production-hardening-v2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-production-hardening-v3
+  cancel-in-progress: false
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply deterministic transformation
+        run: python scripts/apply-production-hardening.py
+
+      - name: Restore and safely correct CollapsibleCard HelpTip
+        shell: bash
+        run: |
+          git checkout HEAD -- src/components/ui/CollapsibleCard.tsx
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/components/ui/CollapsibleCard.tsx')
+          source = path.read_text()
+          starts = [value for value in (source.find('function HelpTip'), source.find('const HelpTip')) if value >= 0]
+          if not starts:
+              raise SystemExit('HelpTip component not found')
+          start = min(starts)
+          opening = source.find('<button', start)
+          if opening < 0:
+              raise SystemExit('HelpTip opening button not found')
+
+          quote = None
+          brace_depth = 0
+          opening_end = None
+          index = opening
+          while index < len(source):
+              char = source[index]
+              previous = source[index - 1] if index else ''
+              if quote:
+                  if char == quote and previous != '\\':
+                      quote = None
+              elif char in ('"', "'"):
+                  quote = char
+              elif char == '{':
+                  brace_depth += 1
+              elif char == '}':
+                  brace_depth = max(0, brace_depth - 1)
+              elif char == '>' and brace_depth == 0:
+                  opening_end = index
+                  break
+              index += 1
+          if opening_end is None:
+              raise SystemExit('HelpTip opening tag end not found')
+
+          closing = source.find('</button>', opening_end)
+          if closing < 0:
+              raise SystemExit('HelpTip closing button not found')
+
+          tag = source[opening:opening_end + 1]
+          tag = tag.replace('<button', '<span', 1)
+          tag = re.sub(r'\s+type=["\']button["\']', '', tag)
+          tag = re.sub(r'\s+tabIndex=\{?0\}?', '', tag)
+          tag = re.sub(r'\s+role=["\']button["\']', '', tag)
+          tag = re.sub(r'\s+aria-expanded=\{[^}]+\}', '', tag)
+          if 'title=' not in tag:
+              tag = tag[:-1] + ' title="More information">'
+
+          source = source[:opening] + tag + source[opening_end + 1:closing] + '</span>' + source[closing + len('</button>'):]
+          path.write_text(source)
+          PY
+
+      - name: Remove one-time infrastructure
+        run: |
+          rm -f scripts/apply-production-hardening.py
+          rm -f .github/workflows/apply-production-hardening-v2.yml
+          rm -f .github/workflows/apply-production-hardening-v3.yml
+          rm -rf .hardening
+          rm -f .github/workflows/source-snapshot.yml
+          git diff --check
+
+      - name: Regenerate dependency lockfile
+        run: npm install
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Unit and regression tests
+        run: npm run test:run -- --reporter=verbose
+
+      - name: Production build
+        run: npm run build
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser, offline, tempo, and accessibility tests
+        run: npm run test:browser
+
+      - name: Capture evidence
+        if: always()
+        run: |
+          mkdir -p hardening-v3-evidence
+          git diff --stat > hardening-v3-evidence/diff-stat.txt
+          git status --short > hardening-v3-evidence/git-status.txt
+          cp -r test-results hardening-v3-evidence/test-results 2>/dev/null || true
+          cp -r playwright-report hardening-v3-evidence/playwright-report 2>/dev/null || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-hardening-v3-${{ github.sha }}
+          path: hardening-v3-evidence
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Commit validated implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Apply validated production hardening implementation'
+          git push origin HEAD:agent/production-hardening-v2
