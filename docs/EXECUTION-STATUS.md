@@ -2,7 +2,7 @@
 
 **Repository:** `Timothy-design77/poly-pro`  
 **Working branch:** `agent/no-swipe-navigation`  
-**User-testing policy:** Device/user testing is deferred until implementation is complete and automated verification is green.
+**User-testing policy:** Device/user testing was intentionally deferred until implementation and automated verification were complete.
 
 This file is the short-form progress ledger for the current production-alignment pass. The larger historical architecture document remains `docs/IMPLEMENTATION-PLAN.md`.
 
@@ -78,19 +78,22 @@ Reachability confirmed after the navigation redesign:
 - Settings > Cloud Enhancement remains optional and consent-gated.
 - Main Home retains meter/grouping/subdivision, pattern, polyrhythm, trainer, count-in, swing, gap click, random mute, and play/mute cycle controls.
 
-### H. Automated verification — ACTIVE
-- CI passed through Quick Start commit `d08853f`.
-- CI passed through reset/light-control commit `c9c493a`.
-- Final branch head must pass type-check, Vitest, and production build before device testing.
+### H. Automated verification — COMPLETE
+Final implementation head `f6c01c8` passed GitHub Actions CI run 58:
+- Type-check: PASS
+- Vitest regression suite: PASS
+- Production build: PASS
 
-### I. Final device/user verification — DEFERRED
-Only after A–H are complete:
-- Fold 7 layout/scroll/touch test.
-- Metronome playback and BPM-control test.
-- Recording → analysis → review → session detail test.
-- Projects/progress/settings navigation test.
-- Calibration/detection/instrument training reachability test.
-- Backup/export and PWA install/update persistence test.
+The final status-only commit must pass the same CI gate before merge; it contains no runtime code changes.
+
+### I. Final device/user verification — READY AFTER MERGE/DEPLOY
+This is the first point where manual Fold 7 testing is requested:
+- Layout/vertical scroll/touch behavior.
+- Metronome playback and BPM controls.
+- Recording → analysis → review → session detail.
+- Projects / Quick Start / Progress / Settings navigation.
+- Calibration / detection / instrument training reachability.
+- Backup/export and PWA install/update persistence.
 
 ## Progress log
 
@@ -105,3 +108,4 @@ Only after A–H are complete:
 - 2026-08-17: Quick Start converted into a first-class no-project mode with session history.
 - 2026-08-17: Independent section resets and light-theme precision/settings controls implemented.
 - 2026-08-17: Residual Session Detail swipe track removed; advanced feature reachability audited.
+- 2026-08-17: Final implementation head passed type-check, regression tests, and production build; manual testing remains deferred until deployed acceptance.
