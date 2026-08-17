@@ -7,9 +7,12 @@ import type {
 import { OperationCancelledError } from '../utils/async';
 
 class AnalysisWorkerUnavailableError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
+  readonly originalError?: unknown;
+
+  constructor(message: string, originalError?: unknown) {
+    super(message);
     this.name = 'AnalysisWorkerUnavailableError';
+    this.originalError = originalError;
   }
 }
 
@@ -36,7 +39,7 @@ function runInWorker(
         { type: 'module', name: 'poly-pro-analysis' },
       );
     } catch (error) {
-      reject(new AnalysisWorkerUnavailableError('Analysis worker could not be created', { cause: error }));
+      reject(new AnalysisWorkerUnavailableError('Analysis worker could not be created', error));
       return;
     }
 
@@ -111,17 +114,12 @@ function runInWorker(
     } catch (error) {
       finish(() => reject(new AnalysisWorkerUnavailableError(
         'Analysis data could not be sent to the worker',
-        { cause: error },
+        error,
       )));
     }
   });
 }
 
-/**
- * Run post-session DSP away from the React/main thread. Unsupported or failed
- * worker startup falls back to the existing implementation, preserving
- * compatibility without hiding genuine pipeline errors.
- */
 export async function analyzeSessionOffMainThread(
   params: AnalyzeSessionParams,
   signal?: AbortSignal,
