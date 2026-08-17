@@ -9,47 +9,76 @@ interface CollapsibleCardProps {
   children: ReactNode;
 }
 
-export function CollapsibleCard({ title, badge, defaultOpen = false, help, children }: CollapsibleCardProps) {
+export function CollapsibleCard({
+  title,
+  badge,
+  defaultOpen = false,
+  help,
+  children,
+}: CollapsibleCardProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const contentId = useId();
+  const titleId = useId();
 
   return (
-    <div className="border border-border-subtle rounded-xl overflow-hidden">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        aria-expanded={isOpen}
-        aria-controls={contentId}
-        className="w-full flex items-center gap-3 px-4 py-3 bg-bg-surface
-                   active:bg-bg-raised transition-colors text-left"
-      >
-        <span className="text-xs font-bold text-text-secondary uppercase tracking-wider flex-1 flex items-center gap-1.5">
-          {title}
-          {help && <HelpTip text={help} />}
-        </span>
-        {badge && (
-          <span
-            className={`font-mono text-[11px] text-text-muted transition-opacity duration-200
-              ${isOpen ? 'opacity-0' : 'opacity-100'}`}
-          >
-            {badge}
-          </span>
-        )}
-        <svg
-          width="14" height="14" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-          className={`text-text-muted transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`}
+    <section className="border border-border-subtle rounded-xl overflow-hidden">
+      <div className="flex items-stretch bg-bg-surface active-within:bg-bg-raised transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsOpen((current) => !current)}
+          aria-expanded={isOpen}
+          aria-controls={contentId}
+          id={titleId}
+          className="min-w-0 flex-1 flex items-center gap-3 px-4 py-3 text-left
+                     focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
         >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
+          <span className="text-xs font-bold text-text-secondary uppercase tracking-wider flex-1">
+            {title}
+          </span>
+          {badge && (
+            <span
+              className={`font-mono text-[11px] text-text-secondary transition-opacity duration-200
+                ${isOpen ? 'opacity-0' : 'opacity-100'}`}
+            >
+              {badge}
+            </span>
+          )}
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            className={`text-text-secondary transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
 
-      <div id={contentId} className={`collapse-grid ${isOpen ? 'is-open' : ''}`}>
+        {help && (
+          <div className="flex items-center pr-3">
+            <HelpTip text={help} label={`Help for ${title}`} />
+          </div>
+        )}
+      </div>
+
+      <div
+        id={contentId}
+        role="region"
+        aria-labelledby={titleId}
+        aria-hidden={!isOpen}
+        inert={!isOpen}
+        className={`collapse-grid ${isOpen ? 'is-open' : ''}`}
+      >
         <div className="collapse-inner">
           <div className="px-4 py-3 border-t border-border-subtle bg-bg-primary">
             {children}
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
