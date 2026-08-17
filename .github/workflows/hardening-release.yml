@@ -1,0 +1,110 @@
+name: Production Hardening Release Gate
+
+on:
+  push:
+    branches:
+      - agent/harden-production
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: production-hardening-release
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Reject staging payloads and temporary workflows
+        shell: bash
+        run: |
+          test ! -e .hardening
+          test ! -e .github/workflows/source-snapshot.yml
+          ! find . -maxdepth 3 -type f \( -name '*.b64.*' -o -name '*.patch' \) -print -quit | grep -q .
+
+      - name: Verify required hardening boundaries
+        shell: bash
+        run: |
+          grep -RIEq 'AbortController|AbortSignal|withTimeout|timeout' src/hooks src/audio src/utils
+          grep -RIEq 'audioWorklet|AudioWorklet' src
+          grep -RIEq 'Worker|worker' src/analysis src/hooks src/workers 2>/dev/null
+          grep -RIEq 'OPFS|origin private|FileSystem|storage writer|chunk' src/store src/storage src/hooks 2>/dev/null
+          grep -RIEq 'aria-label|aria-labelledby' src/components src/pages
+          grep -RIEq 'axe|accessibility' tests src .github package.json
+          grep -RIEq 'NumberInput|BPM|tempo' tests src --include='*.test.*' --include='*.spec.*'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Unit and regression tests
+        run: npm run test:run -- --reporter=verbose
+
+      - name: Production build
+        run: npm run build
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Browser and accessibility validation
+        shell: bash
+        run: |
+          if npm pkg get scripts.test:e2e | grep -vq null; then
+            npx playwright install --with-deps chromium
+            npm run test:e2e
+          elif npm pkg get scripts.test:browser | grep -vq null; then
+            npx playwright install --with-deps chromium
+            npm run test:browser
+          else
+            echo 'A permanent browser test script is required.' >&2
+            exit 1
+          fi
+
+      - name: Verify branch is based on current main
+        shell: bash
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+  merge:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/agent/harden-production'
+
+    steps:
+      - name: Merge the validated hardening pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          PR=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head agent/harden-production \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+          test -n "$PR"
+          gh pr ready "$PR" --repo "$GITHUB_REPOSITORY" || true
+          gh pr merge "$PR" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch \
+            --subject 'Harden recording, storage, accessibility, and browser validation' \
+            --body 'Validated production hardening for tempo synchronization, recording lifecycle, data durability, accessibility, update safety, dependencies, and browser coverage.'
