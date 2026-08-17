@@ -45,12 +45,15 @@ This file is the short-form progress ledger for the current production-alignment
 - Removed stale swipe-navigation settings/state and migrated old persisted values away.
 - BPM adjustment is scroll-safe: tap = 0.5 BPM; intentional hold accelerates; scroll cancels/reverts.
 - Project selection uses normal taps with an explicit Edit action rather than long-press-only editing.
+- Precision sliders direction-lock vertical scrolling from horizontal adjustment.
 - Preserved large touch targets and non-selectable controls.
 
-### E. Preset/reset consistency — PLANNED
-- Audit configurable sections for a clear revert/default action.
-- Avoid destructive global resets when a local section reset is sufficient.
-- Preserve existing detection presets and project/metronome state semantics.
+### E. Preset/reset consistency — IN PROGRESS
+- Meter/subdivision, pattern, polyrhythm, trainer, and practice modes now have independent reset actions.
+- Sounds and vibration expose local reset actions.
+- Detection retains named presets plus Custom mode; Standard remains the baseline preset.
+- Calibration exposes fine-tune reset and explicit calibration clearing.
+- Remaining settings surfaces are being checked for meaningful local revert behavior rather than indiscriminate destructive resets.
 
 ### F. Project/session workflow audit — COMPLETE
 - Quick Start is a first-class no-project mode; the app no longer auto-creates or forces a project.
@@ -62,10 +65,9 @@ This file is the short-form progress ledger for the current production-alignment
 - Verify the existing recording, detection, calibration, analytics, instrument, groove/dynamics, backup/export, cloud-enhancement, and custom-sample surfaces remain reachable after UX changes.
 - Remove obsolete UI/settings left behind by earlier architecture decisions.
 
-### H. Automated verification — PLANNED
-- Type-check (`npm run lint`).
-- Regression tests (`npm run test:run`).
-- Production build (`npm run build`).
+### H. Automated verification — ACTIVE
+- CI passed through Quick Start commit `d08853f` (type-check, Vitest, production build).
+- Re-run after each subsequent implementation batch.
 - GitHub Actions must be green before final user testing.
 
 ### I. Final device/user verification — DEFERRED
@@ -87,3 +89,4 @@ Only after A–H are complete:
 - 2026-08-17: BPM controls made scroll-safe; retired swipe state removed from settings and persistence.
 - 2026-08-17: Home primary workflow reordered around BPM → START → RECORD.
 - 2026-08-17: Quick Start converted from a label into a first-class no-project mode with untracked session history.
+- 2026-08-17: Independent section resets and light-theme precision/settings controls implemented.

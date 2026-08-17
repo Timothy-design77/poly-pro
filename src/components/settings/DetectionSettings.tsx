@@ -1,217 +1,9 @@
-/**
- * DetectionSettings — noise controls section for the Settings overlay.
- *
- * Per the plan: scoring window, flam merge, noise gate, accent threshold,
- * detection preset picker. Selecting a preset fills the sliders;
- * modifying a slider switches to "Custom".
- */
-
 import { useState } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { DETECTION_PRESETS } from '../../analysis/types';
 import { HelpTip } from '../ui/HelpTip';
-import { DetectionTestBench } from './DetectionTestBench';
-
-export function DetectionSettings() {
-  const [showTestBench, setShowTestBench] = useState(false);
-  const scoringWindowPct = useSettingsStore((s) => s.scoringWindowPct);
-  const flamMergePct = useSettingsStore((s) => s.flamMergePct);
-  const noiseGate = useSettingsStore((s) => s.noiseGate);
-  const accentThreshold = useSettingsStore((s) => s.accentThreshold);
-  const highPassHz = useSettingsStore((s) => s.highPassHz);
-  const detectionPreset = useSettingsStore((s) => s.detectionPreset);
-
-  const setScoringWindowPct = useSettingsStore((s) => s.setScoringWindowPct);
-  const setFlamMergePct = useSettingsStore((s) => s.setFlamMergePct);
-  const setNoiseGate = useSettingsStore((s) => s.setNoiseGate);
-  const setAccentThreshold = useSettingsStore((s) => s.setAccentThreshold);
-  const setHighPassHz = useSettingsStore((s) => s.setHighPassHz);
-  const setDetectionPreset = useSettingsStore((s) => s.setDetectionPreset);
-
-  const noiseFloorMult = useSettingsStore((s) => s.noiseFloorMultiplier);
-  const minOnsetInterval = useSettingsStore((s) => s.minOnsetIntervalMs);
-  const postHitMasking = useSettingsStore((s) => s.postHitMaskingMs);
-  const maskingStrength = useSettingsStore((s) => s.postHitMaskingStrength);
-  const fluxThreshold = useSettingsStore((s) => s.fluxThresholdOffset);
-
-  const setNoiseFloorMult = useSettingsStore((s) => s.setNoiseFloorMultiplier);
-  const setMinOnsetInterval = useSettingsStore((s) => s.setMinOnsetIntervalMs);
-  const setPostHitMasking = useSettingsStore((s) => s.setPostHitMaskingMs);
-  const setMaskingStrength = useSettingsStore((s) => s.setPostHitMaskingStrength);
-  const setFluxThreshold = useSettingsStore((s) => s.setFluxThresholdOffset);
-
-  return (
-    <div className="space-y-4">
-      {/* Preset picker */}
-      <div>
-        <label className="text-[10px] text-text-muted font-medium uppercase tracking-wider flex items-center gap-1 mb-1.5">
-          Detection Preset
-          <HelpTip text="Presets configure all detection sliders at once. Choose based on your room and skill level. Adjusting any slider individually switches to 'Custom'." />
-        </label>
-        <div className="flex flex-wrap gap-1.5">
-          {DETECTION_PRESETS.map((p) => (
-            <button
-              key={p.name}
-              onClick={() => setDetectionPreset(p.name)}
-              className={`
-                px-3 py-1.5 rounded-lg text-xs font-medium touch-manipulation
-                ${detectionPreset === p.name
-                  ? 'bg-[rgba(255,255,255,0.12)] text-text-primary border border-border-emphasis'
-                  : 'bg-bg-raised text-text-secondary border border-border-subtle'}
-              `}
-            >
-              {p.name}
-            </button>
-          ))}
-          {detectionPreset === 'Custom' && (
-            <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-bg-raised text-text-muted border border-border-subtle">
-              Custom
-            </span>
-          )}
-        </div>
-        {detectionPreset !== 'Custom' && (
-          <p className="text-[10px] text-text-muted mt-1">
-            {DETECTION_PRESETS.find((p) => p.name === detectionPreset)?.description}
-          </p>
-        )}
-      </div>
-
-      {/* Scoring Window */}
-      <SliderRow
-        label="Scoring Window"
-        value={scoringWindowPct}
-        min={0.25}
-        max={25}
-        step={0.25}
-        format={(v) => `${v}% IOI`}
-        onChange={setScoringWindowPct}
-        help="How close to the beat a hit must land to be scored."
-      />
-      <SliderRow
-        label="Flam Merge"
-        value={flamMergePct}
-        min={5}
-        max={80}
-        step={1}
-        format={(v) => `${v}% sub`}
-        onChange={setFlamMergePct}
-        help="Two hits closer than this get merged into one."
-      />
-
-      {/* Noise Gate */}
-      <SliderRow
-        label="Noise Gate"
-        value={noiseGate}
-        min={0.001}
-        max={0.50}
-        step={0.001}
-        format={(v) => v.toFixed(3)}
-        onChange={setNoiseGate}
-        help="Sounds below this energy are ignored. Raise for noisy rooms."
-      />
-
-      {/* Accent Threshold */}
-      <SliderRow
-        label="Accent Threshold"
-        value={accentThreshold}
-        min={1.0}
-        max={6.0}
-        step={0.05}
-        format={(v) => `${v.toFixed(2)}×`}
-        onChange={setAccentThreshold}
-        help="How much louder a hit must be to count as an accent."
-      />
-
-      {/* High-Pass Cutoff */}
-      <SliderRow
-        label="High-Pass"
-        value={highPassHz}
-        min={0}
-        max={2000}
-        step={5}
-        format={(v) => v === 0 ? 'Off' : `${v} Hz`}
-        onChange={setHighPassHz}
-        help="Filters low-frequency noise before detection. 100-200Hz for noisy rooms."
-      />
-
-      {/* ─── Advanced Onset Detection ─── */}
-      <div className="border-t border-border-subtle pt-3 mt-1">
-        <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider mb-3">
-          Onset Detection
-        </p>
-
-        <SliderRow
-          label="Noise Floor ×"
-          value={noiseFloorMult}
-          min={1}
-          max={50}
-          step={1}
-          format={(v) => `${v}×`}
-          onChange={setNoiseFloorMult}
-          help="Multiplier on measured room noise. Higher = more aggressive noise rejection. 5× standard, 10-15× for noisy rooms."
-        />
-        <SliderRow
-          label="Min Onset Gap"
-          value={minOnsetInterval}
-          min={5}
-          max={300}
-          step={1}
-          format={(v) => `${v}ms`}
-          onChange={setMinOnsetInterval}
-          help="Minimum time between detected hits. Prevents re-triggering on drum decay. 60ms standard, 80-100ms for resonant drums."
-        />
-        <SliderRow
-          label="Post-Hit Mask"
-          value={postHitMasking}
-          min={0}
-          max={400}
-          step={5}
-          format={(v) => v === 0 ? 'Off' : `${v}ms`}
-          onChange={setPostHitMasking}
-          help="After detecting a hit, temporarily raise threshold to suppress decay triggers."
-        />
-        <SliderRow
-          label="Mask Strength"
-          value={maskingStrength}
-          min={0}
-          max={60}
-          step={1}
-          format={(v) => `${v}×`}
-          onChange={setMaskingStrength}
-          help="How strongly to suppress after a hit. Higher = fewer false detections from ring-out."
-        />
-        <SliderRow
-          label="Flux Threshold"
-          value={fluxThreshold}
-          min={0.1}
-          max={6.0}
-          step={0.1}
-          format={(v) => v.toFixed(1)}
-          onChange={setFluxThreshold}
-          help="Spectral flux sensitivity. Higher = only detect sharp transients, fewer false positives."
-        />
-      </div>
-
-      {/* Run Test */}
-      <button
-        onClick={() => setShowTestBench(true)}
-        className="w-full py-2.5 bg-bg-raised border border-border-subtle text-text-primary rounded-md text-sm min-h-[44px] hover:bg-border-subtle transition-colors flex items-center justify-center gap-2"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-        </svg>
-        Run Detection Test
-      </button>
-
-      {/* Test Bench overlay */}
-      <DetectionTestBench visible={showTestBench} onClose={() => setShowTestBench(false)} />
-    </div>
-  );
-}
-
-// ─── Reusable slider row ───
-
 import { PrecisionSlider } from '../ui/PrecisionSlider';
+import { DetectionTestBench } from './DetectionTestBench';
 
 interface SliderRowProps {
   label: string;
@@ -221,21 +13,118 @@ interface SliderRowProps {
   step: number;
   format: (value: number) => string;
   onChange: (value: number) => void;
-  help?: string;
 }
 
-function SliderRow({ label, value, min, max, step, format, onChange, help }: SliderRowProps) {
+function SliderRow({ label, value, min, max, step, format, onChange }: SliderRowProps) {
   return (
     <PrecisionSlider
-      min={min} max={max} step={step} value={value}
+      min={min}
+      max={max}
+      step={step}
+      value={value}
       onChange={onChange}
       formatValue={format}
-      label={
-        help
-          ? `${label}` // HelpTip handled separately below
-          : label
-      }
+      label={label}
       showValue
     />
+  );
+}
+
+export function DetectionSettings() {
+  const [showTestBench, setShowTestBench] = useState(false);
+  const scoringWindowPct = useSettingsStore((s) => s.scoringWindowPct);
+  const flamMergePct = useSettingsStore((s) => s.flamMergePct);
+  const noiseGate = useSettingsStore((s) => s.noiseGate);
+  const accentThreshold = useSettingsStore((s) => s.accentThreshold);
+  const highPassHz = useSettingsStore((s) => s.highPassHz);
+  const detectionPreset = useSettingsStore((s) => s.detectionPreset);
+  const noiseFloorMult = useSettingsStore((s) => s.noiseFloorMultiplier);
+  const minOnsetInterval = useSettingsStore((s) => s.minOnsetIntervalMs);
+  const postHitMasking = useSettingsStore((s) => s.postHitMaskingMs);
+  const maskingStrength = useSettingsStore((s) => s.postHitMaskingStrength);
+  const fluxThreshold = useSettingsStore((s) => s.fluxThresholdOffset);
+
+  const setScoringWindowPct = useSettingsStore((s) => s.setScoringWindowPct);
+  const setFlamMergePct = useSettingsStore((s) => s.setFlamMergePct);
+  const setNoiseGate = useSettingsStore((s) => s.setNoiseGate);
+  const setAccentThreshold = useSettingsStore((s) => s.setAccentThreshold);
+  const setHighPassHz = useSettingsStore((s) => s.setHighPassHz);
+  const setDetectionPreset = useSettingsStore((s) => s.setDetectionPreset);
+  const setNoiseFloorMult = useSettingsStore((s) => s.setNoiseFloorMultiplier);
+  const setMinOnsetInterval = useSettingsStore((s) => s.setMinOnsetIntervalMs);
+  const setPostHitMasking = useSettingsStore((s) => s.setPostHitMaskingMs);
+  const setMaskingStrength = useSettingsStore((s) => s.setPostHitMaskingStrength);
+  const setFluxThreshold = useSettingsStore((s) => s.setFluxThresholdOffset);
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="text-[10px] text-text-muted font-medium uppercase tracking-wider flex items-center gap-1 mb-1.5">
+          Detection Preset
+          <HelpTip text="Presets configure the detection controls at once. Adjusting a control individually switches to Custom." />
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {DETECTION_PRESETS.map((preset) => (
+            <button
+              type="button"
+              key={preset.name}
+              onClick={() => setDetectionPreset(preset.name)}
+              className={`px-3 min-h-[38px] rounded-lg text-xs font-medium touch-manipulation border
+                ${detectionPreset === preset.name
+                  ? 'bg-accent text-bg-primary border-accent'
+                  : 'bg-bg-surface text-text-secondary border-border-subtle active:bg-bg-raised'}`}
+            >
+              {preset.name}
+            </button>
+          ))}
+          {detectionPreset === 'Custom' && (
+            <span className="px-3 min-h-[38px] flex items-center rounded-lg text-xs font-medium bg-accent-dim text-text-primary border border-border-emphasis">
+              Custom
+            </span>
+          )}
+        </div>
+        {detectionPreset !== 'Custom' && (
+          <p className="text-[10px] text-text-muted mt-1.5">
+            {DETECTION_PRESETS.find((preset) => preset.name === detectionPreset)?.description}
+          </p>
+        )}
+      </div>
+
+      <SliderRow label="Scoring Window" value={scoringWindowPct} min={0.25} max={25} step={0.25}
+        format={(value) => `${value}% IOI`} onChange={setScoringWindowPct} />
+      <SliderRow label="Flam Merge" value={flamMergePct} min={5} max={80} step={1}
+        format={(value) => `${value}% sub`} onChange={setFlamMergePct} />
+      <SliderRow label="Noise Gate" value={noiseGate} min={0.001} max={0.5} step={0.001}
+        format={(value) => value.toFixed(3)} onChange={setNoiseGate} />
+      <SliderRow label="Accent Threshold" value={accentThreshold} min={1} max={6} step={0.05}
+        format={(value) => `${value.toFixed(2)}×`} onChange={setAccentThreshold} />
+      <SliderRow label="High-Pass" value={highPassHz} min={0} max={2000} step={5}
+        format={(value) => value === 0 ? 'Off' : `${value} Hz`} onChange={setHighPassHz} />
+
+      <div className="border-t border-border-subtle pt-3 mt-1 space-y-3">
+        <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">Onset Detection</p>
+        <SliderRow label="Noise Floor ×" value={noiseFloorMult} min={1} max={50} step={1}
+          format={(value) => `${value}×`} onChange={setNoiseFloorMult} />
+        <SliderRow label="Min Onset Gap" value={minOnsetInterval} min={5} max={300} step={1}
+          format={(value) => `${value}ms`} onChange={setMinOnsetInterval} />
+        <SliderRow label="Post-Hit Mask" value={postHitMasking} min={0} max={400} step={5}
+          format={(value) => value === 0 ? 'Off' : `${value}ms`} onChange={setPostHitMasking} />
+        <SliderRow label="Mask Strength" value={maskingStrength} min={0} max={60} step={1}
+          format={(value) => `${value}×`} onChange={setMaskingStrength} />
+        <SliderRow label="Flux Threshold" value={fluxThreshold} min={0.1} max={6} step={0.1}
+          format={(value) => value.toFixed(1)} onChange={setFluxThreshold} />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setShowTestBench(true)}
+        className="w-full min-h-[44px] bg-bg-surface border border-border-emphasis text-text-primary
+                   rounded-lg text-sm font-semibold active:bg-bg-raised flex items-center justify-center gap-2"
+      >
+        Run Detection Test
+      </button>
+
+      <DetectionTestBench visible={showTestBench} onClose={() => setShowTestBench(false)} />
+    </div>
   );
 }

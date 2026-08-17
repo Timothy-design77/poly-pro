@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
+import { createDefaultTrack } from '../store/types';
+import { DEFAULT_METER_DENOMINATOR, DEFAULT_METER_NUMERATOR, DEFAULT_SUBDIVISION } from '../utils/constants';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { Dial } from '../components/metronome/Dial';
 import { PlayButton } from '../components/metronome/PlayButton';
@@ -32,9 +34,9 @@ export function HomePage() {
   const setBpm = useMetronomeStore((s) => s.setBpm);
   const playing = useMetronomeStore((s) => s.playing);
   const playStartTime = useMetronomeStore((s) => s.playStartTime);
-  const activeProject = useProjectStore((s) => {
-    return s.projects.find((p) => p.id === s.activeProjectId) || null;
-  });
+  const activeProject = useProjectStore((s) =>
+    s.projects.find((project) => project.id === s.activeProjectId) || null
+  );
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
@@ -130,6 +132,59 @@ export function HomePage() {
     return () => window.removeEventListener('resize', measure);
   }, []);
 
+  const resetMeterSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setMeter(DEFAULT_METER_NUMERATOR, DEFAULT_METER_DENOMINATOR);
+    store.setSubdivision(DEFAULT_SUBDIVISION);
+  }, []);
+
+  const resetPatternSection = useCallback(() => {
+    const state = useMetronomeStore.getState();
+    const existingMain = state.tracks.find((track) => track.id === 'track-0');
+    const defaultMain = createDefaultTrack(
+      state.meterNumerator,
+      state.subdivision,
+      'track-0',
+      state.beatGrouping,
+    );
+    const main = existingMain ? {
+      ...defaultMain,
+      normalSound: existingMain.normalSound,
+      normalVolume: existingMain.normalVolume,
+      accentSound: existingMain.accentSound,
+      accentVolume: existingMain.accentVolume,
+    } : defaultMain;
+    useMetronomeStore.setState({
+      tracks: [main, ...state.tracks.filter((track) => track.id !== 'track-0')],
+    });
+  }, []);
+
+  const resetPolyrhythmSection = useCallback(() => {
+    const state = useMetronomeStore.getState();
+    const main = state.tracks.find((track) => track.id === 'track-0');
+    if (main) useMetronomeStore.setState({ tracks: [{ ...main, muted: false, swing: 0 }] });
+  }, []);
+
+  const resetTrainerSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setTrainerEnabled(false);
+    store.setTrainerConfig({
+      trainerStartBpm: 80,
+      trainerEndBpm: 140,
+      trainerBpmStep: 5,
+      trainerBarsPerStep: 4,
+    });
+  }, []);
+
+  const resetPracticeSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setCountInBars(0);
+    store.setSwing(0);
+    store.setGapClick(false, 0.3);
+    store.setRandomMute(false, 0.25);
+    store.setPlayMuteCycle(false, 4, 4);
+  }, []);
+
   return (
     <div className="h-full overflow-y-auto bg-bg-primary">
       <BackupBanner />
@@ -142,9 +197,7 @@ export function HomePage() {
               <span className="font-mono text-xs text-text-secondary">
                 {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
               </span>
-              {recording.warning && (
-                <span className="text-[10px] text-warning">{recording.warning}</span>
-              )}
+              {recording.warning && <span className="text-[10px] text-warning">{recording.warning}</span>}
             </>
           ) : (
             <>
@@ -182,13 +235,8 @@ export function HomePage() {
         <div className="flex flex-col gap-2.5 pt-4">
           <PlayButton />
           <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
-
-          <div className="pt-1">
-            <BpmControl />
-          </div>
-          <div className="flex">
-            <TapTempo />
-          </div>
+          <div className="pt-1"><BpmControl /></div>
+          <div className="flex"><TapTempo /></div>
 
           <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
 
@@ -217,7 +265,8 @@ export function HomePage() {
             title="Meter & Subdivision"
             badge={meterBadge}
             defaultOpen
-            help="Set the time signature and subdivision. The metronome subdivides each beat into smaller pulses (8ths, triplets, 16ths)."
+            onReset={resetMeterSection}
+            help="Set the time signature and subdivision. Reset returns this section to 4/4 with no subdivision."
           >
             <div className="space-y-4">
               <MeterControl />
@@ -229,7 +278,8 @@ export function HomePage() {
           <CollapsibleCard
             title="Pattern"
             defaultOpen
-            help="Tap cells to set accent levels for each beat. 6 levels: OFF, GHOST, SOFT, MED, LOUD, ACCENT. Long-press a cell to change its sound."
+            onReset={resetPatternSection}
+            help="Tap cells to set accent levels for each beat. Reset rebuilds the default accent pattern while keeping the selected main-track sounds."
           >
             <BeatGrid />
           </CollapsibleCard>
@@ -237,7 +287,8 @@ export function HomePage() {
           <CollapsibleCard
             title="Polyrhythm"
             badge={polyBadge}
-            help="Add extra tracks with different beat counts to create polyrhythmic patterns (e.g. 4 against 3). Each track plays its beats evenly across the measure."
+            onReset={resetPolyrhythmSection}
+            help="Add extra tracks with different beat counts. Reset removes extra tracks and restores the main track to an unmuted, straight state."
           >
             <PolyrhythmControl />
           </CollapsibleCard>
@@ -245,7 +296,8 @@ export function HomePage() {
           <CollapsibleCard
             title="Trainer"
             badge={trainerBadge}
-            help="Automatically increase BPM after a set number of bars. Great for building speed gradually. Set start BPM, end BPM, step size, and bars per step."
+            onReset={resetTrainerSection}
+            help="Automatically increase BPM after a set number of bars. Reset disables Trainer and restores 80→140, +5 BPM every 4 bars."
           >
             <TrainerConfig />
           </CollapsibleCard>
@@ -253,7 +305,8 @@ export function HomePage() {
           <CollapsibleCard
             title="Practice Modes"
             badge={practiceBadge}
-            help="Count-in plays click-only bars before starting. Gap click randomly mutes beats. Random mute silences entire measures. Play/Mute cycles structured silence for internalization."
+            onReset={resetPracticeSection}
+            help="Count-in, swing, gap click, random mute, and play/mute cycles. Reset disables all practice modes and restores their default probabilities."
           >
             <PracticeModes />
           </CollapsibleCard>
@@ -274,10 +327,7 @@ export function HomePage() {
         label="BPM"
       />
 
-      <AnalyzingOverlay
-        visible={analysis.isAnalyzing}
-        progress={analysis.progress}
-      />
+      <AnalyzingOverlay visible={analysis.isAnalyzing} progress={analysis.progress} />
 
       {reviewSessionId && reviewAnalysis && (
         <ReviewScreen
