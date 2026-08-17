@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
+import { createDefaultTrack } from '../store/types';
+import { DEFAULT_METER_DENOMINATOR, DEFAULT_METER_NUMERATOR, DEFAULT_SUBDIVISION } from '../utils/constants';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { Dial } from '../components/metronome/Dial';
 import { PlayButton } from '../components/metronome/PlayButton';
@@ -32,25 +34,23 @@ export function HomePage() {
   const setBpm = useMetronomeStore((s) => s.setBpm);
   const playing = useMetronomeStore((s) => s.playing);
   const playStartTime = useMetronomeStore((s) => s.playStartTime);
-  const activeProject = useProjectStore((s) => {
-    return s.projects.find((p) => p.id === s.activeProjectId) || null;
-  });
+  const activeProject = useProjectStore((s) =>
+    s.projects.find((project) => project.id === s.activeProjectId) || null
+  );
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
-  const [dialSize, setDialSize] = useState(200);
+  const [dialSize, setDialSize] = useState(220);
 
   const recording = useRecording();
   const analysis = useAnalysis();
   const sessions = useSessionStore((s) => s.sessions);
   const loadSessions = useSessionStore((s) => s.loadFromDB);
 
-  // ─── Review screen state ───
   const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
   const [reviewAnalysis, setReviewAnalysis] = useState<SessionAnalysis | null>(null);
   const [detailSession, setDetailSession] = useState<SessionRecord | null>(null);
 
-  // Shared post-recording path: run analysis, then show the review screen.
   const processRecordingResult = useCallback(async (result: RecordingResult) => {
     const analysisResult = await analysis.analyze(result.sessionId, {
       bpm: result.bpm,
@@ -70,15 +70,11 @@ export function HomePage() {
     }
   }, [analysis.analyze]);
 
-  // Handle recording toggle: toggleRecording uses a ref internally (always current).
-  // If it returns a RecordingResult, recording just stopped → run analysis → show review.
   const handleRecordToggle = useCallback(async () => {
     const result = await recording.toggleRecording();
     if (result) await processRecordingResult(result);
   }, [recording.toggleRecording, processRecordingResult]);
 
-  // The 30-minute auto-stop bypasses the toggle handler — hook its result
-  // into the same analysis → review flow.
   useEffect(() => {
     recording.setOnAutoStop(processRecordingResult);
     return () => recording.setOnAutoStop(null);
@@ -87,9 +83,8 @@ export function HomePage() {
   const handleReviewViewDetails = useCallback(async () => {
     if (!reviewSessionId) return;
     await loadSessions();
-    const s = sessions.find((s) => s.id === reviewSessionId) || null;
-    // Re-fetch in case loadSessions updated
-    const fresh = useSessionStore.getState().sessions.find((s) => s.id === reviewSessionId) || s;
+    const current = sessions.find((session) => session.id === reviewSessionId) || null;
+    const fresh = useSessionStore.getState().sessions.find((session) => session.id === reviewSessionId) || current;
     setReviewSessionId(null);
     setReviewAnalysis(null);
     setDetailSession(fresh);
@@ -106,7 +101,6 @@ export function HomePage() {
     setReviewAnalysis(null);
   }, [loadSessions]);
 
-  // Session timer — ticks every second while playing
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (!playing || !playStartTime) {
@@ -130,96 +124,150 @@ export function HomePage() {
     const measure = () => {
       const el = dialContainerRef.current;
       if (!el) return;
-      const w = el.clientWidth;
-      const size = Math.round(w * 0.8);
-      setDialSize(Math.max(160, Math.min(360, size)));
+      const size = Math.round(el.clientWidth * 0.68);
+      setDialSize(Math.max(180, Math.min(300, size)));
     };
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, []);
 
+  const resetMeterSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setMeter(DEFAULT_METER_NUMERATOR, DEFAULT_METER_DENOMINATOR);
+    store.setSubdivision(DEFAULT_SUBDIVISION);
+  }, []);
+
+  const resetPatternSection = useCallback(() => {
+    const state = useMetronomeStore.getState();
+    const existingMain = state.tracks.find((track) => track.id === 'track-0');
+    const defaultMain = createDefaultTrack(
+      state.meterNumerator,
+      state.subdivision,
+      'track-0',
+      state.beatGrouping,
+    );
+    const main = existingMain ? {
+      ...defaultMain,
+      normalSound: existingMain.normalSound,
+      normalVolume: existingMain.normalVolume,
+      accentSound: existingMain.accentSound,
+      accentVolume: existingMain.accentVolume,
+    } : defaultMain;
+    useMetronomeStore.setState({
+      tracks: [main, ...state.tracks.filter((track) => track.id !== 'track-0')],
+    });
+  }, []);
+
+  const resetPolyrhythmSection = useCallback(() => {
+    const state = useMetronomeStore.getState();
+    const main = state.tracks.find((track) => track.id === 'track-0');
+    if (main) useMetronomeStore.setState({ tracks: [{ ...main, muted: false, swing: 0 }] });
+  }, []);
+
+  const resetTrainerSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setTrainerEnabled(false);
+    store.setTrainerConfig({
+      trainerStartBpm: 80,
+      trainerEndBpm: 140,
+      trainerBpmStep: 5,
+      trainerBarsPerStep: 4,
+    });
+  }, []);
+
+  const resetPracticeSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setCountInBars(0);
+    store.setSwing(0);
+    store.setGapClick(false, 0.3);
+    store.setRandomMute(false, 0.25);
+    store.setPlayMuteCycle(false, 4, 4);
+  }, []);
+
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto bg-bg-primary">
       <BackupBanner />
-      <div className="px-4 pb-4">
-        {/* Header: project context + recording/timer indicator */}
-        <div className="flex items-center gap-2 py-1.5">
+      <div className="w-full max-w-xl mx-auto px-4 pb-6">
+        <div className="min-h-[38px] flex items-center justify-center gap-2 py-2 text-center" aria-live="polite">
           {recording.isRecording ? (
             <>
-              <span className="w-2 h-2 rounded-full bg-danger animate-pulse shrink-0" />
-              <span className="text-sm font-bold text-danger">REC</span>
-              <span className="font-mono text-xs text-text-secondary ml-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
+              <span className="text-sm font-bold text-danger">RECORDING</span>
+              <span className="font-mono text-xs text-text-secondary">
                 {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
               </span>
-              {recording.warning && (
-                <span className="text-[9px] text-warning ml-auto">{recording.warning}</span>
-              )}
+              {recording.warning && <span className="text-[10px] text-warning">{recording.warning}</span>}
             </>
           ) : (
             <>
-              <span className="text-base">{activeProject?.icon || '🥁'}</span>
-              <span className="text-sm font-medium text-text-secondary truncate">
-                {activeProject?.name || 'Poly Pro'}
+              <span className="text-base">{activeProject?.icon || '⚡'}</span>
+              <span className="text-sm font-semibold text-text-primary truncate">
+                {activeProject?.name || 'Quick Start'}
               </span>
-              <div className="flex items-center gap-2 ml-auto shrink-0">
-                {playing && elapsed > 0 ? (
-                  <span className="font-mono text-xs text-text-muted">
-                    {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
-                  </span>
-                ) : activeProject ? (
-                  <span className="text-[11px] font-mono text-text-muted">
-                    {activeProject.currentBpm} / {activeProject.goalBpm}
-                  </span>
-                ) : null}
-              </div>
+              {playing && elapsed > 0 ? (
+                <span className="font-mono text-xs text-text-muted">
+                  {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+                </span>
+              ) : activeProject ? (
+                <span className="text-[11px] font-mono text-text-muted">
+                  {activeProject.currentBpm} / {activeProject.goalBpm}
+                </span>
+              ) : (
+                <span className="text-[11px] text-text-muted">untracked</span>
+              )}
             </>
           )}
         </div>
 
-        {/* Dial */}
-        <div ref={dialContainerRef} className="flex items-center justify-center pt-1 relative">
+        <div ref={dialContainerRef} className="flex flex-col items-center justify-center relative">
           <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
+          <button
+            type="button"
+            onClick={() => setShowKeypad(true)}
+            className="-mt-1 min-h-[36px] rounded-pill border border-border-subtle bg-bg-surface px-4
+                       text-[11px] font-bold tracking-wide text-text-primary active:bg-bg-raised"
+          >
+            SET BPM <span className="font-normal text-text-muted">(keypad)</span>
+          </button>
         </div>
 
-        {/* Controls */}
-        <div className="flex flex-col gap-2 pt-6">
-          <BpmControl />
+        <div className="flex flex-col gap-2.5 pt-4">
           <PlayButton />
-          <div className="flex gap-2 items-center">
-            <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
-            <TapTempo />
-          </div>
+          <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
+          <div className="pt-1"><BpmControl /></div>
+          <div className="flex"><TapTempo /></div>
 
-          {/* Live waveform during recording */}
           <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
 
-          {/* Mic error message */}
           {recording.error && (
-            <div className="bg-danger-dim border border-danger/30 rounded-md p-2 mt-1">
+            <div className="bg-danger-dim border border-danger/30 rounded-md p-3 mt-1 text-center">
               <p className="text-danger text-xs">{recording.error}</p>
               <button
+                type="button"
                 onClick={recording.clearError}
-                className="text-danger/60 text-[10px] mt-1"
+                className="text-danger text-[11px] font-semibold mt-2 min-h-[32px] px-3"
               >
                 Dismiss
               </button>
             </div>
           )}
 
-          {/* BT earbuds tip */}
           {recording.btTip && (
-            <div className="text-[11px] text-warning bg-warning/10 rounded-lg px-3 py-2 mt-2">
+            <div className="text-[11px] text-warning bg-warning-dim border border-warning/20 rounded-lg px-3 py-2 mt-1 text-center">
               {recording.btTip}
             </div>
           )}
         </div>
 
-        {/* ─── Collapsible sections ─── */}
-        <div className="mt-4 space-y-2">
-          {/* Meter & Subdivision */}
-          <CollapsibleCard title="Meter & Subdivision" badge={meterBadge} defaultOpen
-            help="Set the time signature and subdivision. The metronome subdivides each beat into smaller pulses (8ths, triplets, 16ths).">
+        <div className="mt-5 space-y-2">
+          <CollapsibleCard
+            title="Meter & Subdivision"
+            badge={meterBadge}
+            defaultOpen
+            onReset={resetMeterSection}
+            help="Set the time signature and subdivision. Reset returns this section to 4/4 with no subdivision."
+          >
             <div className="space-y-4">
               <MeterControl />
               <SubdivisionPicker />
@@ -227,36 +275,46 @@ export function HomePage() {
             </div>
           </CollapsibleCard>
 
-          {/* Pattern Grid */}
-          <CollapsibleCard title="Pattern" defaultOpen
-            help="Tap cells to set accent levels for each beat. 6 levels: OFF, GHOST, SOFT, MED, LOUD, ACCENT. Long-press a cell to change its sound.">
+          <CollapsibleCard
+            title="Pattern"
+            defaultOpen
+            onReset={resetPatternSection}
+            help="Tap cells to set accent levels for each beat. Reset rebuilds the default accent pattern while keeping the selected main-track sounds."
+          >
             <BeatGrid />
           </CollapsibleCard>
 
-          {/* Polyrhythm */}
-          <CollapsibleCard title="Polyrhythm" badge={polyBadge}
-            help="Add extra tracks with different beat counts to create polyrhythmic patterns (e.g. 4 against 3). Each track plays its beats evenly across the measure.">
+          <CollapsibleCard
+            title="Polyrhythm"
+            badge={polyBadge}
+            onReset={resetPolyrhythmSection}
+            help="Add extra tracks with different beat counts. Reset removes extra tracks and restores the main track to an unmuted, straight state."
+          >
             <PolyrhythmControl />
           </CollapsibleCard>
 
-          {/* Trainer */}
-          <CollapsibleCard title="Trainer" badge={trainerBadge}
-            help="Automatically increase BPM after a set number of bars. Great for building speed gradually. Set start BPM, end BPM, step size, and bars per step.">
+          <CollapsibleCard
+            title="Trainer"
+            badge={trainerBadge}
+            onReset={resetTrainerSection}
+            help="Automatically increase BPM after a set number of bars. Reset disables Trainer and restores 80→140, +5 BPM every 4 bars."
+          >
             <TrainerConfig />
           </CollapsibleCard>
 
-          {/* Practice Modes */}
-          <CollapsibleCard title="Practice Modes" badge={practiceBadge}
-            help="Count-in plays click-only bars before starting. Gap click randomly mutes beats. Random mute silences entire measures. Play/Mute cycles structured silence for internalization.">
+          <CollapsibleCard
+            title="Practice Modes"
+            badge={practiceBadge}
+            onReset={resetPracticeSection}
+            help="Count-in, swing, gap click, random mute, and play/mute cycles. Reset disables all practice modes and restores their default probabilities."
+          >
             <PracticeModes />
           </CollapsibleCard>
         </div>
 
-        {/* Bottom padding */}
-        <div className="h-[60px]" />
+        <div className="h-6" />
       </div>
 
-      {/* BPM Keypad */}
       <NumberInput
         isOpen={showKeypad}
         onClose={() => setShowKeypad(false)}
@@ -269,13 +327,8 @@ export function HomePage() {
         label="BPM"
       />
 
-      {/* Analysis overlay — shown after recording stops */}
-      <AnalyzingOverlay
-        visible={analysis.isAnalyzing}
-        progress={analysis.progress}
-      />
+      <AnalyzingOverlay visible={analysis.isAnalyzing} progress={analysis.progress} />
 
-      {/* Post-recording review screen */}
       {reviewSessionId && reviewAnalysis && (
         <ReviewScreen
           visible={true}
@@ -287,7 +340,6 @@ export function HomePage() {
         />
       )}
 
-      {/* Session detail (opened from review → View Details) */}
       <SessionDetailPage
         session={detailSession}
         visible={detailSession !== null}

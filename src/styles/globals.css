@@ -3,26 +3,27 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #0C0C0E;
-  --bg-surface: #141416;
-  --bg-raised: #1C1C1F;
-  --bg-input: #0A0A0C;
-  --border-subtle: #2A2A2E;
-  --border-emphasis: #3A3A40;
-  --text-primary: #E8E8EC;
-  --text-secondary: #8B8B94;
-  --text-muted: #4A4A52;
-  --text-faint: #2E2E34;
-  --accent: rgba(255, 255, 255, 0.85);
-  --accent-hover: rgba(255, 255, 255, 0.95);
-  --accent-dim: rgba(255, 255, 255, 0.12);
-  --success: #4ADE80;
-  --success-dim: rgba(74, 222, 128, 0.15);
-  --warning: #FBBF24;
-  --warning-dim: rgba(251, 191, 36, 0.15);
-  --danger: #F87171;
-  --danger-dim: rgba(248, 113, 113, 0.15);
-  --recording: #EF4444;
+  color-scheme: light;
+  --bg-primary: #F2F3F5;
+  --bg-surface: #FFFFFF;
+  --bg-raised: #E7E9ED;
+  --bg-input: #FFFFFF;
+  --border-subtle: #D2D6DC;
+  --border-emphasis: #8B929C;
+  --text-primary: #15171A;
+  --text-secondary: #454B54;
+  --text-muted: #68707B;
+  --text-faint: #969DA7;
+  --accent: #171A1F;
+  --accent-hover: #050607;
+  --accent-dim: rgba(23, 26, 31, 0.08);
+  --success: #187A3B;
+  --success-dim: rgba(24, 122, 59, 0.11);
+  --warning: #A45108;
+  --warning-dim: rgba(164, 81, 8, 0.11);
+  --danger: #B4232C;
+  --danger-dim: rgba(180, 35, 44, 0.10);
+  --recording: #D92D3A;
 }
 
 * {
@@ -53,7 +54,7 @@ html, body, #root {
   -webkit-touch-callout: none;
 }
 
-/* Prevent overscroll on iOS */
+/* Prevent page-level overscroll; individual screens own vertical scrolling. */
 body {
   overscroll-behavior: none;
   position: fixed;
@@ -69,7 +70,7 @@ body {
   padding-right: env(safe-area-inset-right);
 }
 
-/* Scrollbar styling for dark theme */
+/* Compact scrollbar that remains visible on the light surface. */
 ::-webkit-scrollbar {
   width: 4px;
 }
@@ -77,13 +78,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-subtle);
+  background: var(--border-emphasis);
   border-radius: 4px;
 }
 
-/* No text selection — this is an app, not a document */
-
-/* Re-allow selection on inputs */
+/* Re-allow selection on editable fields only. */
 input, textarea {
   -webkit-user-select: text;
   -moz-user-select: text;
@@ -95,16 +94,15 @@ input, textarea {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
-/* Visible keyboard focus (mouse/touch unaffected) */
+/* Visible keyboard focus; touch/mouse are unaffected. */
 :focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
 /* ─── Shared motion ─── */
 
-/* Keypad slide-up animation */
 @keyframes slide-up {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
@@ -113,7 +111,6 @@ input, textarea {
   animation: slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* Backdrop / overlay fade */
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -122,7 +119,6 @@ input, textarea {
   animation: fade-in 0.2s ease-out;
 }
 
-/* Modal pop: slight scale + fade */
 @keyframes modal-pop {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
@@ -131,7 +127,6 @@ input, textarea {
   animation: modal-pop 0.22s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* Full-screen sheet enter (review, session detail) */
 @keyframes sheet-up {
   from { transform: translateY(24px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
@@ -140,7 +135,6 @@ input, textarea {
   animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* App content fade after splash */
 @keyframes app-enter {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -149,7 +143,6 @@ input, textarea {
   animation: app-enter 0.3s ease-out;
 }
 
-/* Splash pulse */
 @keyframes splash-pulse {
   0%, 100% { opacity: 0.35; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.15); }
@@ -158,7 +151,6 @@ input, textarea {
   animation: splash-pulse 1.2s ease-in-out infinite;
 }
 
-/* Collapsible expand/collapse via grid-rows */
 .collapse-grid {
   display: grid;
   grid-template-rows: 0fr;
@@ -178,7 +170,6 @@ input, textarea {
   transition: none;
 }
 
-/* Respect reduced motion: collapse all animation to instant */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -188,7 +179,6 @@ input, textarea {
   }
 }
 
-/* Safe area padding bottom utility */
 .pb-safe {
   padding-bottom: max(16px, env(safe-area-inset-bottom));
 }

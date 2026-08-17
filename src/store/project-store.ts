@@ -6,12 +6,10 @@ import { useMetronomeStore } from './metronome-store';
 import { useSettingsStore } from './settings-store';
 import type { TrackConfig } from '../audio/types';
 
-/** Capture current metronome + settings state as a snapshot */
 function captureSnapshot(): MetronomeSnapshot {
   return captureSnapshotFromStores(useMetronomeStore.getState(), useSettingsStore.getState());
 }
 
-/** Restore a snapshot into metronome + settings stores */
 function restoreSnapshot(snap: MetronomeSnapshot): void {
   useMetronomeStore.setState({
     bpm: snap.bpm,
@@ -51,27 +49,18 @@ interface ProjectState {
   presets: PresetRecord[];
   loaded: boolean;
 
-  // Actions
   loadFromDB: () => Promise<void>;
   createProject: (project: Omit<ProjectRecord, 'id' | 'created' | 'lastOpened' | 'currentBpm' | 'consecutiveCount' | 'sessionIds' | 'snapshot'>) => Promise<string>;
   updateProject: (id: string, updates: Partial<ProjectRecord>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
-  setActiveProject: (id: string) => void;
+  setActiveProject: (id: string | null) => void;
   getActiveProject: () => ProjectRecord | null;
-
-  /**
-   * Feed a completed session's result into a project's auto-advance
-   * tracker. A session passes when its score meets the project's
-   * accuracy target at (or above) the project's current BPM; after
-   * `advanceAfterN` consecutive passes the project BPM steps up.
-   */
   recordSessionResult: (
     projectId: string,
     score: number,
     sessionBpm: number,
   ) => Promise<{ advanced: boolean; newBpm: number | null }>;
 
-  // Presets
   savePreset: (preset: Omit<PresetRecord, 'id' | 'created'>) => Promise<string>;
   deletePreset: (id: string) => Promise<void>;
   loadPreset: (id: string) => PresetRecord | null;
@@ -81,9 +70,6 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-// Debounce IDB writes — keyed per write target so writes to different
-// records (e.g. the activeProjectId setting vs. a project record) never
-// cancel each other; only rapid re-writes of the SAME target coalesce.
 const writeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function debouncedWrite(key: string, fn: () => Promise<void>) {
   const existing = writeTimers.get(key);
@@ -104,41 +90,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const [projects, presets, activeId] = await Promise.all([
       db.getAllProjects(),
       db.getAllPresets(),
-      db.getSetting<string>('activeProjectId'),
+      db.getSetting<string | null>('activeProjectId'),
     ]);
 
-    // Create default project if none exist
-    if (projects.length === 0) {
-      const defaultProject: ProjectRecord = {
-        id: generateId(),
-        name: 'My First Project',
-        icon: '🥁',
-        created: new Date().toISOString(),
-        lastOpened: new Date().toISOString(),
-        startBpm: 80,
-        goalBpm: 120,
-        currentBpm: 80,
-        accuracyTarget: 85,
-        autoAdvance: true,
-        advanceAfterN: 3,
-        bpmStep: 5,
-        consecutiveCount: 0,
-        presetId: null,
-        sessionIds: [],
-        snapshot: null,
-      };
-      await db.putProject(defaultProject);
-      projects.push(defaultProject);
-      await db.setSetting('activeProjectId', defaultProject.id);
-      set({ projects, activeProjectId: defaultProject.id, presets, loaded: true });
-    } else {
-      set({
-        projects,
-        presets,
-        activeProjectId: activeId || projects[0].id,
-        loaded: true,
-      });
-    }
+    // Quick Start is a first-class mode. Do not create or force-select a
+    // project merely to use the metronome or record an untracked session.
+    const validActiveId = activeId && projects.some((project) => project.id === activeId)
+      ? activeId
+      : null;
+
+    set({ projects, presets, activeProjectId: validActiveId, loaded: true });
   },
 
   createProject: async (input) => {
@@ -156,7 +117,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await db.putProject(project);
     set((s) => ({ projects: [...s.projects, project] }));
 
-    // Auto-activate the new project (snapshots old, resets to clean defaults)
+    // A newly created project becomes active immediately.
     get().setActiveProject(id);
     return id;
   },
@@ -175,7 +136,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   deleteProject: async (id) => {
     const { activeProjectId } = get();
-    if (id === activeProjectId) return; // can't delete active
+    if (id === activeProjectId) return;
     await db.deleteProject(id);
     set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
   },
@@ -183,36 +144,42 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setActiveProject: (id) => {
     const { projects, activeProjectId } = get();
     if (id === activeProjectId) return;
+    if (id !== null && !projects.some((project) => project.id === id)) return;
 
-    // 1. Save snapshot of current state to the OLD project
+    // Save the project being left, if any.
     if (activeProjectId) {
       const snapshot = captureSnapshot();
-      const oldProject = projects.find((p) => p.id === activeProjectId);
+      const oldProject = projects.find((project) => project.id === activeProjectId);
       if (oldProject) {
         const updated = { ...oldProject, snapshot, currentBpm: snapshot.bpm };
-        set((s) => ({ projects: s.projects.map((p) => p.id === activeProjectId ? updated : p) }));
+        set((state) => ({
+          projects: state.projects.map((project) => project.id === activeProjectId ? updated : project),
+        }));
         db.putProject(updated).catch(console.error);
       }
     }
 
-    // 2. Switch active project
     set({ activeProjectId: id });
     debouncedWrite('active-project-id', () => db.setSetting('activeProjectId', id));
 
-    // 3. Restore snapshot from the NEW project (or defaults from project config)
-    const newProject = projects.find((p) => p.id === id);
+    // Entering Quick Start intentionally keeps the current metronome setup.
+    // Global persistence will retain subsequent Quick Start changes.
+    if (id === null) return;
+
+    const newProject = projects.find((project) => project.id === id);
     if (newProject) {
       if (newProject.snapshot) {
         restoreSnapshot(newProject.snapshot);
       } else {
-        // No snapshot yet — reset BOTH stores to clean defaults
         useMetronomeStore.getState().resetToDefaults();
         useSettingsStore.getState().resetToDefaults();
         useMetronomeStore.getState().setBpm(newProject.currentBpm);
       }
-      // Update lastOpened
+
       const updated = { ...newProject, lastOpened: new Date().toISOString() };
-      set((s) => ({ projects: s.projects.map((p) => p.id === id ? updated : p) }));
+      set((state) => ({
+        projects: state.projects.map((project) => project.id === id ? updated : project),
+      }));
       debouncedWrite(`project:${id}`, () => db.putProject(updated));
     }
   },
@@ -228,8 +195,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return { advanced: false, newBpm: null };
     }
 
-    // Sessions played below the project's current BPM don't count toward
-    // (or against) the streak — they're warm-ups, not attempts.
     if (sessionBpm < project.currentBpm) {
       return { advanced: false, newBpm: null };
     }

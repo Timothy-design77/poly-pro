@@ -3,11 +3,6 @@ import { useMetronomeStore } from '../../store/metronome-store';
 import { clampBpm } from '../../utils/timing';
 import { TAP_MIN_TAPS, TAP_MAX_TAPS, TAP_TIMEOUT_MS } from '../../utils/constants';
 
-/**
- * Tap Tempo button.
- * 3-8 taps, 3s timeout between taps, computes average interval.
- * Shows tap count while tapping.
- */
 export function TapTempo() {
   const setBpm = useMetronomeStore((s) => s.setBpm);
   const [tapCount, setTapCount] = useState(0);
@@ -18,15 +13,11 @@ export function TapTempo() {
     const now = performance.now();
     const taps = tapTimesRef.current;
 
-    // Reset if timeout expired
     if (taps.length > 0 && now - taps[taps.length - 1] > TAP_TIMEOUT_MS) {
       tapTimesRef.current = [];
     }
 
-    // Add tap
     tapTimesRef.current.push(now);
-
-    // Limit taps
     if (tapTimesRef.current.length > TAP_MAX_TAPS) {
       tapTimesRef.current = tapTimesRef.current.slice(-TAP_MAX_TAPS);
     }
@@ -34,18 +25,15 @@ export function TapTempo() {
     const count = tapTimesRef.current.length;
     setTapCount(count);
 
-    // Calculate BPM if enough taps
     if (count >= TAP_MIN_TAPS) {
       const intervals: number[] = [];
       for (let i = 1; i < count; i++) {
         intervals.push(tapTimesRef.current[i] - tapTimesRef.current[i - 1]);
       }
       const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-      const bpm = 60000 / avgInterval;
-      setBpm(clampBpm(bpm));
+      setBpm(clampBpm(60000 / avgInterval));
     }
 
-    // Reset timeout
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
       setTapCount(0);
@@ -55,18 +43,19 @@ export function TapTempo() {
 
   return (
     <button
+      type="button"
       onClick={handleTap}
       className="flex-1 flex items-center justify-center gap-1.5 rounded-xl
                  border-[1.5px] border-border-subtle bg-bg-surface
-                 text-text-secondary text-xs font-bold tracking-wide
-                 active:bg-bg-raised transition-all h-[44px]
+                 text-text-primary text-xs font-bold tracking-wide
+                 active:bg-bg-raised transition-colors h-[48px]
                  touch-manipulation select-none relative"
     >
-      ♩ TAP
+      ♩ TAP TEMPO
       {tapCount >= 2 && (
-        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full
-                         bg-[rgba(255,255,255,0.15)] text-[9px] font-mono
-                         flex items-center justify-center text-text-secondary">
+        <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full
+                         bg-accent-dim text-[9px] font-mono font-bold
+                         flex items-center justify-center text-text-primary border border-border-subtle">
           {tapCount}
         </span>
       )}

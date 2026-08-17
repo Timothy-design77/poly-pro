@@ -3,16 +3,12 @@ import { useMetronomeStore } from '../../store/metronome-store';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio';
 
-/** Track ring colors — same as Dial */
-const TRACK_COLORS = ['white', '#2DD4BF', '#FBBF24', '#FB7185'];
+const TRACK_COLORS = ['#15171A', '#0D9488', '#B45309', '#BE185D'];
 
 function getSoundName(id: string) {
-  return SOUND_CATALOG.find((s) => s.id === id)?.name || id;
+  return SOUND_CATALOG.find((sound) => sound.id === id)?.name || id;
 }
 
-/**
- * Per-track sound picker — compact dropdown.
- */
 function TrackSoundPicker({
   label,
   currentSound,
@@ -28,9 +24,10 @@ function TrackSoundPicker({
     <div>
       <label className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 block">{label}</label>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between py-2 px-2.5 rounded-lg
-                   bg-bg-primary border border-border-subtle text-xs"
+                   bg-bg-surface border border-border-subtle text-xs min-h-[40px]"
       >
         <span className="text-text-primary truncate">{getSoundName(currentSound)}</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -40,28 +37,29 @@ function TrackSoundPicker({
         </svg>
       </button>
       {open && (
-        <div className="mt-0.5 bg-bg-primary border border-border-subtle rounded-lg overflow-hidden max-h-[200px] overflow-y-auto">
-          {SOUND_CATALOG.map((s) => (
+        <div className="mt-1 bg-bg-surface border border-border-subtle rounded-lg overflow-hidden max-h-[220px] overflow-y-auto shadow-sm">
+          {SOUND_CATALOG.map((sound) => (
             <button
-              key={s.id}
+              type="button"
+              key={sound.id}
               onClick={() => {
-                onSelect(s.id);
-                audioEngine.previewSound(s.id);
+                onSelect(sound.id);
+                audioEngine.previewSound(sound.id);
                 setOpen(false);
               }}
-              className={`w-full text-left px-2.5 py-2 text-xs flex items-center gap-1.5
-                ${s.id === currentSound
-                  ? 'text-text-primary bg-bg-raised'
+              className={`w-full text-left px-2.5 py-2.5 text-xs flex items-center gap-1.5 min-h-[40px]
+                ${sound.id === currentSound
+                  ? 'text-text-primary bg-accent-dim font-semibold'
                   : 'text-text-secondary active:bg-bg-raised'
                 }`}
             >
-              {s.id === currentSound && (
+              {sound.id === currentSound && (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="shrink-0">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               )}
-              <span className={s.id === currentSound ? '' : 'pl-[18px]'}>{s.name}</span>
+              <span className={sound.id === currentSound ? '' : 'pl-[18px]'}>{sound.name}</span>
             </button>
           ))}
         </div>
@@ -70,9 +68,6 @@ function TrackSoundPicker({
   );
 }
 
-/**
- * Polyrhythm track management with per-track sound and swing controls.
- */
 export function PolyrhythmControl() {
   const tracks = useMetronomeStore((s) => s.tracks);
   const meterNumerator = useMetronomeStore((s) => s.meterNumerator);
@@ -84,41 +79,38 @@ export function PolyrhythmControl() {
   const [newBeats, setNewBeats] = useState(3);
   const [expandedTrack, setExpandedTrack] = useState<string | null>(null);
 
-  const extraTracks = tracks.filter((t) => t.id !== 'track-0');
+  const extraTracks = tracks.filter((track) => track.id !== 'track-0');
 
   return (
     <div>
-      {/* Primary track info */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-text-primary">Main track:</span>
+          <span className="text-sm text-text-secondary">Main track:</span>
           <span className="font-mono text-base text-text-primary font-bold">{meterNumerator} beats</span>
         </div>
         {extraTracks.length > 0 && (
           <span className="font-mono text-xs text-text-muted">
-            {meterNumerator}:{extraTracks.map(t => t.beats).join(':')}
+            {meterNumerator}:{extraTracks.map((track) => track.beats).join(':')}
           </span>
         )}
       </div>
 
-      {/* Extra tracks — each with expandable settings */}
-      {extraTracks.map((track, i) => {
-        const trackColor = TRACK_COLORS[i + 1] || TRACK_COLORS[1];
+      {extraTracks.map((track, index) => {
+        const trackColor = TRACK_COLORS[index + 1] || TRACK_COLORS[1];
         const isExpanded = expandedTrack === track.id;
 
         return (
           <div key={track.id} className="mb-2 bg-bg-surface rounded-xl border border-border-subtle overflow-hidden">
-            {/* Track header row */}
             <div className="flex items-center gap-2 px-3 py-2.5">
-              {/* Color indicator */}
-              <div className="w-[8px] h-[8px] rounded-full shrink-0" style={{ backgroundColor: trackColor }} />
+              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: trackColor }} />
 
-              {/* Expand toggle */}
               <button
+                type="button"
                 onClick={() => setExpandedTrack(isExpanded ? null : track.id)}
-                className="flex-1 text-left flex items-center gap-2"
+                className="flex-1 min-h-[40px] text-left flex items-center gap-2"
+                aria-expanded={isExpanded}
               >
-                <span className="text-sm text-text-secondary">Track {i + 2}</span>
+                <span className="text-sm text-text-secondary">Track {index + 2}</span>
                 <span className="font-mono text-sm text-text-primary font-bold">{track.beats}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
@@ -127,21 +119,23 @@ export function PolyrhythmControl() {
                 </svg>
               </button>
 
-              {/* Quick actions */}
               <button
+                type="button"
                 onClick={() => setTrackMuted(track.id, !track.muted)}
-                className={`h-[34px] px-2.5 rounded-lg text-[10px] font-bold touch-manipulation
+                className={`h-[40px] px-3 rounded-lg text-[10px] font-bold touch-manipulation border
                   ${track.muted
-                    ? 'text-danger bg-danger-dim border border-danger/20'
-                    : 'text-text-secondary bg-bg-raised border border-border-subtle'}`}
+                    ? 'text-danger bg-danger-dim border-danger/20'
+                    : 'text-text-primary bg-bg-raised border-border-subtle'}`}
               >
                 {track.muted ? 'MUTED' : 'ON'}
               </button>
               <button
+                type="button"
                 onClick={() => removeTrack(track.id)}
-                className="w-[34px] h-[34px] flex items-center justify-center rounded-lg
-                           bg-bg-raised border border-border-subtle text-text-muted
-                           active:bg-danger-dim touch-manipulation"
+                className="w-[40px] h-[40px] flex items-center justify-center rounded-lg
+                           bg-bg-raised border border-border-subtle text-text-secondary
+                           active:bg-danger-dim active:text-danger touch-manipulation"
+                aria-label={`Remove track ${index + 2}`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -151,10 +145,8 @@ export function PolyrhythmControl() {
               </button>
             </div>
 
-            {/* Expanded settings */}
             {isExpanded && (
-              <div className="px-3 pb-3 pt-1 border-t border-border-subtle space-y-3">
-                {/* Sound pickers */}
+              <div className="px-3 pb-3 pt-2 border-t border-border-subtle space-y-3 bg-bg-primary">
                 <div className="grid grid-cols-2 gap-2">
                   <TrackSoundPicker
                     label="Click Sound"
@@ -168,7 +160,6 @@ export function PolyrhythmControl() {
                   />
                 </div>
 
-                {/* Swing */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[9px] text-text-muted uppercase tracking-wider">Swing</label>
@@ -181,15 +172,14 @@ export function PolyrhythmControl() {
                     min="0"
                     max="100"
                     value={Math.round(track.swing * 100)}
-                    onChange={(e) => setTrackSwing(track.id, Number(e.target.value) / 100)}
-                    className="w-full accent-white h-1.5 bg-bg-raised rounded-full appearance-none
-                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4
-                               [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full
-                               [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+                    onChange={(event) => setTrackSwing(track.id, Number(event.target.value) / 100)}
+                    className="w-full accent-accent h-2 bg-bg-raised rounded-full appearance-none
+                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
+                               [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
+                               [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer"
                   />
                 </div>
 
-                {/* Current sound summary */}
                 <div className="text-[10px] text-text-muted">
                   {getSoundName(track.normalSound)} · accent: {getSoundName(track.accentSound)}
                 </div>
@@ -199,26 +189,26 @@ export function PolyrhythmControl() {
         );
       })}
 
-      {/* Add track */}
       {tracks.length < 4 && (
         <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border-subtle">
           <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
             <button
+              type="button"
               onClick={() => setNewBeats(Math.max(2, newBeats - 1))}
-              className="w-[40px] h-[44px] flex items-center justify-center text-text-secondary
-                         active:bg-bg-raised text-lg font-bold touch-manipulation"
+              className="w-[44px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-bold"
             >−</button>
-            <span className="w-[36px] text-center font-mono text-base text-text-primary font-bold">{newBeats}</span>
+            <span className="w-[40px] text-center font-mono text-base text-text-primary font-bold">{newBeats}</span>
             <button
+              type="button"
               onClick={() => setNewBeats(Math.min(16, newBeats + 1))}
-              className="w-[40px] h-[44px] flex items-center justify-center text-text-secondary
-                         active:bg-bg-raised text-lg font-bold touch-manipulation"
+              className="w-[44px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-bold"
             >+</button>
           </div>
           <button
+            type="button"
             onClick={() => addTrack(newBeats)}
-            className="flex-1 h-[44px] rounded-xl border-2 border-dashed border-border-subtle
-                       text-sm font-bold text-text-muted active:bg-bg-raised
+            className="flex-1 h-[44px] rounded-xl border-2 border-dashed border-border-emphasis
+                       text-sm font-bold text-text-secondary active:bg-bg-raised
                        flex items-center justify-center gap-2 touch-manipulation"
           >
             + Add Track
@@ -231,7 +221,7 @@ export function PolyrhythmControl() {
 
 export function usePolyBadge(): string {
   const tracks = useMetronomeStore((s) => s.tracks);
-  const num = useMetronomeStore((s) => s.meterNumerator);
-  if (tracks.length <= 1) return `${num}`;
-  return `${num}:${tracks.filter(t => t.id !== 'track-0').map(t => t.beats).join(':')}`;
+  const numerator = useMetronomeStore((s) => s.meterNumerator);
+  if (tracks.length <= 1) return `${numerator}`;
+  return `${numerator}:${tracks.filter((track) => track.id !== 'track-0').map((track) => track.beats).join(':')}`;
 }

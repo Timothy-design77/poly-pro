@@ -1,13 +1,4 @@
-/**
- * SessionDetailPage — Full-screen overlay with 4 swipeable tabs.
- *
- * Rendered via React Portal at document.body level.
- * Swipe left/right to navigate between tabs.
- * Timeline tab's canvas handles its own touch events (scroll/pinch)
- * so swipes within the canvas don't trigger tab switches.
- */
-
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionRecord, HitEventsRecord } from '../store/db';
 import * as db from '../store/db';
@@ -29,14 +20,10 @@ interface Props {
 
 const TABS: { id: TabId; label: string; help: string }[] = [
   { id: 'score', label: 'Score', help: 'Overall session score, consistency metrics, and auto-generated insights about your playing.' },
-  { id: 'timeline', label: 'Timeline', help: 'DAW-style view of your recording with onset markers, metronome grid, and scoring controls.' },
-  { id: 'charts', label: 'Charts', help: 'Detailed charts: timing distribution, fatigue, per-beat, drift, push/pull, swing analysis, and velocity/dynamics.' },
-  { id: 'tune', label: 'Tune', help: 'Adjust analysis parameters and see how they affect your score in real-time. Changes don\'t affect saved data.' },
+  { id: 'timeline', label: 'Timeline', help: 'DAW-style view of your recording with onset markers, metronome grid, playback, and scoring alignment.' },
+  { id: 'charts', label: 'Charts', help: 'Timing distribution, fatigue, per-beat, drift, push/pull, swing, instrument, and velocity/dynamics charts.' },
+  { id: 'tune', label: 'Tune', help: 'Adjust analysis parameters and re-score the session using the stored beat grid and hit data.' },
 ];
-
-const TAB_IDS: TabId[] = ['score', 'timeline', 'charts', 'tune'];
-const SWIPE_THRESHOLD = 50;
-const VELOCITY_THRESHOLD = 0.3;
 
 export function SessionDetailPage({ session, visible, onClose, onDelete }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('score');
@@ -44,14 +31,6 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
   const [loading, setLoading] = useState(false);
   const [openChart, setOpenChart] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  // ─── Swipe state ───
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const startXRef = useRef(0);
-  const startYRef = useRef(0);
-  const startTimeRef = useRef(0);
-  const directionRef = useRef<'h' | 'v' | null>(null);
 
   const handleNavigateChart = useCallback((chartId: string) => {
     setOpenChart(chartId);
@@ -61,13 +40,12 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
   const handleDelete = useCallback(async () => {
     if (!session) return;
     try {
-      // Store handles record + recording + hit events + legacy blobs
       await useSessionStore.getState().deleteSession(session.id);
       setShowDeleteConfirm(false);
       onDelete?.(session.id);
       onClose();
-    } catch (err) {
-      console.error('Delete failed:', err);
+    } catch (error) {
+      console.error('Delete failed:', error);
     }
   }, [session, onDelete, onClose]);
 
@@ -76,83 +54,36 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
       setHitEvents(null);
       return;
     }
+
     setLoading(true);
-    db.getHitEvents(session.id).then((events) => {
-      setHitEvents(events ?? null);
-      setLoading(false);
-    }).catch((err) => {
-      console.error('Failed to load hit events:', err);
-      setHitEvents(null);
-      setLoading(false);
-    });
+    db.getHitEvents(session.id)
+      .then((events) => {
+        setHitEvents(events ?? null);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error('Failed to load hit events:', error);
+        setHitEvents(null);
+        setLoading(false);
+      });
   }, [session?.id, visible]);
 
   useEffect(() => {
     if (visible) {
       setActiveTab('score');
-      setDragX(0);
+      setOpenChart(null);
       setShowDeleteConfirm(false);
     }
   }, [session?.id, visible]);
 
-  // ─── Swipe handlers ───
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    // Don't capture if touch starts on a canvas (timeline has its own handler)
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'CANVAS') return;
-
-    startXRef.current = e.touches[0].clientX;
-    startYRef.current = e.touches[0].clientY;
-    startTimeRef.current = Date.now();
-    directionRef.current = null;
-    setIsDragging(true);
-  }, []);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isDragging) return;
-
-    const dx = e.touches[0].clientX - startXRef.current;
-    const dy = e.touches[0].clientY - startYRef.current;
-
-    // Lock direction on first significant movement
-    if (directionRef.current === null) {
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-        directionRef.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
-      }
-      return;
-    }
-
-    if (directionRef.current === 'h') {
-      const tabIdx = TAB_IDS.indexOf(activeTab);
-      // Rubber-band at edges
-      let adj = dx;
-      if ((tabIdx === 0 && dx > 0) || (tabIdx === TAB_IDS.length - 1 && dx < 0)) {
-        adj = dx * 0.2;
-      }
-      setDragX(adj);
-    }
-  }, [isDragging, activeTab]);
-
-  const handleTouchEnd = useCallback(() => {
-    if (!isDragging) return;
-    setIsDragging(false);
-
-    if (directionRef.current === 'h') {
-      const elapsed = Math.max(1, Date.now() - startTimeRef.current);
-      const velocity = Math.abs(dragX) / elapsed;
-      const tabIdx = TAB_IDS.indexOf(activeTab);
-
-      let nextIdx = tabIdx;
-      if (Math.abs(dragX) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
-        if (dragX > 0 && tabIdx > 0) nextIdx = tabIdx - 1;
-        else if (dragX < 0 && tabIdx < TAB_IDS.length - 1) nextIdx = tabIdx + 1;
-      }
-      setActiveTab(TAB_IDS[nextIdx]);
-    }
-
-    directionRef.current = null;
-    setDragX(0);
-  }, [isDragging, dragX, activeTab]);
+  useEffect(() => {
+    if (!visible) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [visible, onClose]);
 
   if (!visible || !session) return null;
 
@@ -162,36 +93,42 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
   const timeStr = new Date(session.date).toLocaleTimeString(undefined, {
     hour: '2-digit', minute: '2-digit',
   });
+  const activeHelp = TABS.find((tab) => tab.id === activeTab)?.help ?? '';
 
-  const tabIdx = TAB_IDS.indexOf(activeTab);
-  const pageWidth = 100 / TAB_IDS.length;
-  const trackOffset = -(tabIdx * pageWidth);
-  const dragPercent = isDragging && directionRef.current === 'h'
-    ? (dragX / (window.innerWidth || 400)) * pageWidth
-    : 0;
+  const content = (() => {
+    if (activeTab === 'score') {
+      return <ScoreTab session={session} hitEvents={hitEvents} onNavigateChart={handleNavigateChart} />;
+    }
+    if (activeTab === 'timeline') {
+      return <TimelineTab session={session} hitEvents={hitEvents} />;
+    }
+    if (activeTab === 'charts') {
+      return <ChartsTab session={session} hitEvents={hitEvents} autoOpenSection={openChart} />;
+    }
+    return <TuneTab session={session} hitEvents={hitEvents} />;
+  })();
 
   return createPortal(
-    <div
-      data-no-swipe
-      className="fixed inset-0 z-50 flex flex-col animate-sheet-up"
-      style={{ backgroundColor: '#0C0C0E' }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 shrink-0">
+    <div data-no-swipe className="fixed inset-0 z-50 flex flex-col bg-bg-primary animate-sheet-up">
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 shrink-0 border-b border-border-subtle bg-bg-surface">
         <button
+          type="button"
           onClick={onClose}
-          className="text-sm text-text-secondary touch-manipulation py-2 px-1"
+          className="min-h-[40px] text-sm font-semibold text-text-primary touch-manipulation px-1"
         >
           ← Back
         </button>
-        <span className="text-sm text-text-muted flex items-center gap-1.5">
+        <span className="text-xs text-text-muted flex items-center gap-1.5 text-center">
           {dateStr} {timeStr}
-          <HelpTip text={TABS.find((t) => t.id === activeTab)?.help ?? ''} />
+          <HelpTip text={activeHelp} />
         </span>
         {onDelete ? (
           <button
+            type="button"
             onClick={() => setShowDeleteConfirm(true)}
-            className="text-sm text-text-muted touch-manipulation py-2 px-1 hover:text-danger transition-colors"
+            className="w-[40px] h-[40px] flex items-center justify-center text-text-secondary
+                       touch-manipulation rounded-lg active:bg-danger-dim active:text-danger"
+            aria-label="Delete session"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <polyline points="3 6 5 6 21 6" />
@@ -199,26 +136,25 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
             </svg>
           </button>
         ) : (
-          <div className="w-12" />
+          <div className="w-[40px]" />
         )}
       </div>
 
-      {/* Delete confirmation */}
       {showDeleteConfirm && (
-        <div className="mx-4 mb-2 bg-danger-dim border border-danger/30 rounded-md p-3 shrink-0">
-          <p className="text-danger text-xs font-medium mb-2">
-            Delete this session and all its data?
-          </p>
+        <div className="mx-4 mt-3 bg-danger-dim border border-danger/30 rounded-lg p-3 shrink-0">
+          <p className="text-danger text-xs font-medium mb-2">Delete this session and all its data?</p>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setShowDeleteConfirm(false)}
-              className="flex-1 py-2 border border-border-subtle text-text-secondary rounded-md text-xs min-h-[40px]"
+              className="flex-1 min-h-[42px] border border-border-subtle bg-bg-surface text-text-secondary rounded-lg text-xs font-semibold"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleDelete}
-              className="flex-1 py-2 bg-danger text-white rounded-md text-xs font-medium min-h-[40px]"
+              className="flex-1 min-h-[42px] bg-danger text-white rounded-lg text-xs font-semibold"
             >
               Delete
             </button>
@@ -226,67 +162,29 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
         </div>
       )}
 
-      {/* Tab bar */}
-      <div className="flex px-4 gap-1 shrink-0 mb-2">
+      <div className="grid grid-cols-4 gap-1 px-4 py-2 shrink-0 bg-bg-primary">
         {TABS.map((tab) => (
           <button
+            type="button"
             key={tab.id}
-            onClick={() => { setActiveTab(tab.id); setDragX(0); }}
-            className={`
-              flex-1 py-2 rounded-lg text-xs font-semibold tracking-wide
-              touch-manipulation select-none transition-colors
+            onClick={() => setActiveTab(tab.id)}
+            aria-current={activeTab === tab.id ? 'page' : undefined}
+            className={`min-h-[42px] rounded-lg text-[11px] font-bold tracking-wide touch-manipulation select-none border
               ${activeTab === tab.id
-                ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
-                : 'text-text-muted active:bg-bg-raised'}
-            `}
+                ? 'bg-accent text-bg-primary border-accent'
+                : 'bg-bg-surface text-text-secondary border-border-subtle active:bg-bg-raised'}`}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Swipeable tab content */}
-      <div
-        className="flex-1 overflow-hidden"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 overscroll-contain">
         {loading ? (
-          <div className="flex items-center justify-center h-32 px-4">
+          <div className="flex items-center justify-center h-32">
             <span className="text-text-muted text-sm">Loading analysis…</span>
           </div>
-        ) : (
-          <div
-            className="flex h-full will-change-transform"
-            style={{
-              width: `${TAB_IDS.length * 100}%`,
-              transform: `translateX(${trackOffset + dragPercent}%)`,
-              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
-            }}
-          >
-            {TAB_IDS.map((tabId) => (
-              <div
-                key={tabId}
-                className="h-full overflow-y-auto px-4 pb-20"
-                style={{ width: `${pageWidth}%` }}
-              >
-                {tabId === 'score' && (
-                  <ScoreTab session={session} hitEvents={hitEvents} onNavigateChart={handleNavigateChart} />
-                )}
-                {tabId === 'timeline' && (
-                  <TimelineTab session={session} hitEvents={hitEvents} />
-                )}
-                {tabId === 'charts' && (
-                  <ChartsTab session={session} hitEvents={hitEvents} autoOpenSection={openChart} />
-                )}
-                {tabId === 'tune' && (
-                  <TuneTab session={session} hitEvents={hitEvents} />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        ) : content}
       </div>
     </div>,
     document.body,

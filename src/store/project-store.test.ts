@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the IDB layer — these tests exercise store logic only.
 vi.mock('./db', () => ({
   getAllProjects: vi.fn(async () => []),
   getAllPresets: vi.fn(async () => []),
@@ -37,6 +36,29 @@ function makeProject(overrides: Partial<ProjectRecord> = {}): ProjectRecord {
   };
 }
 
+describe('quick start project state', () => {
+  it('loads with no forced project when the database has none', async () => {
+    useProjectStore.setState({ projects: [], activeProjectId: null, presets: [], loaded: false });
+    await useProjectStore.getState().loadFromDB();
+
+    expect(useProjectStore.getState().projects).toEqual([]);
+    expect(useProjectStore.getState().activeProjectId).toBeNull();
+    expect(useProjectStore.getState().loaded).toBe(true);
+  });
+
+  it('can leave a project and return to Quick Start', () => {
+    useProjectStore.setState({
+      projects: [makeProject()],
+      activeProjectId: 'p1',
+      presets: [],
+      loaded: true,
+    });
+
+    useProjectStore.getState().setActiveProject(null);
+    expect(useProjectStore.getState().activeProjectId).toBeNull();
+  });
+});
+
 describe('project auto-advance', () => {
   beforeEach(() => {
     useProjectStore.setState({
@@ -68,7 +90,7 @@ describe('project auto-advance', () => {
   it('a failing session resets the streak', async () => {
     await record(90);
     await record(90);
-    await record(60); // fail
+    await record(60);
     expect(project().consecutiveCount).toBe(0);
     expect(project().currentBpm).toBe(100);
   });
@@ -76,7 +98,7 @@ describe('project auto-advance', () => {
   it('sessions below the current BPM neither count nor reset', async () => {
     await record(90);
     await record(90);
-    const warmup = await record(50, 80); // low score but warm-up tempo
+    const warmup = await record(50, 80);
     expect(warmup.advanced).toBe(false);
     expect(project().consecutiveCount).toBe(2);
   });

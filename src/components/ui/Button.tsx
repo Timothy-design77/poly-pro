@@ -7,15 +7,15 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles = {
-  primary: 'bg-[rgba(255,255,255,0.85)] text-bg-primary active:bg-[rgba(255,255,255,0.95)]',
-  secondary: 'bg-bg-surface border-[1.5px] border-border-subtle text-text-secondary active:bg-bg-raised active:border-border-emphasis',
+  primary: 'bg-accent text-bg-primary active:bg-accent-hover',
+  secondary: 'bg-bg-surface border-[1.5px] border-border-subtle text-text-primary active:bg-bg-raised active:border-border-emphasis',
   ghost: 'bg-transparent text-text-secondary active:bg-bg-raised',
 };
 
 const sizeStyles = {
-  sm: 'h-[36px] text-xs px-3 rounded-lg',
-  md: 'h-[44px] text-sm px-4 rounded-xl',
-  lg: 'h-[52px] text-sm px-5 rounded-[14px]',
+  sm: 'h-[40px] text-xs px-3 rounded-lg',
+  md: 'h-[48px] text-sm px-4 rounded-xl',
+  lg: 'h-[54px] text-sm px-5 rounded-[14px]',
 };
 
 export function Button({
@@ -23,10 +23,12 @@ export function Button({
   size = 'md',
   children,
   className = '',
+  type = 'button',
   ...props
 }: ButtonProps) {
   return (
     <button
+      type={type}
       className={`
         flex items-center justify-center gap-2 font-bold tracking-wider
         transition-all touch-manipulation select-none

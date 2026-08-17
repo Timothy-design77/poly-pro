@@ -1,17 +1,6 @@
 /**
- * PrecisionSlider — custom slider with:
- *
- * 1. Vertical offset precision: drag finger down from slider track for
- *    finer control. The further down you drag, the less sensitive.
- *    Normal = 1:1 mapping. 40px down = 4× precision. 80px+ = 10× precision.
- *
- * 2. Direction lock: first 10px of touch movement decides if this is a
- *    horizontal slider drag or a vertical scroll. Prevents accidental
- *    slider changes while scrolling.
- *
- * 3. Tap-to-type: tap the value label to open an inline number input.
- *
- * Drop-in replacement for <input type="range">.
+ * PrecisionSlider — scroll-safe slider with vertical-offset fine control and
+ * tap-to-type exact numeric entry.
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -23,22 +12,17 @@ interface Props {
   step: number;
   value: number;
   onChange: (value: number) => void;
-  /** Format function for the value display. If omitted, shows raw number. */
   formatValue?: (value: number) => string;
-  /** If true, show the value label and make it tappable for direct input */
   showValue?: boolean;
-  /** Label text shown to the left of the value */
   label?: string;
-  /** Additional class on the outer container */
   className?: string;
-  /** Unit suffix for the type-in input (e.g. "ms", "%") */
   unit?: string;
 }
 
 const DIRECTION_LOCK_PX = 10;
-const PRECISION_START_PX = 30;  // vertical offset where precision kicks in
-const MAX_PRECISION_PX = 100;   // vertical offset for maximum precision
-const MIN_SENSITIVITY = 0.1;    // at max offset, 10× precision
+const PRECISION_START_PX = 30;
+const MAX_PRECISION_PX = 100;
+const MIN_SENSITIVITY = 0.1;
 
 export function PrecisionSlider({
   min,
@@ -54,27 +38,26 @@ export function PrecisionSlider({
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [precisionLevel, setPrecisionLevel] = useState(1); // 1 = normal
+  const [precisionLevel, setPrecisionLevel] = useState(1);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState('');
 
-  // Touch tracking
   const touchIdRef = useRef<number | null>(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const startValueRef = useRef(value);
   const directionRef = useRef<'h' | 'v' | null>(null);
-  const activeRef = useRef(false); // true once direction locked to horizontal
-
+  const activeRef = useRef(false);
   const trackWidth = useRef(0);
   const lockHeldRef = useRef(false);
 
-  // Safety: never leave the global lock held if we unmount mid-drag
   useEffect(() => () => {
-    if (lockHeldRef.current) { endControlDrag(); lockHeldRef.current = false; }
+    if (lockHeldRef.current) {
+      endControlDrag();
+      lockHeldRef.current = false;
+    }
   }, []);
 
-  // Measure track on mount / resize
   useEffect(() => {
     const measure = () => {
       if (trackRef.current) trackWidth.current = trackRef.current.clientWidth;
@@ -86,51 +69,48 @@ export function PrecisionSlider({
 
   const clampAndStep = useCallback((raw: number): number => {
     const clamped = Math.max(min, Math.min(max, raw));
-    // Snap to step
     const steps = Math.round((clamped - min) / step);
-    return Math.round((min + steps * step) * 1e10) / 1e10; // avoid float drift
+    return Math.round((min + steps * step) * 1e10) / 1e10;
   }, [min, max, step]);
 
-  const getFraction = () => (value - min) / (max - min);
+  const fraction = max === min ? 0 : Math.max(0, Math.min(1, (value - min) / (max - min)));
 
-  // ─── Pointer events (unified touch + mouse) ───
+  const handlePointerDown = useCallback((event: React.PointerEvent) => {
+    if (isEditing || !trackRef.current) return;
 
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (isEditing) return;
-    const rect = trackRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    touchIdRef.current = e.pointerId;
-    startXRef.current = e.clientX;
-    startYRef.current = e.clientY;
+    touchIdRef.current = event.pointerId;
+    startXRef.current = event.clientX;
+    startYRef.current = event.clientY;
     startValueRef.current = value;
     directionRef.current = null;
     activeRef.current = false;
     setPrecisionLevel(1);
 
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (event.target as HTMLElement).setPointerCapture(event.pointerId);
     beginControlDrag();
     lockHeldRef.current = true;
   }, [value, isEditing]);
 
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (touchIdRef.current !== e.pointerId) return;
+  const handlePointerMove = useCallback((event: React.PointerEvent) => {
+    if (touchIdRef.current !== event.pointerId) return;
 
-    const dx = e.clientX - startXRef.current;
-    const dy = e.clientY - startYRef.current;
+    const dx = event.clientX - startXRef.current;
+    const dy = event.clientY - startYRef.current;
 
-    // Direction lock
     if (directionRef.current === null) {
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < DIRECTION_LOCK_PX) return; // not enough movement yet
+      const distance = Math.hypot(dx, dy);
+      if (distance < DIRECTION_LOCK_PX) return;
 
       if (Math.abs(dy) > Math.abs(dx) * 1.2) {
-        // Vertical — let scroll happen, release the slider
         directionRef.current = 'v';
         touchIdRef.current = null;
-        if (lockHeldRef.current) { endControlDrag(); lockHeldRef.current = false; }
+        if (lockHeldRef.current) {
+          endControlDrag();
+          lockHeldRef.current = false;
+        }
         return;
       }
+
       directionRef.current = 'h';
       activeRef.current = true;
       setIsDragging(true);
@@ -138,7 +118,6 @@ export function PrecisionSlider({
 
     if (directionRef.current !== 'h') return;
 
-    // Compute precision from vertical offset
     const verticalOffset = Math.abs(dy);
     let sensitivity = 1;
     if (verticalOffset > PRECISION_START_PX) {
@@ -147,28 +126,19 @@ export function PrecisionSlider({
     }
     setPrecisionLevel(sensitivity);
 
-    // Apply horizontal movement with precision scaling
-    const tw = trackWidth.current || 200;
-    const rangePx = tw;
-    const range = max - min;
-    const valueDelta = (dx / rangePx) * range * sensitivity;
-    const newValue = clampAndStep(startValueRef.current + valueDelta);
-
-    if (newValue !== value) {
-      onChange(newValue);
-    }
+    const width = trackWidth.current || 200;
+    const newValue = clampAndStep(startValueRef.current + (dx / width) * (max - min) * sensitivity);
+    if (newValue !== value) onChange(newValue);
   }, [min, max, value, onChange, clampAndStep]);
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (touchIdRef.current !== e.pointerId) return;
+  const handlePointerUp = useCallback((event: React.PointerEvent) => {
+    if (touchIdRef.current !== event.pointerId) return;
 
-    // If no direction was locked, this was a tap on the track — jump to position
     if (directionRef.current === null && !activeRef.current) {
       const rect = trackRef.current?.getBoundingClientRect();
       if (rect) {
-        const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        const newValue = clampAndStep(min + frac * (max - min));
-        onChange(newValue);
+        const frac = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        onChange(clampAndStep(min + frac * (max - min)));
       }
     }
 
@@ -177,10 +147,11 @@ export function PrecisionSlider({
     activeRef.current = false;
     setIsDragging(false);
     setPrecisionLevel(1);
-    if (lockHeldRef.current) { endControlDrag(); lockHeldRef.current = false; }
+    if (lockHeldRef.current) {
+      endControlDrag();
+      lockHeldRef.current = false;
+    }
   }, [min, max, onChange, clampAndStep]);
-
-  // ─── Tap-to-type ───
 
   const handleValueTap = useCallback(() => {
     setEditText(String(value));
@@ -189,36 +160,30 @@ export function PrecisionSlider({
 
   const handleEditSubmit = useCallback(() => {
     const parsed = parseFloat(editText);
-    if (!isNaN(parsed)) {
-      onChange(clampAndStep(parsed));
-    }
+    if (!Number.isNaN(parsed)) onChange(clampAndStep(parsed));
     setIsEditing(false);
   }, [editText, onChange, clampAndStep]);
 
-  const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleEditSubmit();
-    if (e.key === 'Escape') setIsEditing(false);
+  const handleEditKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'Enter') handleEditSubmit();
+    if (event.key === 'Escape') setIsEditing(false);
   }, [handleEditSubmit]);
 
-  // ─── Render ───
-
-  const fraction = getFraction();
   const displayValue = formatValue ? formatValue(value) : (
     step < 1 ? value.toFixed(String(step).split('.')[1]?.length || 1) : String(value)
   );
 
   return (
     <div data-no-swipe className={`space-y-1 ${className}`}>
-      {/* Label + value row */}
       {(label || showValue) && (
-        <div className="flex items-center justify-between">
-          {label && (
-            <span className="text-xs text-text-muted uppercase tracking-wider">{label}</span>
-          )}
+        <div className="flex items-center justify-between gap-2">
+          {label && <span className="text-xs text-text-muted uppercase tracking-wider">{label}</span>}
           {showValue && !isEditing && (
             <button
+              type="button"
               onClick={handleValueTap}
-              className="font-mono text-xs text-text-secondary px-1 py-0.5 rounded hover:bg-bg-raised transition-colors min-h-[28px] flex items-center"
+              className="font-mono text-xs text-text-primary px-2 py-1 rounded-md border border-transparent
+                         active:bg-bg-raised active:border-border-subtle transition-colors min-h-[32px] flex items-center"
             >
               {displayValue}{unit && <span className="text-text-muted ml-0.5">{unit}</span>}
             </button>
@@ -228,14 +193,15 @@ export function PrecisionSlider({
               <input
                 type="number"
                 value={editText}
-                onChange={(e) => setEditText(e.target.value)}
+                onChange={(event) => setEditText(event.target.value)}
                 onBlur={handleEditSubmit}
                 onKeyDown={handleEditKeyDown}
                 autoFocus
                 step={step}
                 min={min}
                 max={max}
-                className="w-20 px-1.5 py-0.5 bg-bg-primary border border-accent rounded text-xs font-mono text-text-primary text-right outline-none"
+                className="w-24 px-2 py-1 bg-bg-input border border-accent rounded-md text-xs
+                           font-mono text-text-primary text-right outline-none"
               />
               {unit && <span className="text-text-muted text-xs">{unit}</span>}
             </div>
@@ -243,35 +209,28 @@ export function PrecisionSlider({
         </div>
       )}
 
-      {/* Track */}
       <div
         ref={trackRef}
         data-no-swipe
-        className="relative h-10 flex items-center touch-manipulation select-none"
-        style={{ touchAction: 'pan-y' }} // Allow vertical scroll passthrough
+        className="relative h-10 flex items-center select-none"
+        style={{ touchAction: 'pan-y' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        {/* Track background */}
-        <div className="absolute inset-x-0 h-1.5 rounded-full overflow-hidden"
-          style={{ top: '50%', transform: 'translateY(-50%)' }}>
-          <div className="h-full bg-[rgba(255,255,255,0.08)]" />
+        <div
+          className="absolute inset-x-0 h-2 rounded-full overflow-hidden bg-bg-raised border border-border-subtle"
+          style={{ top: '50%', transform: 'translateY(-50%)' }}
+        >
           <div
-            className="absolute inset-y-0 left-0 rounded-full transition-none"
-            style={{
-              width: `${fraction * 100}%`,
-              backgroundColor: isDragging
-                ? 'rgba(255,255,255,0.6)'
-                : 'rgba(255,255,255,0.35)',
-            }}
+            className="absolute inset-y-0 left-0 rounded-full transition-none bg-accent"
+            style={{ width: `${fraction * 100}%`, opacity: isDragging ? 0.8 : 0.55 }}
           />
         </div>
 
-        {/* Thumb */}
         <div
-          className="absolute w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+          className="absolute w-5 h-5 rounded-full bg-accent border-2 border-bg-surface shadow-sm transition-transform"
           style={{
             left: `calc(${fraction * 100}% - 10px)`,
             top: '50%',
@@ -279,10 +238,9 @@ export function PrecisionSlider({
           }}
         />
 
-        {/* Precision indicator */}
         {isDragging && precisionLevel < 0.8 && (
           <div
-            className="absolute left-1/2 -translate-x-1/2 text-[8px] text-accent font-mono pointer-events-none"
+            className="absolute left-1/2 -translate-x-1/2 text-[8px] text-text-primary font-mono pointer-events-none"
             style={{ top: -12 }}
           >
             {precisionLevel < 0.3 ? '10×' : precisionLevel < 0.6 ? '4×' : '2×'} fine

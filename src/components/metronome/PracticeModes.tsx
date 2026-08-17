@@ -1,11 +1,11 @@
 import { useMetronomeStore } from '../../store/metronome-store';
 import { Toggle } from '../ui/Toggle';
 
-/**
- * Practice modes — lives inside a CollapsibleCard.
- * Count-in, Swing, Gap Click, Random Mute.
- * All controls enlarged for easy mobile use.
- */
+const sliderClass = `w-full accent-accent h-2 bg-bg-raised rounded-full appearance-none
+                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
+                     [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
+                     [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer`;
+
 export function PracticeModes() {
   const countInBars = useMetronomeStore((s) => s.countInBars);
   const setCountInBars = useMetronomeStore((s) => s.setCountInBars);
@@ -23,31 +23,23 @@ export function PracticeModes() {
   const playMuteCycleMuteBars = useMetronomeStore((s) => s.playMuteCycleMuteBars);
   const setPlayMuteCycle = useMetronomeStore((s) => s.setPlayMuteCycle);
 
+  const stepperButton = 'w-[48px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-bold touch-manipulation';
+
   return (
     <div className="space-y-5">
-      {/* Count-in */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-text-primary">Count-in Bars</span>
         </div>
         <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
-          <button
-            onClick={() => setCountInBars(Math.max(0, countInBars - 1))}
-            className="w-[48px] h-[44px] flex items-center justify-center text-text-secondary
-                       active:bg-bg-raised text-lg font-bold touch-manipulation"
-          >−</button>
+          <button type="button" onClick={() => setCountInBars(Math.max(0, countInBars - 1))} className={stepperButton}>−</button>
           <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">
             {countInBars === 0 ? 'Off' : countInBars}
           </span>
-          <button
-            onClick={() => setCountInBars(Math.min(8, countInBars + 1))}
-            className="w-[48px] h-[44px] flex items-center justify-center text-text-secondary
-                       active:bg-bg-raised text-lg font-bold touch-manipulation"
-          >+</button>
+          <button type="button" onClick={() => setCountInBars(Math.min(8, countInBars + 1))} className={stepperButton}>+</button>
         </div>
       </div>
 
-      {/* Swing */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-text-primary">Swing</span>
@@ -60,11 +52,8 @@ export function PracticeModes() {
           min="0"
           max="100"
           value={Math.round(swing * 100)}
-          onChange={(e) => setSwing(Number(e.target.value) / 100)}
-          className="w-full accent-white h-2 bg-bg-raised rounded-full appearance-none
-                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
-                     [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
-                     [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+          onChange={(event) => setSwing(Number(event.target.value) / 100)}
+          className={sliderClass}
         />
         {swing > 0 && subdivision <= 1 && (
           <div className="text-[11px] text-warning mt-1.5">
@@ -73,55 +62,37 @@ export function PracticeModes() {
         )}
       </div>
 
-      {/* Play/Mute Cycle — structured internalization */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-text-primary">Play / Mute Cycle</span>
-          <Toggle enabled={playMuteCycleEnabled} onChange={(v) => setPlayMuteCycle(v)} />
+          <Toggle enabled={playMuteCycleEnabled} onChange={(value) => setPlayMuteCycle(value)} />
         </div>
         {playMuteCycleEnabled && (
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-[10px] text-text-muted uppercase mb-1 block">Play Bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
-                <button
-                  onClick={() => setPlayMuteCycle(true, Math.max(1, playMuteCyclePlayBars - 1))}
-                  className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
-                             active:bg-bg-raised text-lg font-bold touch-manipulation"
-                >−</button>
+                <button type="button" onClick={() => setPlayMuteCycle(true, Math.max(1, playMuteCyclePlayBars - 1))} className={stepperButton}>−</button>
                 <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{playMuteCyclePlayBars}</span>
-                <button
-                  onClick={() => setPlayMuteCycle(true, Math.min(16, playMuteCyclePlayBars + 1))}
-                  className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
-                             active:bg-bg-raised text-lg font-bold touch-manipulation"
-                >+</button>
+                <button type="button" onClick={() => setPlayMuteCycle(true, Math.min(16, playMuteCyclePlayBars + 1))} className={stepperButton}>+</button>
               </div>
             </div>
             <div className="flex-1">
               <label className="text-[10px] text-text-muted uppercase mb-1 block">Mute Bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
-                <button
-                  onClick={() => setPlayMuteCycle(true, undefined, Math.max(1, playMuteCycleMuteBars - 1))}
-                  className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
-                             active:bg-bg-raised text-lg font-bold touch-manipulation"
-                >−</button>
+                <button type="button" onClick={() => setPlayMuteCycle(true, undefined, Math.max(1, playMuteCycleMuteBars - 1))} className={stepperButton}>−</button>
                 <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{playMuteCycleMuteBars}</span>
-                <button
-                  onClick={() => setPlayMuteCycle(true, undefined, Math.min(16, playMuteCycleMuteBars + 1))}
-                  className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
-                             active:bg-bg-raised text-lg font-bold touch-manipulation"
-                >+</button>
+                <button type="button" onClick={() => setPlayMuteCycle(true, undefined, Math.min(16, playMuteCycleMuteBars + 1))} className={stepperButton}>+</button>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Gap Click */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-text-primary">Gap Click</span>
-          <Toggle enabled={gapClickEnabled} onChange={(v) => setGapClick(v)} />
+          <Toggle enabled={gapClickEnabled} onChange={(value) => setGapClick(value)} />
         </div>
         {gapClickEnabled && (
           <div>
@@ -134,21 +105,17 @@ export function PracticeModes() {
               min="5"
               max="80"
               value={Math.round(gapClickProbability * 100)}
-              onChange={(e) => setGapClick(true, Number(e.target.value) / 100)}
-              className="w-full accent-white h-2 bg-bg-raised rounded-full appearance-none
-                         [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
-                         [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
-                         [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+              onChange={(event) => setGapClick(true, Number(event.target.value) / 100)}
+              className={sliderClass}
             />
           </div>
         )}
       </div>
 
-      {/* Random Mute */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-text-primary">Random Mute</span>
-          <Toggle enabled={randomMuteEnabled} onChange={(v) => setRandomMute(v)} />
+          <Toggle enabled={randomMuteEnabled} onChange={(value) => setRandomMute(value)} />
         </div>
         {randomMuteEnabled && (
           <div>
@@ -161,11 +128,8 @@ export function PracticeModes() {
               min="10"
               max="75"
               value={Math.round(randomMuteProbability * 100)}
-              onChange={(e) => setRandomMute(true, Number(e.target.value) / 100)}
-              className="w-full accent-white h-2 bg-bg-raised rounded-full appearance-none
-                         [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
-                         [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
-                         [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+              onChange={(event) => setRandomMute(true, Number(event.target.value) / 100)}
+              className={sliderClass}
             />
           </div>
         )}

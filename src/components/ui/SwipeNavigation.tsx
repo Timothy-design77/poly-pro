@@ -1,7 +1,5 @@
-import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavStore } from '../../store/nav-store';
-import { useSettingsStore } from '../../store/settings-store';
-import { isControlDragActive, ownsGesture } from '../../utils/gesture-lock';
 
 interface SwipeNavigationProps {
   pages: ReactNode[];
@@ -10,373 +8,124 @@ interface SwipeNavigationProps {
   settingsContent?: ReactNode;
 }
 
-const SWIPE_THRESHOLD = 50;
-const VELOCITY_THRESHOLD = 0.3;
-const SETTINGS_SNAP_FRACTION = 0.25;
-const SETTINGS_VELOCITY_THRESHOLD = 0.35;
-
+/**
+ * Tap-only application navigation.
+ *
+ * The component keeps the historical export name so existing imports remain
+ * stable, but horizontal page swiping and swipe-to-open settings are
+ * intentionally disabled. Mobile navigation is explicit and predictable:
+ * page buttons live at the bottom and Settings opens from a dedicated button.
+ */
 export function SwipeNavigation({
   pages,
   pageLabels,
   initialPage = 1,
   settingsContent,
 }: SwipeNavigationProps) {
-  const swipeNavEnabled = useSettingsStore((st) => st.swipeNavEnabled);
   const [currentPage, setCurrentPage] = useState(initialPage);
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Programmatic navigation from other components
   const targetPage = useNavStore((s) => s.targetPage);
   const clearTarget = useNavStore((s) => s.clearTarget);
+
   useEffect(() => {
-    if (targetPage !== null && targetPage !== currentPage) {
+    if (targetPage === null) return;
+
+    if (targetPage >= 0 && targetPage < pages.length) {
       setCurrentPage(targetPage);
-      setDragX(0);
-      clearTarget();
-    } else if (targetPage !== null) {
-      clearTarget();
+      setSettingsOpen(false);
     }
-  }, [targetPage, currentPage, clearTarget]);
-
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsReveal, setSettingsReveal] = useState(0);
-  const [settingsDragging, setSettingsDragging] = useState(false);
-  const [closeOffset, setCloseOffset] = useState(0);
-  const [closeDragging, setCloseDragging] = useState(false);
-
-  const rootRef = useRef<HTMLDivElement>(null);
-  const startXRef = useRef(0);
-  const startYRef = useRef(0);
-  const startTimeRef = useRef(0);
-  const directionRef = useRef<'h' | 'v' | null>(null);
-
-  const settingsPanelRef = useRef<HTMLDivElement>(null);
-  const settingsScrollRef = useRef<HTMLDivElement>(null);
-
-  // ─── Main content: HORIZONTAL swipe only (no vertical — that's for page scrolling) ───
-
-  const suppressedRef = useRef(false);
-  const nativeOwnedRef = useRef(false);
-
-  // Layer 1 (ground truth): capture-phase native listener fires before any
-  // React handler and records whether the touch began on a gesture-owning
-  // element, immune to any synthetic-event quirks.
-  useEffect(() => {
-    const onCapture = (e: TouchEvent) => {
-      nativeOwnedRef.current = ownsGesture(e.target);
-    };
-    document.addEventListener('touchstart', onCapture, { capture: true, passive: true });
-    return () => document.removeEventListener('touchstart', onCapture, true);
-  }, []);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    suppressedRef.current =
-      !swipeNavEnabled ||
-      e.touches.length > 1 ||
-      nativeOwnedRef.current ||
-      ownsGesture(e.target) ||
-      isControlDragActive();
-    if (suppressedRef.current) return;
-    const t = e.touches[0];
-    startXRef.current = t.clientX;
-    startYRef.current = t.clientY;
-    startTimeRef.current = Date.now();
-    directionRef.current = null;
-    setIsDragging(true);
-  }, [swipeNavEnabled]);
-
-  const handleTouchMove = useCallback(
-    (e: React.TouchEvent) => {
-      if (suppressedRef.current) return;
-      // A control drag taking over at ANY point freezes the page for the
-      // rest of this gesture, and snaps back any partial page drag.
-      if (isControlDragActive()) {
-        suppressedRef.current = true;
-        directionRef.current = null;
-        setDragX(0);
-        setIsDragging(false);
-        return;
-      }
-      const t = e.touches[0];
-      const dx = t.clientX - startXRef.current;
-      const dy = t.clientY - startYRef.current;
-
-      if (directionRef.current === null) {
-        // A second finger landing mid-gesture (pinch) cancels page swiping
-        if (e.touches.length > 1) {
-          suppressedRef.current = true;
-          setIsDragging(false);
-          return;
-        }
-        // Horizontal must clearly dominate to start a page swipe;
-        // anything ambiguous or vertical is treated as scrolling.
-        if (Math.abs(dx) >= 16 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-          const under = document.elementFromPoint(t.clientX, t.clientY);
-          if (ownsGesture(under)) {
-            suppressedRef.current = true;
-            setIsDragging(false);
-            return;
-          }
-          directionRef.current = 'h';
-        } else if (Math.abs(dy) >= 10) {
-          directionRef.current = 'v';
-        }
-        return;
-      }
-
-      // Only handle horizontal — vertical is native scroll
-      if (directionRef.current === 'h') {
-        let adj = dx;
-        if ((currentPage === 0 && dx > 0) || (currentPage === pages.length - 1 && dx < 0)) {
-          adj = dx * 0.2;
-        }
-        setDragX(adj);
-      }
-    },
-    [currentPage, pages.length],
-  );
-
-  const handleTouchEnd = useCallback(() => {
-    if (suppressedRef.current) { suppressedRef.current = false; return; }
-    if (!isDragging) return;
-    setIsDragging(false);
-
-    if (directionRef.current === 'h') {
-      const elapsed = Math.max(1, Date.now() - startTimeRef.current);
-      const velocity = Math.abs(dragX) / elapsed;
-      let next = currentPage;
-      if (Math.abs(dragX) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
-        if (dragX > 0 && currentPage > 0) next = currentPage - 1;
-        else if (dragX < 0 && currentPage < pages.length - 1) next = currentPage + 1;
-      }
-      setCurrentPage(next);
-      setDragX(0);
-    }
-
-    directionRef.current = null;
-  }, [isDragging, dragX, currentPage, pages.length]);
-
-  // ─── Settings handle: swipe up from BOTTOM HANDLE ONLY ───
-
-  const handleStartRef = useRef(0);
-  const handleTimeRef = useRef(0);
-
-  const handleHandleTouchStart = useCallback((e: React.TouchEvent) => {
-    handleStartRef.current = e.touches[0].clientY;
-    handleTimeRef.current = Date.now();
-    setSettingsDragging(true);
-  }, []);
-
-  const handleHandleTouchMove = useCallback((e: React.TouchEvent) => {
-    const dy = handleStartRef.current - e.touches[0].clientY;
-    if (dy > 0) {
-      setSettingsReveal(Math.min(dy, rootRef.current?.clientHeight || 900));
-    }
-  }, []);
-
-  const handleHandleTouchEnd = useCallback(() => {
-    const h = rootRef.current?.clientHeight || 900;
-    const elapsed = Math.max(1, Date.now() - handleTimeRef.current);
-    const velocity = settingsReveal / elapsed;
-
-    if (settingsReveal > h * SETTINGS_SNAP_FRACTION || velocity > SETTINGS_VELOCITY_THRESHOLD) {
-      setSettingsOpen(true);
-    }
-    setSettingsReveal(0);
-    setSettingsDragging(false);
-  }, [settingsReveal]);
-
-  // ─── Settings panel: swipe down ANYWHERE to close ───
+    clearTarget();
+  }, [targetPage, pages.length, clearTarget]);
 
   useEffect(() => {
     if (!settingsOpen) return;
-    const panel = settingsPanelRef.current;
-    if (!panel) return;
 
-    let startY = 0;
-    let startTime = 0;
-    let mode: 'dismiss' | 'scroll' | null = null;
-    let offset = 0;
-
-    const getScrollTop = () => {
-      const el = settingsScrollRef.current;
-      return el ? el.scrollTop : 0;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSettingsOpen(false);
     };
 
-    const onStart = (e: TouchEvent) => {
-      startY = e.touches[0].clientY;
-      startTime = Date.now();
-      // Controls with their own drag gestures can never dismiss the panel
-      mode = ownsGesture(e.target) || isControlDragActive() ? 'scroll' : null;
-      offset = 0;
-    };
-
-    const onMove = (e: TouchEvent) => {
-      const dy = e.touches[0].clientY - startY;
-
-      if (mode === null) {
-        if (Math.abs(dy) < 8) return;
-        if (dy > 0 && getScrollTop() <= 0) {
-          mode = 'dismiss';
-        } else {
-          mode = 'scroll';
-        }
-      }
-
-      if (mode === 'dismiss') {
-        e.preventDefault();
-        offset = Math.max(0, dy);
-        setCloseOffset(offset);
-        setCloseDragging(true);
-      }
-    };
-
-    const onEnd = () => {
-      if (mode === 'dismiss') {
-        const elapsed = Math.max(1, Date.now() - startTime);
-        const h = rootRef.current?.clientHeight || 900;
-        const velocity = offset / elapsed;
-
-        if (offset > h * SETTINGS_SNAP_FRACTION || velocity > SETTINGS_VELOCITY_THRESHOLD) {
-          setSettingsOpen(false);
-        }
-        setCloseOffset(0);
-        setCloseDragging(false);
-      }
-      mode = null;
-      offset = 0;
-    };
-
-    panel.addEventListener('touchstart', onStart, { passive: true });
-    panel.addEventListener('touchmove', onMove, { passive: false });
-    panel.addEventListener('touchend', onEnd, { passive: true });
-    panel.addEventListener('touchcancel', onEnd, { passive: true });
-
-    return () => {
-      panel.removeEventListener('touchstart', onStart);
-      panel.removeEventListener('touchmove', onMove);
-      panel.removeEventListener('touchend', onEnd);
-      panel.removeEventListener('touchcancel', onEnd);
-    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [settingsOpen]);
 
-  // Escape key
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && settingsOpen) setSettingsOpen(false);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [settingsOpen]);
-
-  // ─── Render calculations ───
-
-  const screenH = rootRef.current?.clientHeight || 900;
-  const pageWidth = 100 / pages.length;
-  const trackOffset = -(currentPage * pageWidth);
-  const rootWidth = rootRef.current?.clientWidth || 1;
-  const dragTrackPercent = (dragX / rootWidth) * 100 / pages.length;
-
-  let panelY: number;
-  let panelTransition: string;
-
-  if (settingsOpen) {
-    panelY = closeDragging ? closeOffset : 0;
-    panelTransition = closeDragging ? 'none' : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
-  } else if (settingsDragging && settingsReveal > 0) {
-    panelY = Math.max(0, screenH - settingsReveal);
-    panelTransition = 'none';
-  } else {
-    panelY = screenH;
-    panelTransition = 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
-  }
-
-  const showPanel = settingsOpen || (settingsDragging && settingsReveal > 0);
+  const navigateToPage = (index: number) => {
+    setCurrentPage(index);
+    setSettingsOpen(false);
+  };
 
   return (
-    <div ref={rootRef} className="relative h-full w-full overflow-hidden flex flex-col">
-      {/* Page indicator pills */}
-      <div className="flex items-center justify-center gap-3 py-2 z-10 shrink-0">
-        {pageLabels.map((label, i) => (
-          <button
-            key={label}
-            onClick={() => { setCurrentPage(i); setDragX(0); }}
-            aria-current={i === currentPage ? 'page' : undefined}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-pill transition-all duration-200 min-h-[32px]
-              ${i === currentPage
-                ? 'text-bg-primary bg-[rgba(255,255,255,0.85)]'
-                : 'text-text-muted active:text-text-secondary active:bg-accent-dim'
-              }`}
+    <div className="relative h-full w-full overflow-hidden flex flex-col bg-bg-primary">
+      {/* Active page. No horizontal track, touch handlers, or page-swipe gestures. */}
+      <main className="flex-1 min-h-0 overflow-hidden" aria-live="polite">
+        {pages.map((page, index) => (
+          <section
+            key={pageLabels[index] ?? index}
+            className={index === currentPage ? 'h-full' : 'hidden'}
+            aria-hidden={index !== currentPage}
           >
-            {label}
-          </button>
+            {page}
+          </section>
         ))}
-      </div>
+      </main>
 
-      {/* Pages track — horizontal swipe only */}
-      <div
-        className="flex-1 relative overflow-hidden"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+      {/* Bottom navigation keeps page changes deliberate and away from the BPM controls. */}
+      <nav
+        className="shrink-0 border-t border-border-subtle bg-bg-surface px-2 pt-2 pb-safe"
+        aria-label="Primary navigation"
       >
-        <div
-          className="flex h-full will-change-transform"
-          style={{
-            width: `${pages.length * 100}%`,
-            transform: `translateX(${trackOffset + dragTrackPercent}%)`,
-            transition: isDragging ? 'none' : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
-          }}
-        >
-          {pages.map((page, i) => (
-            <div
-              key={i}
-              className="h-full overflow-y-auto"
-              style={{ width: `${pageWidth}%` }}
-            >
-              {page}
-            </div>
-          ))}
+        <div className="grid grid-cols-4 gap-1.5 max-w-lg mx-auto">
+          {pageLabels.map((label, index) => {
+            const active = index === currentPage && !settingsOpen;
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => navigateToPage(index)}
+                aria-current={active ? 'page' : undefined}
+                className={`min-h-[48px] rounded-md px-2 py-2 text-xs font-semibold transition-colors ${
+                  active
+                    ? 'bg-accent text-bg-primary'
+                    : 'bg-bg-raised text-text-secondary active:bg-accent-dim active:text-text-primary'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-expanded={settingsOpen}
+            className={`min-h-[48px] rounded-md px-2 py-2 text-xs font-semibold transition-colors ${
+              settingsOpen
+                ? 'bg-accent text-bg-primary'
+                : 'bg-bg-raised text-text-secondary active:bg-accent-dim active:text-text-primary'
+            }`}
+          >
+            Settings
+          </button>
         </div>
-      </div>
+      </nav>
 
-      {/* Settings swipe-up handle — ONLY this area triggers settings open */}
-      <div
-        className="shrink-0 flex flex-col items-center pb-2 pt-1 touch-none"
-        onTouchStart={handleHandleTouchStart}
-        onTouchMove={handleHandleTouchMove}
-        onTouchEnd={handleHandleTouchEnd}
-      >
-        <div className="w-10 h-1 rounded-full bg-text-muted mb-1" />
-        <span className="text-[10px] text-text-muted tracking-wider uppercase">Settings</span>
-      </div>
-
-      {/* Settings panel — full screen, swipe down anywhere to close */}
-      {showPanel && (
-        <div
-          ref={settingsPanelRef}
-          className="absolute inset-0 z-50 flex flex-col bg-bg-primary will-change-transform"
-          style={{
-            transform: `translateY(${panelY}px)`,
-            transition: panelTransition,
-          }}
-        >
-          {/* Drag handle */}
-          <div className="pt-3 pb-2 flex justify-center shrink-0">
-            <div className="w-10 h-1 rounded-full bg-text-muted" />
-          </div>
-
-          {/* Header */}
-          <div className="flex items-center px-4 py-2 border-b border-border-subtle shrink-0">
+      {settingsOpen && (
+        <div className="absolute inset-0 z-50 flex flex-col bg-bg-primary animate-fade-in">
+          <header className="shrink-0 flex items-center justify-between gap-4 px-4 py-3 border-b border-border-subtle bg-bg-surface">
             <h2 className="text-lg font-semibold text-text-primary">Settings</h2>
-          </div>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(false)}
+              className="min-h-[44px] min-w-[72px] rounded-md bg-bg-raised px-3 text-sm font-semibold text-text-primary active:bg-accent-dim"
+            >
+              Done
+            </button>
+          </header>
 
-          {/* Scrollable content */}
-          <div ref={settingsScrollRef} className="flex-1 overflow-y-auto overscroll-none">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
             {settingsContent || (
               <div className="flex items-center justify-center h-full text-text-muted text-sm">
-                Settings coming in Phase 2
+                No settings available
               </div>
             )}
           </div>
