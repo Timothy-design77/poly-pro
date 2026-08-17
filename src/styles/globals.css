@@ -49,12 +49,10 @@ html, body, #root {
   -webkit-touch-callout: none;
 }
 
-/* Block native context menu on long-press */
 * {
   -webkit-touch-callout: none;
 }
 
-/* Prevent page-level overscroll; individual screens own vertical scrolling. */
 body {
   overscroll-behavior: none;
   position: fixed;
@@ -62,7 +60,6 @@ body {
   height: 100%;
 }
 
-/* Safe areas for notch/gesture bar */
 #root {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
@@ -70,7 +67,6 @@ body {
   padding-right: env(safe-area-inset-right);
 }
 
-/* Compact scrollbar that remains visible on the light surface. */
 ::-webkit-scrollbar {
   width: 4px;
 }
@@ -82,33 +78,29 @@ body {
   border-radius: 4px;
 }
 
-/* Re-allow selection on editable fields only. */
 input, textarea {
   -webkit-user-select: text;
   -moz-user-select: text;
   user-select: text;
 }
 
-/* Monospace for all numeric data */
 .font-mono {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
-/* Visible keyboard focus; touch/mouse are unaffected. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-/* ─── Shared motion ─── */
-
+/* Motion is deliberately short: controls should feel immediate on mobile. */
 @keyframes slide-up {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
 .animate-slide-up {
-  animation: slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  animation: slide-up 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 
 @keyframes fade-in {
@@ -116,23 +108,23 @@ input, textarea {
   to { opacity: 1; }
 }
 .animate-fade-in {
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in 0.12s ease-out;
 }
 
 @keyframes modal-pop {
-  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  from { opacity: 0; transform: scale(0.975) translateY(5px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 .animate-modal-pop {
-  animation: modal-pop 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+  animation: modal-pop 0.16s cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 
 @keyframes sheet-up {
-  from { transform: translateY(24px); opacity: 0; }
+  from { transform: translateY(14px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 .animate-sheet-up {
-  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  animation: sheet-up 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 
 @keyframes app-enter {
@@ -140,7 +132,7 @@ input, textarea {
   to { opacity: 1; }
 }
 .animate-app-enter {
-  animation: app-enter 0.3s ease-out;
+  animation: app-enter 0.18s ease-out;
 }
 
 @keyframes splash-pulse {
@@ -149,25 +141,6 @@ input, textarea {
 }
 .animate-splash-pulse {
   animation: splash-pulse 1.2s ease-in-out infinite;
-}
-
-.collapse-grid {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.25s cubic-bezier(0.32, 0.72, 0, 1);
-}
-.collapse-grid.is-open {
-  grid-template-rows: 1fr;
-}
-.collapse-grid > .collapse-inner {
-  overflow: hidden;
-  min-height: 0;
-  visibility: hidden;
-  transition: visibility 0.25s;
-}
-.collapse-grid.is-open > .collapse-inner {
-  visibility: visible;
-  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
