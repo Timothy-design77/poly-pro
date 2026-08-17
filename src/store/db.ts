@@ -140,7 +140,15 @@ export class DatabaseUnavailableError extends Error {
   }
 }
 
-const REQUIRED_STORES = ['settings', 'projects', 'sessions', 'recordings'] as const;
+const REQUIRED_STORES = [
+  'settings',
+  'presets',
+  'projects',
+  'sessions',
+  'recordings',
+  'instrumentProfiles',
+  'customSamples',
+] as const;
 const DB_SOFT_TIMEOUT_MS = 3_000;
 const DB_HARD_TIMEOUT_MS = 10_000;
 

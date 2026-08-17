@@ -433,11 +433,19 @@ export function useRecording() {
 
         // Avoid a second recording-sized Float32Array allocation. Blob accepts
         // the original chunk buffers directly and preserves sample order.
-        const parts: BlobPart[] = chunks.map((chunk) => (
-          chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength
-            ? chunk.buffer
-            : chunk.slice().buffer
-        ));
+        const parts: BlobPart[] = chunks.map((chunk) => {
+          const sourceBuffer = chunk.buffer;
+          if (
+            sourceBuffer instanceof ArrayBuffer
+            && chunk.byteOffset === 0
+            && chunk.byteLength === sourceBuffer.byteLength
+          ) {
+            return sourceBuffer;
+          }
+          // AudioWorklet PCM arrives in ordinary ArrayBuffers. Slice creates a
+          // bounded ArrayBuffer when the view covers only part of its source.
+          return chunk.slice().buffer as ArrayBuffer;
+        });
         const pcmBlob = new Blob(parts, { type: 'application/octet-stream' });
 
         const activeProjectId = useProjectStore.getState().activeProjectId;
