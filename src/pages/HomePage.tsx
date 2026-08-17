@@ -40,7 +40,7 @@ export function HomePage() {
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
-  const [dialSize, setDialSize] = useState(240);
+  const [dialSize, setDialSize] = useState(320);
 
   const recording = useRecording();
   const analysis = useAnalysis();
@@ -124,8 +124,8 @@ export function HomePage() {
     const measure = () => {
       const el = dialContainerRef.current;
       if (!el) return;
-      const size = Math.round(el.clientWidth * 0.74);
-      setDialSize(Math.max(210, Math.min(340, size)));
+      const size = Math.round(el.clientWidth * 0.96);
+      setDialSize(Math.max(280, Math.min(520, size)));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -221,7 +221,10 @@ export function HomePage() {
         </div>
 
         {/* The BPM ring itself is the only keypad entry control on the primary surface. */}
-        <div ref={dialContainerRef} className="flex items-center justify-center relative pb-2">
+        <div
+          ref={dialContainerRef}
+          className="-mx-4 w-[calc(100%+2rem)] flex items-center justify-center relative pb-3"
+        >
           <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
         </div>
 
