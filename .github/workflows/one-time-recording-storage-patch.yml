@@ -1,0 +1,175 @@
+name: One-time Recording Storage Patch
+
+on:
+  push:
+    branches: [agent/production-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/production-hardening
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply bounded recording-storage integration
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          function replaceOnce(source, before, after, label) {
+            if (!source.includes(before)) throw new Error(`Patch target not found: ${label}`);
+            return source.replace(before, after);
+          }
+
+          const recordingPath = 'src/hooks/useRecording.ts';
+          let source = fs.readFileSync(recordingPath, 'utf8');
+
+          source = replaceOnce(
+            source,
+            "import type { ScheduledBeat } from '../audio/types';",
+            "import type { ScheduledBeat } from '../audio/types';\nimport { createRecordingSink, type RecordingSink } from '../platform/recordingSink';",
+            'recording-sink import',
+          );
+          source = replaceOnce(
+            source,
+            "  | 'audio-worklet'\n  | 'audio-graph'",
+            "  | 'audio-worklet'\n  | 'storage'\n  | 'audio-graph'",
+            'storage preparation stage',
+          );
+          source = replaceOnce(
+            source,
+            "  const pcmChunksRef = useRef<Float32Array[]>([]);",
+            "  const recordingSinkRef = useRef<RecordingSink | null>(null);",
+            'recording sink ref',
+          );
+          source = replaceOnce(
+            source,
+            `  const releaseActivity = useCallback(() => {\n    releaseActivityRef.current?.();\n    releaseActivityRef.current = null;\n  }, []);`,
+            `  const releaseActivity = useCallback(() => {\n    releaseActivityRef.current?.();\n    releaseActivityRef.current = null;\n  }, []);\n\n  const discardRecordingSink = useCallback(async () => {\n    const sink = recordingSinkRef.current;\n    recordingSinkRef.current = null;\n    if (!sink) return;\n    try {\n      await sink.discard();\n    } catch (error) {\n      console.warn('[recording] Could not discard staged audio:', error);\n    }\n  }, []);`,
+            'discard recording sink helper',
+          );
+          source = replaceOnce(
+            source,
+            `    cleanupCaptureResources();\n    stopTransportIfOwned();\n    releaseActivity();\n    resetToIdle();\n  }, [cleanupCaptureResources, releaseActivity, resetToIdle, stopTransportIfOwned]);`,
+            `    cleanupCaptureResources();\n    void discardRecordingSink();\n    stopTransportIfOwned();\n    releaseActivity();\n    resetToIdle();\n  }, [cleanupCaptureResources, discardRecordingSink, releaseActivity, resetToIdle, stopTransportIfOwned]);`,
+            'cancel preparation sink cleanup',
+          );
+          source = replaceOnce(
+            source,
+            `  useEffect(() => () => {\n    startupAbortRef.current?.abort();\n    cleanupCaptureResources();\n    stopTransportIfOwned();\n    releaseActivity();\n  }, [cleanupCaptureResources, releaseActivity, stopTransportIfOwned]);`,
+            `  useEffect(() => () => {\n    startupAbortRef.current?.abort();\n    cleanupCaptureResources();\n    void discardRecordingSink();\n    stopTransportIfOwned();\n    releaseActivity();\n  }, [cleanupCaptureResources, discardRecordingSink, releaseActivity, stopTransportIfOwned]);`,
+            'unmount sink cleanup',
+          );
+          source = replaceOnce(
+            source,
+            `      setState((current) => ({ ...current, preparationStage: 'audio-graph' }));\n      const source = context.createMediaStreamSource(micResult.stream);`,
+            `      setState((current) => ({ ...current, preparationStage: 'storage' }));\n      recordingSinkRef.current = await createRecordingSink();\n\n      setState((current) => ({ ...current, preparationStage: 'audio-graph' }));\n      const source = context.createMediaStreamSource(micResult.stream);`,
+            'recording sink creation',
+          );
+          source = replaceOnce(
+            source,
+            `      pcmChunksRef.current = [];\n      realtimeOnsetCountRef.current = 0;`,
+            `      realtimeOnsetCountRef.current = 0;`,
+            'remove chunk reset',
+          );
+          source = replaceOnce(
+            source,
+            `          pcmChunksRef.current.push(samples);`,
+            `          recordingSinkRef.current?.append(samples);`,
+            'stream PCM chunk',
+          );
+          source = replaceOnce(
+            source,
+            `      startupAbortRef.current = null;\n      cleanupCaptureResources();\n      stopTransportIfOwned();`,
+            `      startupAbortRef.current = null;\n      cleanupCaptureResources();\n      await discardRecordingSink();\n      stopTransportIfOwned();`,
+            'startup failure sink cleanup',
+          );
+          source = replaceOnce(
+            source,
+            `  }, [cleanupCaptureResources, releaseActivity, resetToIdle, stopTransportIfOwned]);\n\n  const stopRecording`,
+            `  }, [cleanupCaptureResources, discardRecordingSink, releaseActivity, resetToIdle, stopTransportIfOwned]);\n\n  const stopRecording`,
+            'start callback dependencies',
+          );
+          source = replaceOnce(
+            source,
+            `    const operation = (async (): Promise<RecordingResult | null> => {\n      phaseRef.current = 'stopping';`,
+            `    const operation = (async (): Promise<RecordingResult | null> => {\n      let sink: RecordingSink | null = null;\n      phaseRef.current = 'stopping';`,
+            'stop sink scope',
+          );
+          source = replaceOnce(
+            source,
+            `        const chunks = pcmChunksRef.current;\n        pcmChunksRef.current = [];`,
+            `        sink = recordingSinkRef.current;\n        recordingSinkRef.current = null;\n        if (!sink) throw new Error('Recording storage was unavailable');\n        const pcmBlob = await sink.finalize();`,
+            'finalize staged recording',
+          );
+          source = replaceOnce(
+            source,
+            `        if (chunks.length === 0) {\n          throw new Error('No audio samples were captured');\n        }\n\n        phaseRef.current = 'saving';\n        setState((current) => ({ ...current, phase: 'saving' }));\n\n        // Avoid a second recording-sized Float32Array allocation. Blob accepts\n        // the original chunk buffers directly and preserves sample order.\n        const parts: BlobPart[] = chunks.map((chunk) => {\n          const sourceBuffer = chunk.buffer;\n          if (\n            sourceBuffer instanceof ArrayBuffer\n            && chunk.byteOffset === 0\n            && chunk.byteLength === sourceBuffer.byteLength\n          ) {\n            return sourceBuffer;\n          }\n          // AudioWorklet PCM arrives in ordinary ArrayBuffers. Slice creates a\n          // bounded ArrayBuffer when the view covers only part of its source.\n          return chunk.slice().buffer as ArrayBuffer;\n        });\n        const pcmBlob = new Blob(parts, { type: 'application/octet-stream' });`,
+            `        phaseRef.current = 'saving';\n        setState((current) => ({ ...current, phase: 'saving' }));`,
+            'remove in-memory blob assembly',
+          );
+          source = replaceOnce(
+            source,
+            `        await Promise.all([\n          db.putSession(session),\n          db.putRecording(sessionId, pcmBlob),\n        ]);\n        await useSessionStore.getState().addSession(session);`,
+            `        await Promise.all([\n          db.putSession(session),\n          db.putRecording(sessionId, pcmBlob),\n        ]);\n        await sink.release();\n        sink = null;\n        await useSessionStore.getState().addSession(session);`,
+            'release OPFS staging file',
+          );
+          source = replaceOnce(
+            source,
+            `      } catch (error) {\n        console.error('Failed to stop or save recording:', error);\n        cleanupCaptureResources();`,
+            `      } catch (error) {\n        console.error('Failed to stop or save recording:', error);\n        await sink?.discard();\n        cleanupCaptureResources();`,
+            'failed save sink cleanup',
+          );
+          fs.writeFileSync(recordingPath, source);
+
+          const buttonPath = 'src/components/metronome/RecordButton.tsx';
+          let button = fs.readFileSync(buttonPath, 'utf8');
+          button = replaceOnce(
+            button,
+            `  'audio-worklet': 'CAPTURE',\n  'audio-graph': 'ROUTING',`,
+            `  'audio-worklet': 'CAPTURE',\n  storage: 'STORAGE',\n  'audio-graph': 'ROUTING',`,
+            'recording button storage label',
+          );
+          fs.writeFileSync(buttonPath, button);
+
+          const homePath = 'src/pages/HomePage.tsx';
+          let home = fs.readFileSync(homePath, 'utf8');
+          home = replaceOnce(
+            home,
+            `  'audio-worklet': 'Loading raw capture…',\n  'audio-graph': 'Connecting microphone…',`,
+            `  'audio-worklet': 'Loading raw capture…',\n  storage: 'Preparing recording storage…',\n  'audio-graph': 'Connecting microphone…',`,
+            'home storage status',
+          );
+          fs.writeFileSync(homePath, home);
+          NODE
+
+      - name: Validate recording storage integration
+        run: |
+          npm ci
+          npm run lint
+          npm run test:run
+          npm run build
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/one-time-recording-storage-patch.yml
+
+      - name: Commit validated integration
+        run: |
+          git config user.name "Poly Pro Hardening Bot"
+          git config user.email "noreply@github.com"
+          git add src/hooks/useRecording.ts src/components/metronome/RecordButton.tsx src/pages/HomePage.tsx .github/workflows/one-time-recording-storage-patch.yml
+          git commit -m "Stream recordings through bounded storage [hardening-bot]"
+          git push origin HEAD:agent/production-hardening
