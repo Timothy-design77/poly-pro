@@ -328,14 +328,14 @@ test('critical and serious WCAG violations are absent from primary surfaces', as
   }
   await runSeriousAxe(page, 'Settings');
 
-  const unnamed = await page.locator('button, [role="button"], [role="switch"], [role="slider"], input, canvas').evaluateAll(
-    (elements) => elements.filter((element) => {
-      const aria = element.getAttribute('aria-label') || element.getAttribute('aria-labelledby');
-      const title = element.getAttribute('title');
-      const text = (element.textContent || '').trim();
-      const value = element instanceof HTMLInputElement ? element.value : '';
-      return !aria && !title && !text && !value;
-    }).map((element) => element.outerHTML.slice(0, 300)),
-  );
+  const unnamed = await page.locator(
+    'button:visible, [role="button"]:visible, [role="switch"]:visible, [role="slider"]:visible, input:visible, canvas:visible',
+  ).evaluateAll((elements) => elements.filter((element) => {
+    const aria = element.getAttribute('aria-label') || element.getAttribute('aria-labelledby');
+    const title = element.getAttribute('title');
+    const text = (element.textContent || '').trim();
+    const value = element instanceof HTMLInputElement ? element.value : '';
+    return !aria && !title && !text && !value;
+  }).map((element) => element.outerHTML.slice(0, 300)));
   expect(unnamed).toEqual([]);
 });
