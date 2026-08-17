@@ -354,7 +354,7 @@ export async function importBackup(
         const bytes = await archiveFile.async('uint8array');
         await db.putCustomSample({
           ...metadata,
-          blob: new Blob([bytes], { type: 'audio/wav' }),
+          blob: new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'audio/wav' }),
         });
       }
     }
@@ -393,7 +393,7 @@ export async function importBackup(
       if (recordingFile) {
         onProgress?.({ stage: 'recordings', current: index, total: sessions.length });
         const bytes = await recordingFile.async('uint8array');
-        await db.putRecording(session.id, new Blob([bytes], {
+        await db.putRecording(session.id, new Blob([bytes.slice().buffer as ArrayBuffer], {
           type: 'application/octet-stream',
         }));
       }
