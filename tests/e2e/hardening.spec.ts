@@ -182,14 +182,20 @@ test('Tap Tempo remains unchanged when the BPM keypad opens and cancels', async 
   await setBpm(page, 90);
 
   const tap = page.getByRole('button', { name: /Tap tempo/i });
+  const tapTimes: number[] = [];
   for (let index = 0; index < 5; index += 1) {
     await tap.click();
+    tapTimes.push(Date.now());
     if (index < 4) await page.waitForTimeout(600);
   }
 
-  await expect.poll(() => readDialBpm(page)).toBeGreaterThanOrEqual(96);
+  const intervals = tapTimes.slice(1).map((time, index) => time - tapTimes[index]);
+  const averageInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+  const expectedBpm = Math.round((60_000 / averageInterval) * 2) / 2;
+
+  await expect.poll(() => readDialBpm(page)).not.toBe(90);
   const tappedBpm = await readDialBpm(page);
-  expect(tappedBpm).toBeLessThanOrEqual(104);
+  expect(Math.abs(tappedBpm - expectedBpm)).toBeLessThanOrEqual(1.5);
 
   const dialog = await openBpmDialog(page);
   const displayed = Number((await dialog.locator('.font-mono.text-4xl').innerText()).trim());
@@ -232,7 +238,7 @@ test('recording orchestration streams PCM, analyzes in a worker, saves, and open
 
   await page.getByRole('button', { name: 'View Details', exact: true }).click();
   for (const tab of ['Score', 'Timeline', 'Charts', 'Tune']) {
-    await page.getByRole('button', { name: tab, exact: true }).click();
+    await page.getByRole('button', { name: tab, exact: true }).first().click();
   }
   await page.getByRole('button', { name: '← Back', exact: true }).click();
 
@@ -279,6 +285,21 @@ test('service worker controls the PWA and supports an offline reload', async ({ 
   }
 });
 
+test('custom precision controls support keyboard operation', async ({ page }) => {
+  await boot(page);
+  const settings = await openSettings(page);
+  await settings.getByRole('button', { name: 'Calibration', exact: true }).click();
+  const slider = settings.getByRole('slider', { name: 'Fine-tune latency adjustment' });
+  await expect(slider).toBeVisible();
+  const initial = Number(await slider.getAttribute('aria-valuenow'));
+  await slider.press('ArrowRight');
+  await expect(slider).toHaveAttribute('aria-valuenow', String(initial + 0.5));
+  await slider.press('Home');
+  await expect(slider).toHaveAttribute('aria-valuenow', '-150');
+  await slider.press('End');
+  await expect(slider).toHaveAttribute('aria-valuenow', '150');
+});
+
 test('critical and serious WCAG violations are absent from primary surfaces', async ({ page }) => {
   await boot(page);
   await runSeriousAxe(page, 'Home');
@@ -307,7 +328,7 @@ test('critical and serious WCAG violations are absent from primary surfaces', as
   }
   await runSeriousAxe(page, 'Settings');
 
-  const unnamed = await page.locator('button, [role="button"], [role="switch"], input, canvas').evaluateAll(
+  const unnamed = await page.locator('button, [role="button"], [role="switch"], [role="slider"], input, canvas').evaluateAll(
     (elements) => elements.filter((element) => {
       const aria = element.getAttribute('aria-label') || element.getAttribute('aria-labelledby');
       const title = element.getAttribute('title');

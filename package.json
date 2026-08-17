@@ -11,8 +11,11 @@
     "lint": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:browser": "playwright test",
-    "audit:prod": "npm audit --omit=dev --audit-level=high"
+    "test:browser": "playwright test tests/e2e/hardening.spec.ts",
+    "test:stability": "playwright test tests/e2e/stability.spec.ts",
+    "test:all": "npm run lint && npm run test:run && npm run audit:all && npm run build && npm run test:browser",
+    "audit:prod": "npm audit --omit=dev --audit-level=low",
+    "audit:all": "npm audit --audit-level=low"
   },
   "dependencies": {
     "idb": "^8.0.0",
