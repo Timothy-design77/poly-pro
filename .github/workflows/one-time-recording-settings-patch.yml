@@ -1,0 +1,141 @@
+name: One-time Recording Settings Patch
+
+on:
+  push:
+    branches:
+      - agent/production-hardening
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/production-hardening
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Wire settings
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const replaceOnce = (source, oldText, newText, label) => {
+            if (!source.includes(oldText)) throw new Error(`${label} not found`);
+            return source.replace(oldText, newText);
+          };
+
+          const enginePath = 'src/audio/engine.ts';
+          let engine = fs.readFileSync(enginePath, 'utf8');
+          engine = replaceOnce(
+            engine,
+            `  private outputGain: GainNode | null = null;`,
+            `  private outputGain: GainNode | null = null;\n  private outputVolumeOverride: number | null = null;`,
+            'engine output field',
+          );
+          engine = replaceOnce(
+            engine,
+            `      this.masterGain.gain.value = perceptualGain(this.host.getMetronome().volume);`,
+            `      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());`,
+            'engine start volume',
+          );
+          engine = replaceOnce(
+            engine,
+            `      this.masterGain.gain.value = perceptualGain(state.volume);`,
+            `      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());`,
+            'engine scheduler volume',
+          );
+          engine = replaceOnce(
+            engine,
+            `  getContext(): AudioContext | null {\n    return this.audioCtx;\n  }`,
+            `  getContext(): AudioContext | null {\n    return this.audioCtx;\n  }\n\n  private getEffectiveVolume(): number {\n    return this.outputVolumeOverride ?? this.host.getMetronome().volume;\n  }\n\n  /** Temporarily override audible click output without stopping the timing grid. */\n  setOutputVolumeOverride(volume: number | null): void {\n    this.outputVolumeOverride = volume === null\n      ? null\n      : Math.max(0, Math.min(1, volume));\n    if (this.masterGain) {\n      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());\n    }\n  }`,
+            'engine context method',
+          );
+          fs.writeFileSync(enginePath, engine);
+
+          const recordingPath = 'src/hooks/useRecording.ts';
+          let recording = fs.readFileSync(recordingPath, 'utf8');
+          recording = replaceOnce(
+            recording,
+            `import { useSessionStore } from '../store/session-store';`,
+            `import { useSessionStore } from '../store/session-store';\nimport { useSettingsStore } from '../store/settings-store';`,
+            'recording settings import',
+          );
+          recording = replaceOnce(
+            recording,
+            `  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);\n  const silentGainRef = useRef<GainNode | null>(null);`,
+            `  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);\n  const micGainRef = useRef<GainNode | null>(null);\n  const silentGainRef = useRef<GainNode | null>(null);`,
+            'recording gain ref',
+          );
+          recording = replaceOnce(
+            recording,
+            `    const silentGain = silentGainRef.current;`,
+            `    const micGain = micGainRef.current;\n    if (micGain) {\n      try { micGain.disconnect(); } catch {}\n      micGainRef.current = null;\n    }\n\n    const silentGain = silentGainRef.current;`,
+            'recording gain cleanup',
+          );
+          recording = replaceOnce(
+            recording,
+            `    stopMediaStream(micStreamRef.current);\n    micStreamRef.current = null;`,
+            `    stopMediaStream(micStreamRef.current);\n    micStreamRef.current = null;\n    audioEngine.setOutputVolumeOverride(null);`,
+            'recording output restore',
+          );
+          recording = replaceOnce(
+            recording,
+            `      const source = context.createMediaStreamSource(micResult.stream);\n      micSourceRef.current = source;\n\n      const workletNode = new AudioWorkletNode(context, 'pcm-capture-processor');`,
+            `      const source = context.createMediaStreamSource(micResult.stream);\n      micSourceRef.current = source;\n\n      const recordingSettings = useSettingsStore.getState();\n      const micGain = context.createGain();\n      micGain.gain.value = 1 + recordingSettings.sensitivity * 4;\n      micGainRef.current = micGain;\n\n      const workletNode = new AudioWorkletNode(context, 'pcm-capture-processor');`,
+            'recording graph settings',
+          );
+          recording = replaceOnce(
+            recording,
+            `      source.connect(workletNode);\n      workletNode.connect(silentGain);`,
+            `      source.connect(micGain);\n      micGain.connect(workletNode);\n      workletNode.connect(silentGain);`,
+            'recording gain connection',
+          );
+          recording = replaceOnce(
+            recording,
+            `      workletNode.port.postMessage({ type: 'start' });\n\n      setState((current) => ({ ...current, preparationStage: 'transport' }));`,
+            `      workletNode.port.postMessage({ type: 'start' });\n\n      audioEngine.setOutputVolumeOverride(\n        recordingSettings.includeClickInRecording\n          ? recordingSettings.clickVolumeInRecording\n          : 0,\n      );\n\n      setState((current) => ({ ...current, preparationStage: 'transport' }));`,
+            'recording click override',
+          );
+          fs.writeFileSync(recordingPath, recording);
+
+          const homePath = 'src/pages/HomePage.tsx';
+          let home = fs.readFileSync(homePath, 'utf8');
+          home = replaceOnce(
+            home,
+            `import { useProjectStore } from '../store/project-store';`,
+            `import { useProjectStore } from '../store/project-store';\nimport { useSettingsStore } from '../store/settings-store';`,
+            'home settings import',
+          );
+          home = replaceOnce(
+            home,
+            `  const activeProject = useProjectStore((state) => (`,
+            `  const liveWaveform = useSettingsStore((state) => state.liveWaveform);\n  const activeProject = useProjectStore((state) => (`,
+            'home waveform selector',
+          );
+          home = replaceOnce(
+            home,
+            `          <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />`,
+            `          {liveWaveform && (\n            <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />\n          )}`,
+            'home waveform rendering',
+          );
+          fs.writeFileSync(homePath, home);
+          NODE
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/one-time-recording-settings-patch.yml
+
+      - name: Commit patches
+        run: |
+          git config user.name "Poly Pro Hardening Bot"
+          git config user.email "noreply@github.com"
+          git add src/audio/engine.ts src/hooks/useRecording.ts src/pages/HomePage.tsx .github/workflows/one-time-recording-settings-patch.yml
+          git commit -m "Wire recording controls into audio runtime [hardening-bot]"
+          git push origin HEAD:agent/production-hardening
