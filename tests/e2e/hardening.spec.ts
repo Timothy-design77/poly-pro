@@ -1,11 +1,12 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import axe from 'axe-core';
 
 async function boot(page: Page) {
   await page.goto('./', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('button', { name: 'Home', exact: true })).toBeVisible();
   await expect(page.locator('button[aria-current="page"]')).toHaveText('Home');
-  await expect(page.getByText('My First Project', { exact: true })).toBeVisible();
+  await expect(dial(page)).toBeVisible();
+  await expect(dial(page)).toHaveAttribute('aria-label', /BPM/);
 }
 
 async function navigate(page: Page, name: 'Projects' | 'Home' | 'Progress') {
@@ -186,8 +187,8 @@ test('Tap Tempo remains unchanged when the BPM keypad opens and cancels', async 
     if (index < 4) await page.waitForTimeout(600);
   }
 
-  const tappedBpm = await expect.poll(() => readDialBpm(page)).toBeGreaterThanOrEqual(96)
-    .then(async () => readDialBpm(page));
+  await expect.poll(() => readDialBpm(page)).toBeGreaterThanOrEqual(96);
+  const tappedBpm = await readDialBpm(page);
   expect(tappedBpm).toBeLessThanOrEqual(104);
 
   const dialog = await openBpmDialog(page);
