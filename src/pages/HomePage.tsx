@@ -33,6 +33,7 @@ const PREPARATION_STATUS = {
   'bluetooth-check': 'Checking audio devices…',
   'audio-context': 'Starting audio engine…',
   'audio-worklet': 'Loading raw capture…',
+  storage: 'Preparing recording storage…',
   'audio-graph': 'Connecting microphone…',
   transport: 'Starting metronome…',
 } as const;

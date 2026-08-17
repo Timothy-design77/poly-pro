@@ -14,6 +14,7 @@ import {
 import { acquireCriticalActivity } from '../utils/appActivity';
 import * as db from '../store/db';
 import type { ScheduledBeat } from '../audio/types';
+import { createRecordingSink, type RecordingSink } from '../platform/recordingSink';
 
 const MAX_RECORDING_MS = 30 * 60 * 1000;
 const WARNING_MS = 25 * 60 * 1000;
@@ -35,6 +36,7 @@ export type RecordingPreparationStage =
   | 'bluetooth-check'
   | 'audio-context'
   | 'audio-worklet'
+  | 'storage'
   | 'audio-graph'
   | 'transport';
 
@@ -131,7 +133,7 @@ export function useRecording() {
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const micGainRef = useRef<GainNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
-  const pcmChunksRef = useRef<Float32Array[]>([]);
+  const recordingSinkRef = useRef<RecordingSink | null>(null);
   const startTimeRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startupAbortRef = useRef<AbortController | null>(null);
@@ -148,6 +150,17 @@ export function useRecording() {
   const releaseActivity = useCallback(() => {
     releaseActivityRef.current?.();
     releaseActivityRef.current = null;
+  }, []);
+
+  const discardRecordingSink = useCallback(async () => {
+    const sink = recordingSinkRef.current;
+    recordingSinkRef.current = null;
+    if (!sink) return;
+    try {
+      await sink.discard();
+    } catch (error) {
+      console.warn('[recording] Could not discard staged audio:', error);
+    }
   }, []);
 
   const cleanupCaptureResources = useCallback(() => {
@@ -203,17 +216,19 @@ export function useRecording() {
     startupAbortRef.current?.abort();
     startupAbortRef.current = null;
     cleanupCaptureResources();
+    void discardRecordingSink();
     stopTransportIfOwned();
     releaseActivity();
     resetToIdle();
-  }, [cleanupCaptureResources, releaseActivity, resetToIdle, stopTransportIfOwned]);
+  }, [cleanupCaptureResources, discardRecordingSink, releaseActivity, resetToIdle, stopTransportIfOwned]);
 
   useEffect(() => () => {
     startupAbortRef.current?.abort();
     cleanupCaptureResources();
+    void discardRecordingSink();
     stopTransportIfOwned();
     releaseActivity();
-  }, [cleanupCaptureResources, releaseActivity, stopTransportIfOwned]);
+  }, [cleanupCaptureResources, discardRecordingSink, releaseActivity, stopTransportIfOwned]);
 
   const startRecording = useCallback(async (): Promise<boolean> => {
     if (phaseRef.current !== 'idle' && phaseRef.current !== 'error') return false;
@@ -274,6 +289,9 @@ export function useRecording() {
         { signal: abortController.signal },
       );
 
+      setState((current) => ({ ...current, preparationStage: 'storage' }));
+      recordingSinkRef.current = await createRecordingSink();
+
       setState((current) => ({ ...current, preparationStage: 'audio-graph' }));
       const source = context.createMediaStreamSource(micResult.stream);
       micSourceRef.current = source;
@@ -295,7 +313,6 @@ export function useRecording() {
       workletNode.connect(silentGain);
       silentGain.connect(context.destination);
 
-      pcmChunksRef.current = [];
       realtimeOnsetCountRef.current = 0;
       workletNode.port.onmessage = (event) => {
         const message = event.data;
@@ -303,7 +320,7 @@ export function useRecording() {
           const samples = message.samples instanceof Float32Array
             ? message.samples
             : new Float32Array(message.samples);
-          pcmChunksRef.current.push(samples);
+          recordingSinkRef.current?.append(samples);
           return;
         }
         if (message.type === 'level') {
@@ -390,6 +407,7 @@ export function useRecording() {
       console.error('Failed to start recording:', error);
       startupAbortRef.current = null;
       cleanupCaptureResources();
+      await discardRecordingSink();
       stopTransportIfOwned();
       releaseActivity();
 
@@ -406,13 +424,14 @@ export function useRecording() {
       });
       return false;
     }
-  }, [cleanupCaptureResources, releaseActivity, resetToIdle, stopTransportIfOwned]);
+  }, [cleanupCaptureResources, discardRecordingSink, releaseActivity, resetToIdle, stopTransportIfOwned]);
 
   const stopRecording = useCallback(async (): Promise<RecordingResult | null> => {
     if (stopPromiseRef.current) return stopPromiseRef.current;
     if (phaseRef.current !== 'recording') return null;
 
     const operation = (async (): Promise<RecordingResult | null> => {
+      let sink: RecordingSink | null = null;
       phaseRef.current = 'stopping';
       setState((current) => ({
         ...current,
@@ -433,8 +452,10 @@ export function useRecording() {
         workletNodeRef.current?.port.postMessage({ type: 'stop' });
         await delay(FINAL_FLUSH_MS);
 
-        const chunks = pcmChunksRef.current;
-        pcmChunksRef.current = [];
+        sink = recordingSinkRef.current;
+        recordingSinkRef.current = null;
+        if (!sink) throw new Error('Recording storage was unavailable');
+        const pcmBlob = await sink.finalize();
 
         const metronome = useMetronomeStore.getState();
         const sessionBpm = metronome.bpm;
@@ -445,29 +466,8 @@ export function useRecording() {
         cleanupCaptureResources();
         stopTransportIfOwned();
 
-        if (chunks.length === 0) {
-          throw new Error('No audio samples were captured');
-        }
-
         phaseRef.current = 'saving';
         setState((current) => ({ ...current, phase: 'saving' }));
-
-        // Avoid a second recording-sized Float32Array allocation. Blob accepts
-        // the original chunk buffers directly and preserves sample order.
-        const parts: BlobPart[] = chunks.map((chunk) => {
-          const sourceBuffer = chunk.buffer;
-          if (
-            sourceBuffer instanceof ArrayBuffer
-            && chunk.byteOffset === 0
-            && chunk.byteLength === sourceBuffer.byteLength
-          ) {
-            return sourceBuffer;
-          }
-          // AudioWorklet PCM arrives in ordinary ArrayBuffers. Slice creates a
-          // bounded ArrayBuffer when the view covers only part of its source.
-          return chunk.slice().buffer as ArrayBuffer;
-        });
-        const pcmBlob = new Blob(parts, { type: 'application/octet-stream' });
 
         const activeProjectId = useProjectStore.getState().activeProjectId;
         const sessionId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -491,6 +491,8 @@ export function useRecording() {
           db.putSession(session),
           db.putRecording(sessionId, pcmBlob),
         ]);
+        await sink.release();
+        sink = null;
         await useSessionStore.getState().addSession(session);
 
         if (activeProjectId) {
@@ -520,6 +522,7 @@ export function useRecording() {
         };
       } catch (error) {
         console.error('Failed to stop or save recording:', error);
+        await sink?.discard();
         cleanupCaptureResources();
         stopTransportIfOwned();
         releaseActivity();

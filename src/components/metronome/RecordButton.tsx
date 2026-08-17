@@ -14,6 +14,7 @@ const PREPARATION_LABELS: Record<RecordingPreparationStage, string> = {
   'bluetooth-check': 'DEVICE',
   'audio-context': 'AUDIO',
   'audio-worklet': 'CAPTURE',
+  storage: 'STORAGE',
   'audio-graph': 'ROUTING',
   transport: 'CLICK',
 };
