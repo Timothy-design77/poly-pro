@@ -1,0 +1,25 @@
+name: Source Snapshot
+
+on:
+  push:
+    branches:
+      - agent/harden-production
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: poly-pro-source-${{ github.sha }}
+          path: |
+            .
+            !node_modules
+            !dist
+          include-hidden-files: true
+          retention-days: 1
