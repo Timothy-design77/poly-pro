@@ -13,14 +13,12 @@ export function PlayButton() {
   const { togglePlay } = useMetronome();
   const firedRef = useRef(false);
 
-  // Fire on pointer DOWN — instant, no waiting for finger lift
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     firedRef.current = true;
     togglePlay();
   }, [togglePlay]);
 
-  // Prevent click from double-firing after pointerdown
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (firedRef.current) {
       e.preventDefault();
@@ -30,16 +28,17 @@ export function PlayButton() {
 
   return (
     <button
+      type="button"
       aria-label={playing ? 'Stop metronome' : 'Start metronome'}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
       className={`
         w-full rounded-[14px] text-sm font-bold tracking-wider
-        flex items-center justify-center gap-2.5 h-[52px]
-        touch-manipulation select-none
+        flex items-center justify-center gap-2.5 h-[54px]
+        touch-manipulation select-none border-[1.5px]
         ${playing
-          ? 'bg-bg-raised text-text-primary border border-border-emphasis'
-          : 'bg-[rgba(255,255,255,0.85)] text-bg-primary'
+          ? 'bg-bg-surface text-text-primary border-border-emphasis'
+          : 'bg-accent text-bg-primary border-accent'
         }
       `}
     >

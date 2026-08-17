@@ -6,26 +6,16 @@ interface DialProps {
   onTapBpm?: () => void;
 }
 
-/** Track ring colors — no purple/indigo */
+/** Track ring colors for the light, high-contrast interface. */
 const TRACK_COLORS = [
-  { dot: 'rgba(255,255,255,', glow: 'rgba(255,255,255,' },           // Track 0: white
-  { dot: 'rgba(45,212,191,',  glow: 'rgba(45,212,191,' },            // Track 1: teal
-  { dot: 'rgba(251,191,36,',  glow: 'rgba(251,191,36,' },            // Track 2: amber
-  { dot: 'rgba(251,113,133,', glow: 'rgba(251,113,133,' },           // Track 3: coral
+  { dot: 'rgba(21,23,26,', glow: 'rgba(21,23,26,' },
+  { dot: 'rgba(13,148,136,', glow: 'rgba(13,148,136,' },
+  { dot: 'rgba(180,83,9,', glow: 'rgba(180,83,9,' },
+  { dot: 'rgba(190,24,93,', glow: 'rgba(190,24,93,' },
 ];
 
-/** Radius offset per track ring — staggered inward */
 const RING_OFFSET = 16;
 
-/**
- * Canvas-rendered dial with multi-ring polyrhythm support.
- *
- * Each track gets its own ring at a staggered radius with unique color.
- * - Track 0 (main): outermost, white dots
- * - Track 1: teal, R-16
- * - Track 2: amber, R-32
- * - Track 3: coral, R-48
- */
 export function Dial({ size, onTapBpm }: DialProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
@@ -60,56 +50,39 @@ export function Dial({ size, onTapBpm }: DialProps) {
     const cy = size / 2;
     const baseR = size / 2 - 18;
 
-    // ─── Accuracy arc (outermost) ───
-    const accuracy = 87;
-    const sa = -Math.PI / 2;
-    const ea = sa + (accuracy / 100) * Math.PI * 2;
-
+    // Neutral outer frame. Do not display a fabricated accuracy percentage
+    // before a real analyzed session exists.
     ctx.beginPath();
     ctx.arc(cx, cy, baseR + 7, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+    ctx.strokeStyle = 'rgba(21,23,26,0.08)';
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    ctx.beginPath();
-    ctx.arc(cx, cy, baseR + 7, sa, ea);
-    ctx.strokeStyle = 'rgba(74,222,128,0.27)';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-    ctx.lineCap = 'butt';
-
-    // Compute group boundary positions for track-0
     const groupBoundaries = new Set<number>([0]);
-    {
-      let pos = 0;
-      for (let g = 0; g < beatGrouping.length - 1; g++) {
-        pos += beatGrouping[g];
-        groupBoundaries.add(pos);
-      }
+    let groupPosition = 0;
+    for (let g = 0; g < beatGrouping.length - 1; g++) {
+      groupPosition += beatGrouping[g];
+      groupBoundaries.add(groupPosition);
     }
 
-    // ─── Draw each track ring ───
     for (let ti = 0; ti < tracks.length; ti++) {
       const track = tracks[ti];
       const isMain = ti === 0;
-      const R = baseR - (ti * RING_OFFSET);
+      const radius = baseR - (ti * RING_OFFSET);
       const color = TRACK_COLORS[ti] || TRACK_COLORS[0];
       const totalBeats = track.beats;
       const activeBeat = currentBeats[track.id] ?? -1;
 
-      // Ring circle (subtle)
       ctx.beginPath();
-      ctx.arc(cx, cy, R, 0, Math.PI * 2);
-      ctx.strokeStyle = isMain ? 'rgba(255,255,255,0.04)' : `${color.dot}0.03)`;
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = isMain ? 'rgba(21,23,26,0.09)' : `${color.dot}0.08)`;
       ctx.lineWidth = isMain ? 1.5 : 1;
       ctx.stroke();
 
-      // Beat dots
       for (let i = 0; i < totalBeats; i++) {
-        const a = (i / totalBeats) * Math.PI * 2 - Math.PI / 2;
-        const x = cx + R * Math.cos(a);
-        const y = cy + R * Math.sin(a);
+        const angle = (i / totalBeats) * Math.PI * 2 - Math.PI / 2;
+        const x = cx + radius * Math.cos(angle);
+        const y = cy + radius * Math.sin(angle);
 
         const isDownbeat = i === 0;
         const isBeat = isMain ? (i % subdivision === 0) : true;
@@ -117,94 +90,79 @@ export function Dial({ size, onTapBpm }: DialProps) {
         const isGroupStart = isMain && groupBoundaries.has(beatNum) && isBeat;
         const isActive = playing && i === activeBeat;
 
-        // Downbeat/group-start halo
         if ((isDownbeat || isGroupStart) && !isActive) {
           ctx.beginPath();
           ctx.arc(x, y, isMain ? (isDownbeat ? 10 : 8) : 8, 0, Math.PI * 2);
-          ctx.fillStyle = `${color.dot}0.04)`;
+          ctx.fillStyle = `${color.dot}0.07)`;
           ctx.fill();
         }
 
-        // Active beat glow
         if (isActive) {
           ctx.beginPath();
           ctx.arc(x, y, isMain ? 12 : 10, 0, Math.PI * 2);
-          ctx.fillStyle = `${color.glow}0.12)`;
+          ctx.fillStyle = `${color.glow}0.13)`;
           ctx.fill();
 
           ctx.beginPath();
           ctx.arc(x, y, isMain ? 8 : 7, 0, Math.PI * 2);
-          ctx.fillStyle = `${color.glow}0.2)`;
+          ctx.fillStyle = `${color.glow}0.20)`;
           ctx.fill();
         }
 
-        // Dot
-        let dotR: number;
+        let dotRadius: number;
         if (isMain) {
-          dotR = isDownbeat ? 5 : isGroupStart ? 4.5 : isBeat ? 3.5 : 2;
+          dotRadius = isDownbeat ? 5 : isGroupStart ? 4.5 : isBeat ? 3.5 : 2;
         } else {
-          dotR = isDownbeat ? 4.5 : 3;
+          dotRadius = isDownbeat ? 4.5 : 3;
         }
 
         ctx.beginPath();
-        ctx.arc(x, y, dotR, 0, Math.PI * 2);
-
+        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
         if (isActive) {
-          ctx.fillStyle = `${color.dot}0.9)`;
+          ctx.fillStyle = `${color.dot}0.95)`;
         } else if (isDownbeat) {
-          ctx.fillStyle = `${color.dot}${isMain ? '0.5)' : '0.45)'}`;
+          ctx.fillStyle = `${color.dot}${isMain ? '0.72)' : '0.62)'}`;
         } else if (isGroupStart) {
-          ctx.fillStyle = `${color.dot}0.35)`;
+          ctx.fillStyle = `${color.dot}0.58)`;
         } else if (isBeat) {
-          ctx.fillStyle = `${color.dot}${isMain ? '0.18)' : '0.2)'}`;
+          ctx.fillStyle = `${color.dot}${isMain ? '0.40)' : '0.42)'}`;
         } else {
-          ctx.fillStyle = `${color.dot}0.06)`;
+          ctx.fillStyle = `${color.dot}0.18)`;
         }
         ctx.fill();
       }
     }
 
-    // ─── Center content (drawn on top of rings) ───
-
-    // Bar counter (shown when playing)
     if (playing && currentBar > 0) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = `600 ${Math.round(size * 0.038)}px "JetBrains Mono", monospace`;
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillStyle = 'rgba(21,23,26,0.52)';
       ctx.fillText(`Bar ${currentBar}`, cx, cy - size * 0.16);
     }
 
-    // BPM number
     const bpmFontSize = Math.round(size * 0.22);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `800 ${bpmFontSize}px "JetBrains Mono", monospace`;
-    ctx.fillStyle = '#E8E8EC';
+    ctx.fillStyle = '#15171A';
     const bpmText = bpm % 1 === 0 ? String(bpm) : bpm.toFixed(1);
     ctx.fillText(bpmText, cx, cy - size * 0.02);
 
-    // "BPM" label
-    ctx.font = `600 ${Math.round(size * 0.042)}px "DM Sans", sans-serif`;
-    ctx.fillStyle = '#2E2E34';
+    ctx.font = `700 ${Math.round(size * 0.042)}px "DM Sans", sans-serif`;
+    ctx.fillStyle = '#68707B';
     ctx.fillText('BPM', cx, cy + size * 0.09);
 
-    // Meter info
     const subLabel = subLabels[subdivision] || '';
     const meterText = `${meterNumerator}/${meterDenominator}${subLabel ? '  ·  ' + subLabel : ''}`;
-    ctx.font = `500 ${Math.round(size * 0.038)}px "JetBrains Mono", monospace`;
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.font = `600 ${Math.round(size * 0.038)}px "JetBrains Mono", monospace`;
+    ctx.fillStyle = 'rgba(21,23,26,0.48)';
     ctx.fillText(meterText, cx, cy + size * 0.15);
 
-    // Polyrhythm ratio (if multiple tracks)
     if (tracks.length > 1) {
-      const ratio = tracks.map((t, i) => {
-        const c = TRACK_COLORS[i] || TRACK_COLORS[0];
-        return { beats: t.beats, color: `${c.dot}0.5)` };
-      });
-      const ratioText = ratio.map(r => r.beats).join(':');
+      const ratioText = tracks.map((track) => track.beats).join(':');
       ctx.font = `700 ${Math.round(size * 0.035)}px "JetBrains Mono", monospace`;
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = 'rgba(21,23,26,0.58)';
       ctx.fillText(ratioText, cx, cy + size * 0.22);
     }
   }, [size, bpm, playing, meterNumerator, meterDenominator, subdivision, beatGrouping, tracks, currentBeats, currentBar]);
@@ -224,7 +182,17 @@ export function Dial({ size, onTapBpm }: DialProps) {
   return (
     <canvas
       ref={canvasRef}
+      role={onTapBpm ? 'button' : undefined}
+      tabIndex={onTapBpm ? 0 : undefined}
+      aria-label={onTapBpm ? `Tempo ${bpm} BPM. Open tempo keypad.` : undefined}
       onClick={onTapBpm}
+      onKeyDown={(event) => {
+        if (!onTapBpm) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onTapBpm();
+        }
+      }}
       style={{ width: size, height: size, display: 'block', cursor: onTapBpm ? 'pointer' : 'default' }}
     />
   );

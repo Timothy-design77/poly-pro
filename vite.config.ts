@@ -19,8 +19,8 @@ export default defineConfig({
         name: 'Poly Pro',
         short_name: 'PolyPro',
         description: 'Pro-grade metronome with recording and analytics',
-        theme_color: '#0C0C0E',
-        background_color: '#0C0C0E',
+        theme_color: '#F2F3F5',
+        background_color: '#F2F3F5',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
