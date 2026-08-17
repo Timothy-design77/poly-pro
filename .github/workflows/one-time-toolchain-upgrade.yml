@@ -1,0 +1,58 @@
+name: One-time Toolchain Upgrade
+
+on:
+  push:
+    branches:
+      - agent/production-hardening
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/production-hardening
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install secure compatible toolchain
+        run: |
+          npm install --save-dev \
+            vite@latest \
+            vitest@latest \
+            @vitejs/plugin-react@latest \
+            vite-plugin-pwa@latest \
+            typescript@latest \
+            postcss@latest \
+            autoprefixer@latest \
+            tailwindcss@3 \
+            @playwright/test@latest \
+            axe-core@latest
+          npm audit fix
+
+      - name: Validate upgraded toolchain
+        run: |
+          npm run lint
+          npm run test:run
+          npm run build
+          npm audit --omit=dev
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/one-time-toolchain-upgrade.yml
+
+      - name: Commit dependency upgrade
+        run: |
+          git config user.name "Poly Pro Hardening Bot"
+          git config user.email "noreply@github.com"
+          git add package.json package-lock.json .github/workflows/one-time-toolchain-upgrade.yml
+          git commit -m "Upgrade build and test toolchain [hardening-bot]"
+          git push origin HEAD:agent/production-hardening
