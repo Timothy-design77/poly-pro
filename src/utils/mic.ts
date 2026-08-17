@@ -1,45 +1,81 @@
 /**
- * Mic selection utility.
+ * Microphone selection and raw-capture helpers.
  *
- * CRITICAL: On Android, getUserMedia activating a BT mic forces the OS
- * to switch BT from A2DP (high-quality output) to HFP (call mode).
- *
- * Fix: NEVER let getUserMedia pick the default device when BT is connected.
- * Try enumerateDevices first (labels available if permission was previously granted).
- * Only use dummy stream as last resort, and when we do, request with constraints
- * that hint away from BT.
- *
- * Raw audio: echoCancellation: {exact: false} is the MASTER SWITCH
- * on Chrome Android that disables ALL processing (AEC, AGC, NS).
+ * On Android, opening a Bluetooth microphone can force the output profile from
+ * high-quality A2DP into HFP call mode. The selection strategy therefore
+ * prefers an explicitly identified built-in microphone and bounds every media
+ * operation so recording preparation can never hang indefinitely.
  */
+
+import { OperationCancelledError, OperationTimeoutError, withTimeout } from './async';
 
 const BT_KEYWORDS = [
   'bluetooth', 'bt ', 'hands-free', 'hfp', 'wireless',
   'airpod', 'buds', 'galaxy buds', 'headset', 'earbuds',
 ];
 
-/** Raw audio constraints — disables entire Android processing pipeline */
+const BUILTIN_KEYWORDS = ['built-in', 'bottom', 'internal', 'phone', 'camcorder'];
+
+const ENUMERATE_TIMEOUT_MS = 5_000;
+const PERMISSION_TIMEOUT_MS = 15_000;
+const STREAM_TIMEOUT_MS = 15_000;
+
 const RAW_CONSTRAINTS: MediaTrackConstraints = {
-  echoCancellation: { exact: false as any },
-  autoGainControl: { exact: false as any },
-  noiseSuppression: { exact: false as any },
+  echoCancellation: { exact: false },
+  autoGainControl: { exact: false },
+  noiseSuppression: { exact: false },
 };
 
-/** Samsung-specific labels for built-in mics */
-const BUILTIN_KEYWORDS = ['built-in', 'bottom', 'internal', 'phone', 'camcorder'];
+function stopStream(stream: MediaStream) {
+  stream.getTracks().forEach((track) => track.stop());
+}
+
+function ensureMediaDevices() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new DOMException(
+      'Microphone capture is unavailable in this browser or insecure context.',
+      'NotSupportedError',
+    );
+  }
+}
+
+async function enumerateDevices(signal?: AbortSignal): Promise<MediaDeviceInfo[]> {
+  ensureMediaDevices();
+  return withTimeout(
+    navigator.mediaDevices.enumerateDevices(),
+    ENUMERATE_TIMEOUT_MS,
+    'microphone device enumeration',
+    { signal },
+  );
+}
+
+async function requestUserMedia(
+  constraints: MediaStreamConstraints,
+  operation: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<MediaStream> {
+  ensureMediaDevices();
+  return withTimeout(
+    navigator.mediaDevices.getUserMedia(constraints),
+    timeoutMs,
+    operation,
+    {
+      signal,
+      onLateResolve: stopStream,
+    },
+  );
+}
 
 function isBtDevice(label: string): boolean {
   const lower = label.toLowerCase();
-  return BT_KEYWORDS.some((kw) => lower.includes(kw));
+  return BT_KEYWORDS.some((keyword) => lower.includes(keyword));
 }
 
 function isLikelyBuiltIn(label: string): boolean {
   const lower = label.toLowerCase();
-  // If it matches a BT keyword, it's NOT built-in regardless
   if (isBtDevice(lower)) return false;
-  // If it matches a built-in keyword, it IS built-in
-  if (BUILTIN_KEYWORDS.some((kw) => lower.includes(kw))) return true;
-  // If it has a label but no BT keyword, assume built-in
+  if (BUILTIN_KEYWORDS.some((keyword) => lower.includes(keyword))) return true;
   return label.length > 0;
 }
 
@@ -50,144 +86,175 @@ export interface MicResult {
   isRaw: boolean;
 }
 
-/**
- * Find built-in mic deviceId from enumerated devices.
- * Returns null if labels are empty (permission not yet granted).
- */
-function findBuiltInMicId(devices: MediaDeviceInfo[]): { deviceId: string; label: string } | null {
-  const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+function findBuiltInMicId(
+  devices: MediaDeviceInfo[],
+): { deviceId: string; label: string } | null {
+  const audioInputs = devices.filter((device) => device.kind === 'audioinput');
   if (audioInputs.length === 0) return null;
+  if (!audioInputs.some((device) => device.label.length > 0)) return null;
 
-  // If labels are empty, we can't distinguish — return null
-  const hasLabels = audioInputs.some((d) => d.label.length > 0);
-  if (!hasLabels) return null;
+  console.log('[mic] Audio inputs:', audioInputs.map(
+    (device) => `"${device.label}" (${device.deviceId.slice(0, 8)})`,
+  ));
 
-  console.log('[mic] Audio inputs:', audioInputs.map((d) => `"${d.label}" (${d.deviceId.slice(0, 8)})`));
-
-  // Priority 1: device with built-in keyword
-  const byKeyword = audioInputs.find((d) => {
-    const lower = d.label.toLowerCase();
-    return BUILTIN_KEYWORDS.some((kw) => lower.includes(kw)) && !isBtDevice(d.label);
+  const byKeyword = audioInputs.find((device) => {
+    const lower = device.label.toLowerCase();
+    return BUILTIN_KEYWORDS.some((keyword) => lower.includes(keyword))
+      && !isBtDevice(device.label);
   });
   if (byKeyword) return { deviceId: byKeyword.deviceId, label: byKeyword.label };
 
-  // Priority 2: any device that is NOT bluetooth
-  const nonBt = audioInputs.find((d) => d.label && !isBtDevice(d.label));
-  if (nonBt) return { deviceId: nonBt.deviceId, label: nonBt.label };
+  const nonBluetooth = audioInputs.find(
+    (device) => device.label.length > 0 && !isBtDevice(device.label),
+  );
+  return nonBluetooth
+    ? { deviceId: nonBluetooth.deviceId, label: nonBluetooth.label }
+    : null;
+}
 
-  return null;
+function shouldRetryWithBasicConstraints(error: unknown): boolean {
+  if (!(error instanceof DOMException)) return false;
+  return error.name === 'OverconstrainedError'
+    || error.name === 'ConstraintNotSatisfiedError'
+    || error.name === 'NotSupportedError';
 }
 
 /**
- * Get a raw mic stream, forcing the built-in mic to avoid BT HFP switch.
- *
- * Strategy:
- * 1. Try enumerateDevices() — if permission previously granted, labels are available
- * 2. If labels available → pick built-in mic → getUserMedia with exact deviceId
- * 3. If no labels → must get permission first, but CAREFULLY:
- *    Request dummy stream targeting a NON-default device to avoid BT,
- *    or if we can't, use the dummy but immediately stop + re-request
+ * Get a raw stream while preferring the built-in microphone.
+ * All asynchronous stages are bounded and support logical cancellation.
  */
-export async function getPreferredMicStream(): Promise<MicResult> {
+export async function getPreferredMicStream(signal?: AbortSignal): Promise<MicResult> {
+  ensureMediaDevices();
+
+  let initialDevices: MediaDeviceInfo[] = [];
   try {
-    // Step 1: Try enumerating WITHOUT a dummy stream (works if permission was previously granted)
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const found = findBuiltInMicId(devices);
+    initialDevices = await enumerateDevices(signal);
+  } catch (error) {
+    if (error instanceof OperationCancelledError) throw error;
+    console.warn('[mic] Initial enumeration failed; continuing to permission request:', error);
+  }
 
-    if (found && found.deviceId !== 'default') {
-      // We have labels — go straight to requesting built-in mic
-      console.log(`[mic] Labels available, requesting: "${found.label}"`);
-      return await requestMic(found.deviceId, found.label);
-    }
+  const knownBuiltIn = findBuiltInMicId(initialDevices);
+  if (knownBuiltIn && knownBuiltIn.deviceId !== 'default') {
+    console.log(`[mic] Labels available, requesting: "${knownBuiltIn.label}"`);
+    return requestMic(knownBuiltIn.deviceId, knownBuiltIn.label, signal);
+  }
 
-    // Step 2: No labels — permission not yet granted. Need dummy stream.
-    // CRITICAL: Try to avoid BT mic in the dummy stream.
-    // Use enumerateDevices to get device count — if >1 device, there's likely a BT.
-    // Request with sampleRate hint that BT mics can't satisfy (48kHz).
-    console.log('[mic] No labels — requesting permission via dummy stream');
-    
-    let dummyStream: MediaStream;
+  console.log('[mic] Device labels unavailable; requesting microphone permission');
+
+  let dummyStream: MediaStream | null = null;
+  try {
     try {
-      // Try requesting with constraints that prefer built-in (48kHz, no processing)
-      // BT HFP mics typically only support 8/16kHz
-      dummyStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: { ideal: 48000 },
-          echoCancellation: false,
-          autoGainControl: false,
-          noiseSuppression: false,
+      dummyStream = await requestUserMedia(
+        {
+          audio: {
+            sampleRate: { ideal: 48_000 },
+            echoCancellation: false,
+            autoGainControl: false,
+            noiseSuppression: false,
+          },
         },
-      });
-    } catch {
-      // Fallback to bare minimum
-      dummyStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        'microphone permission request',
+        PERMISSION_TIMEOUT_MS,
+        signal,
+      );
+    } catch (error) {
+      if (!shouldRetryWithBasicConstraints(error)) throw error;
+      dummyStream = await requestUserMedia(
+        { audio: true },
+        'basic microphone permission request',
+        PERMISSION_TIMEOUT_MS,
+        signal,
+      );
     }
 
-    // Now enumerate with labels
-    const devicesWithLabels = await navigator.mediaDevices.enumerateDevices();
-    
-    // Stop dummy stream IMMEDIATELY
-    dummyStream.getTracks().forEach((t) => t.stop());
-
-    const foundNow = findBuiltInMicId(devicesWithLabels);
-    if (foundNow && foundNow.deviceId !== 'default') {
-      console.log(`[mic] After permission, requesting: "${foundNow.label}"`);
-      return await requestMic(foundNow.deviceId, foundNow.label);
+    let labeledDevices: MediaDeviceInfo[] = [];
+    try {
+      labeledDevices = await enumerateDevices(signal);
+    } finally {
+      stopStream(dummyStream);
+      dummyStream = null;
     }
 
-    // Step 3: Couldn't identify built-in even with labels — use raw constraints without deviceId
-    console.warn('[mic] ⚠️ Could not identify built-in mic, using default');
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { ...RAW_CONSTRAINTS, sampleRate: { ideal: 48000 }, channelCount: 1 },
-    });
-    const label = stream.getAudioTracks()[0]?.label || 'Default';
+    const discoveredBuiltIn = findBuiltInMicId(labeledDevices);
+    if (discoveredBuiltIn && discoveredBuiltIn.deviceId !== 'default') {
+      console.log(`[mic] After permission, requesting: "${discoveredBuiltIn.label}"`);
+      return requestMic(discoveredBuiltIn.deviceId, discoveredBuiltIn.label, signal);
+    }
+
+    console.warn('[mic] Built-in microphone could not be identified; using raw default input');
+    const stream = await requestUserMedia(
+      {
+        audio: {
+          ...RAW_CONSTRAINTS,
+          sampleRate: { ideal: 48_000 },
+          channelCount: 1,
+        },
+      },
+      'raw default microphone request',
+      STREAM_TIMEOUT_MS,
+      signal,
+    );
+    const label = stream.getAudioTracks()[0]?.label || 'Default microphone';
     const raw = verifyRawAudio(stream);
-    return { stream, deviceLabel: label, isBuiltIn: !isBtDevice(label), isRaw: raw.isRaw };
-
-  } catch (err) {
-    console.error('[mic] All mic requests failed:', err);
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const label = stream.getAudioTracks()[0]?.label || 'Fallback';
-    return { stream, deviceLabel: label, isBuiltIn: false, isRaw: false };
+    return {
+      stream,
+      deviceLabel: label,
+      isBuiltIn: !isBtDevice(label),
+      isRaw: raw.isRaw,
+    };
+  } finally {
+    if (dummyStream) stopStream(dummyStream);
   }
 }
 
-/**
- * Request mic with exact deviceId and raw constraints.
- */
-async function requestMic(deviceId: string, label: string): Promise<MicResult> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      ...RAW_CONSTRAINTS,
-      deviceId: { exact: deviceId },
-      sampleRate: { ideal: 48000 },
-      channelCount: 1,
+async function requestMic(
+  deviceId: string,
+  label: string,
+  signal?: AbortSignal,
+): Promise<MicResult> {
+  const stream = await requestUserMedia(
+    {
+      audio: {
+        ...RAW_CONSTRAINTS,
+        deviceId: { exact: deviceId },
+        sampleRate: { ideal: 48_000 },
+        channelCount: 1,
+      },
     },
-  });
+    `microphone request for ${label || 'built-in input'}`,
+    STREAM_TIMEOUT_MS,
+    signal,
+  );
+
   const actualLabel = stream.getAudioTracks()[0]?.label || label;
   const raw = verifyRawAudio(stream);
-  console.log(`[mic] ✅ Stream opened: "${actualLabel}" (raw: ${raw.isRaw})`);
-  return { stream, deviceLabel: actualLabel, isBuiltIn: isLikelyBuiltIn(actualLabel), isRaw: raw.isRaw };
+  console.log(`[mic] Stream opened: "${actualLabel}" (raw: ${raw.isRaw})`);
+  return {
+    stream,
+    deviceLabel: actualLabel,
+    isBuiltIn: isLikelyBuiltIn(actualLabel),
+    isRaw: raw.isRaw,
+  };
 }
 
-/**
- * Detect if BT audio output devices are connected.
- */
-export async function hasBtAudioOutput(): Promise<boolean> {
+export async function hasBtAudioOutput(signal?: AbortSignal): Promise<boolean> {
   try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    return devices.some((d) => {
-      if (d.kind !== 'audiooutput') return false;
-      return d.label ? isBtDevice(d.label) : false;
-    });
-  } catch {
+    const devices = await enumerateDevices(signal);
+    return devices.some((device) => (
+      device.kind === 'audiooutput'
+      && device.label.length > 0
+      && isBtDevice(device.label)
+    ));
+  } catch (error) {
+    if (error instanceof OperationCancelledError) throw error;
+    if (error instanceof OperationTimeoutError) {
+      console.warn('[mic] Bluetooth output detection timed out');
+    }
     return false;
   }
 }
 
-/**
- * Verify actual track settings after stream is opened.
- */
 export function verifyRawAudio(stream: MediaStream): {
   echoCancellation: boolean;
   autoGainControl: boolean;
@@ -195,17 +262,24 @@ export function verifyRawAudio(stream: MediaStream): {
   isRaw: boolean;
 } {
   const track = stream.getAudioTracks()[0];
-  if (!track) return { echoCancellation: true, autoGainControl: true, noiseSuppression: true, isRaw: false };
+  if (!track) {
+    return {
+      echoCancellation: true,
+      autoGainControl: true,
+      noiseSuppression: true,
+      isRaw: false,
+    };
+  }
 
   const settings = track.getSettings();
-  const ec = settings.echoCancellation ?? true;
-  const agc = settings.autoGainControl ?? true;
-  const ns = settings.noiseSuppression ?? true;
+  const echoCancellation = settings.echoCancellation ?? true;
+  const autoGainControl = settings.autoGainControl ?? true;
+  const noiseSuppression = settings.noiseSuppression ?? true;
 
   return {
-    echoCancellation: ec,
-    autoGainControl: agc,
-    noiseSuppression: ns,
-    isRaw: !ec && !agc && !ns,
+    echoCancellation,
+    autoGainControl,
+    noiseSuppression,
+    isRaw: !echoCancellation && !autoGainControl && !noiseSuppression,
   };
 }
