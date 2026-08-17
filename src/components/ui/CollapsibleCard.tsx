@@ -1,4 +1,4 @@
-import { useState, useId, type ReactNode } from 'react';
+import { useState, useId, useRef, useEffect, type ReactNode } from 'react';
 import { HelpTip } from './HelpTip';
 
 interface CollapsibleCardProps {
@@ -19,10 +19,18 @@ export function CollapsibleCard({
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const contentId = useId();
   const titleId = useId();
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    if (isOpen) content.removeAttribute('inert');
+    else content.setAttribute('inert', '');
+  }, [isOpen]);
 
   return (
     <section className="border border-border-subtle rounded-xl overflow-hidden">
-      <div className="flex items-stretch bg-bg-surface active-within:bg-bg-raised transition-colors">
+      <div className="flex items-stretch bg-bg-surface focus-within:bg-bg-raised transition-colors">
         <button
           type="button"
           onClick={() => setIsOpen((current) => !current)}
@@ -66,11 +74,11 @@ export function CollapsibleCard({
       </div>
 
       <div
+        ref={contentRef}
         id={contentId}
         role="region"
         aria-labelledby={titleId}
         aria-hidden={!isOpen}
-        inert={!isOpen}
         className={`collapse-grid ${isOpen ? 'is-open' : ''}`}
       >
         <div className="collapse-inner">
