@@ -77,7 +77,6 @@ class OpfsRecordingSink implements RecordingSink {
   private finalized = false;
 
   private constructor(
-    private readonly directory: FileSystemDirectoryHandle,
     private readonly fileName: string,
     private readonly handle: FileSystemFileHandle,
     private readonly writable: FileSystemWritableFileStream,
@@ -90,7 +89,7 @@ class OpfsRecordingSink implements RecordingSink {
     const fileName = `${MANAGED_FILE_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}.pcm`;
     const handle = await directory.getFileHandle(fileName, { create: true });
     const writable = await handle.createWritable({ keepExistingData: false });
-    return new OpfsRecordingSink(directory, fileName, handle, writable);
+    return new OpfsRecordingSink(fileName, handle, writable);
   }
 
   get byteLength(): number {
