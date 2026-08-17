@@ -8,6 +8,7 @@ export function TapTempo() {
   const [tapCount, setTapCount] = useState(0);
   const tapTimesRef = useRef<number[]>([]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const firedRef = useRef(false);
 
   const handleTap = useCallback(() => {
     const now = performance.now();
@@ -41,20 +42,36 @@ export function TapTempo() {
     }, TAP_TIMEOUT_MS);
   }, [setBpm]);
 
+  const handlePointerDown = useCallback((event: React.PointerEvent) => {
+    event.preventDefault();
+    firedRef.current = true;
+    handleTap();
+  }, [handleTap]);
+
+  const handleClick = useCallback((event: React.MouseEvent) => {
+    if (firedRef.current) {
+      event.preventDefault();
+      firedRef.current = false;
+      return;
+    }
+    handleTap();
+  }, [handleTap]);
+
   return (
     <button
       type="button"
-      onClick={handleTap}
-      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl
+      onPointerDown={handlePointerDown}
+      onClick={handleClick}
+      className="w-full min-h-[72px] flex items-center justify-center gap-2 rounded-[18px]
                  border-[1.5px] border-border-subtle bg-bg-surface
-                 text-text-primary text-xs font-bold tracking-wide
-                 active:bg-bg-raised transition-colors h-[48px]
+                 text-text-primary text-sm font-extrabold tracking-[0.10em]
+                 active:bg-bg-raised transition-colors duration-75
                  touch-manipulation select-none relative"
     >
       ♩ TAP TEMPO
       {tapCount >= 2 && (
-        <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full
-                         bg-accent-dim text-[9px] font-mono font-bold
+        <span className="absolute top-2 right-2 min-w-6 h-6 px-1.5 rounded-full
+                         bg-accent-dim text-[10px] font-mono font-bold
                          flex items-center justify-center text-text-primary border border-border-subtle">
           {tapCount}
         </span>

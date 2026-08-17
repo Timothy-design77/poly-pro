@@ -40,7 +40,7 @@ export function HomePage() {
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
-  const [dialSize, setDialSize] = useState(220);
+  const [dialSize, setDialSize] = useState(240);
 
   const recording = useRecording();
   const analysis = useAnalysis();
@@ -124,8 +124,8 @@ export function HomePage() {
     const measure = () => {
       const el = dialContainerRef.current;
       if (!el) return;
-      const size = Math.round(el.clientWidth * 0.66);
-      setDialSize(Math.max(176, Math.min(292, size)));
+      const size = Math.round(el.clientWidth * 0.74);
+      setDialSize(Math.max(210, Math.min(340, size)));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -189,7 +189,7 @@ export function HomePage() {
     <div className="h-full overflow-y-auto bg-bg-primary">
       <BackupBanner />
       <div className="w-full max-w-xl mx-auto px-4 pb-8">
-        <div className="min-h-[36px] flex items-center justify-center gap-2 py-1.5 text-center" aria-live="polite">
+        <div className="min-h-[34px] flex items-center justify-center gap-2 py-1 text-center" aria-live="polite">
           {recording.isRecording ? (
             <>
               <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
@@ -220,31 +220,16 @@ export function HomePage() {
           )}
         </div>
 
-        <div ref={dialContainerRef} className="flex items-center justify-center relative">
+        {/* The BPM ring itself is the only keypad entry control on the primary surface. */}
+        <div ref={dialContainerRef} className="flex items-center justify-center relative pb-2">
           <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
         </div>
 
-        {/* Tempo tools stay together directly under the BPM display. */}
-        <div className="space-y-2.5 pt-2">
-          <BpmControl />
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setShowKeypad(true)}
-              className="h-[44px] rounded-xl border-[1.5px] border-border-subtle bg-bg-surface
-                         text-xs font-bold tracking-wide text-text-primary active:bg-bg-raised transition-colors duration-75"
-            >
-              SET BPM
-              <span className="block text-[9px] font-medium tracking-normal text-text-muted">keypad</span>
-            </button>
-            <TapTempo />
-          </div>
-        </div>
-
-        {/* Transport is one compact row: play and record are the two primary actions. */}
-        <div className="grid grid-cols-2 gap-2 pt-3">
-          <PlayButton />
+        {/* Primary practice stack: large, full-width, low-cognitive-load controls. */}
+        <div className="space-y-3">
           <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
+          <PlayButton />
+          <TapTempo />
         </div>
 
         <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
@@ -268,16 +253,24 @@ export function HomePage() {
           </div>
         )}
 
-        {/* Advanced controls are intentionally below the primary practice surface. */}
-        <div className="mt-8 pt-5 border-t border-border-subtle">
+        {/* Everything non-essential to immediate playing lives lower in the scroll. */}
+        <div className="mt-10 pt-6 border-t border-border-subtle">
           <div className="mb-3 px-1">
             <h2 className="text-sm font-semibold text-text-primary">Advanced controls</h2>
             <p className="text-[11px] text-text-muted mt-0.5">
-              Meter, patterns, practice modes, trainer, and polyrhythms
+              Fine tempo adjustment, meter, patterns, practice modes, trainer, and polyrhythms
             </p>
           </div>
 
           <div className="space-y-2">
+            <CollapsibleCard
+              title="Fine Tempo"
+              badge="±0.5"
+              help="Use the large buttons for precise 0.5 BPM changes or hold them for accelerated changes."
+            >
+              <BpmControl />
+            </CollapsibleCard>
+
             <CollapsibleCard
               title="Meter & Subdivision"
               badge={meterBadge}

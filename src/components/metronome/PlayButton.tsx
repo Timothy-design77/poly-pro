@@ -3,10 +3,10 @@ import { useMetronomeStore } from '../../store/metronome-store';
 import { useMetronome } from '../../hooks/useMetronome';
 
 /**
- * Full-width START/STOP button.
+ * Oversized full-width START/STOP button.
  *
- * LATENCY: Uses onPointerDown (fires on finger TOUCH, not release).
- * No transition on bg/color — visual state snaps instantly.
+ * Uses a true 4:1 width-to-height ratio and fires on pointer-down so the
+ * transport responds at finger contact rather than release.
  */
 export function PlayButton() {
   const playing = useMetronomeStore((s) => s.playing);
@@ -33,8 +33,8 @@ export function PlayButton() {
       onPointerDown={handlePointerDown}
       onClick={handleClick}
       className={`
-        w-full rounded-[14px] text-sm font-bold tracking-wider
-        flex items-center justify-center gap-2.5 h-[54px]
+        w-full aspect-[4/1] rounded-[20px] text-base font-extrabold tracking-[0.14em]
+        flex items-center justify-center gap-3
         touch-manipulation select-none border-[1.5px]
         ${playing
           ? 'bg-bg-surface text-text-primary border-border-emphasis'
@@ -43,12 +43,12 @@ export function PlayButton() {
       `}
     >
       {playing ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
           <rect x="5" y="4" width="5" height="16" rx="1" />
           <rect x="14" y="4" width="5" height="16" rx="1" />
         </svg>
       ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5 3 19 12 5 21" />
         </svg>
       )}
