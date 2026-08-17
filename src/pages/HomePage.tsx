@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
+import { useSettingsStore } from '../store/settings-store';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { Dial } from '../components/metronome/Dial';
 import { PlayButton } from '../components/metronome/PlayButton';
@@ -41,6 +42,7 @@ export function HomePage() {
   const setBpm = useMetronomeStore((state) => state.setBpm);
   const playing = useMetronomeStore((state) => state.playing);
   const playStartTime = useMetronomeStore((state) => state.playStartTime);
+  const liveWaveform = useSettingsStore((state) => state.liveWaveform);
   const activeProject = useProjectStore((state) => (
     state.projects.find((project) => project.id === state.activeProjectId) || null
   ));
@@ -210,7 +212,9 @@ export function HomePage() {
             <TapTempo />
           </div>
 
-          <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
+          {liveWaveform && (
+            <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
+          )}
 
           {recording.error && (
             <div

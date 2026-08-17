@@ -3,6 +3,7 @@ import { audioEngine } from '../audio';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
+import { useSettingsStore } from '../store/settings-store';
 import { getPreferredMicStream, hasBtAudioOutput } from '../utils/mic';
 import {
   OperationCancelledError,
@@ -128,6 +129,7 @@ export function useRecording() {
   const micStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const micGainRef = useRef<GainNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
   const pcmChunksRef = useRef<Float32Array[]>([]);
   const startTimeRef = useRef(0);
@@ -167,6 +169,12 @@ export function useRecording() {
       micSourceRef.current = null;
     }
 
+    const micGain = micGainRef.current;
+    if (micGain) {
+      try { micGain.disconnect(); } catch {}
+      micGainRef.current = null;
+    }
+
     const silentGain = silentGainRef.current;
     if (silentGain) {
       try { silentGain.disconnect(); } catch {}
@@ -175,6 +183,7 @@ export function useRecording() {
 
     stopMediaStream(micStreamRef.current);
     micStreamRef.current = null;
+    audioEngine.setOutputVolumeOverride(null);
   }, []);
 
   const stopTransportIfOwned = useCallback(() => {
@@ -269,6 +278,11 @@ export function useRecording() {
       const source = context.createMediaStreamSource(micResult.stream);
       micSourceRef.current = source;
 
+      const recordingSettings = useSettingsStore.getState();
+      const micGain = context.createGain();
+      micGain.gain.value = 1 + recordingSettings.sensitivity * 4;
+      micGainRef.current = micGain;
+
       const workletNode = new AudioWorkletNode(context, 'pcm-capture-processor');
       workletNodeRef.current = workletNode;
 
@@ -276,7 +290,8 @@ export function useRecording() {
       silentGain.gain.value = 0;
       silentGainRef.current = silentGain;
 
-      source.connect(workletNode);
+      source.connect(micGain);
+      micGain.connect(workletNode);
       workletNode.connect(silentGain);
       silentGain.connect(context.destination);
 
@@ -308,6 +323,12 @@ export function useRecording() {
         console.warn('[recording] AudioWorklet message could not be decoded');
       };
       workletNode.port.postMessage({ type: 'start' });
+
+      audioEngine.setOutputVolumeOverride(
+        recordingSettings.includeClickInRecording
+          ? recordingSettings.clickVolumeInRecording
+          : 0,
+      );
 
       setState((current) => ({ ...current, preparationStage: 'transport' }));
       if (!audioEngine.running) {
