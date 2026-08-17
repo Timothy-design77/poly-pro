@@ -272,9 +272,12 @@ export function verifyRawAudio(stream: MediaStream): {
   }
 
   const settings = track.getSettings();
-  const echoCancellation = settings.echoCancellation ?? true;
-  const autoGainControl = settings.autoGainControl ?? true;
-  const noiseSuppression = settings.noiseSuppression ?? true;
+  // Newer DOM typings allow browser-specific string values. Treat processing
+  // as disabled only when the browser reports the explicit boolean `false`;
+  // unknown/omitted values remain conservative and therefore non-raw.
+  const echoCancellation = settings.echoCancellation !== false;
+  const autoGainControl = settings.autoGainControl !== false;
+  const noiseSuppression = settings.noiseSuppression !== false;
 
   return {
     echoCancellation,
