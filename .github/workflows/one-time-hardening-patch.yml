@@ -1,0 +1,56 @@
+name: One-time Hardening Patch
+
+on:
+  push:
+    branches:
+      - agent/production-hardening
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/production-hardening
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply exact maintenance patches
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const recordingPath = 'src/hooks/useRecording.ts';
+          let recording = fs.readFileSync(recordingPath, 'utf8');
+          const oldBlob = `        const parts: BlobPart[] = chunks.map((chunk) => (\n          chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength\n            ? chunk.buffer\n            : chunk.slice().buffer\n        ));`;
+          const newBlob = `        const parts: BlobPart[] = chunks.map((chunk) => {\n          const sourceBuffer = chunk.buffer;\n          if (\n            sourceBuffer instanceof ArrayBuffer\n            && chunk.byteOffset === 0\n            && chunk.byteLength === sourceBuffer.byteLength\n          ) {\n            return sourceBuffer;\n          }\n          // AudioWorklet PCM arrives in ordinary ArrayBuffers. Slice creates a\n          // bounded ArrayBuffer when the view covers only part of its source.\n          return chunk.slice().buffer as ArrayBuffer;\n        });`;
+          if (!recording.includes(oldBlob)) throw new Error('Recording Blob block not found');
+          recording = recording.replace(oldBlob, newBlob);
+          fs.writeFileSync(recordingPath, recording);
+
+          const dbPath = 'src/store/db.ts';
+          let db = fs.readFileSync(dbPath, 'utf8');
+          const oldStores = `const REQUIRED_STORES = ['settings', 'projects', 'sessions', 'recordings'] as const;`;
+          const newStores = `const REQUIRED_STORES = [\n  'settings',\n  'presets',\n  'projects',\n  'sessions',\n  'recordings',\n  'instrumentProfiles',\n  'customSamples',\n] as const;`;
+          if (!db.includes(oldStores)) throw new Error('Required-store list not found');
+          db = db.replace(oldStores, newStores);
+          fs.writeFileSync(dbPath, db);
+          NODE
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/one-time-hardening-patch.yml
+
+      - name: Commit patches
+        run: |
+          git config user.name "Poly Pro Hardening Bot"
+          git config user.email "noreply@github.com"
+          git add src/hooks/useRecording.ts src/store/db.ts .github/workflows/one-time-hardening-patch.yml
+          git commit -m "Apply typed recording and schema safety patches [hardening-bot]"
+          git push origin HEAD:agent/production-hardening
