@@ -2,7 +2,6 @@
 
 **Repository:** `Timothy-design77/poly-pro`  
 **Production branch:** `main`  
-**Current UX branch:** `agent/fluid-mobile-ux`  
 **Production URL:** `https://timothy-design77.github.io/poly-pro/`  
 
 This file is the short-form progress ledger. The larger historical architecture document remains `docs/IMPLEMENTATION-PLAN.md`.
@@ -92,8 +91,8 @@ Initial device use confirmed the new layout/colors are substantially better. Fol
 - Settings should keep bottom navigation visible instead of requiring a top Done button.
 - Bottom navigation should support direct horizontal swipe navigation.
 
-### J. Fluid mobile UX / responsiveness pass — IN PROGRESS
-Working branch: `agent/fluid-mobile-ux` / PR #5.
+### J. Fluid mobile UX / responsiveness pass — COMPLETE
+PR #5 merged to `main` as `4dc162e` with the full six-commit history preserved.
 
 Implemented:
 - Settings is now a first-class bottom-nav destination; bottom navigation remains visible in Settings.
@@ -110,8 +109,9 @@ Implemented:
 - Existing light/high-contrast palette intentionally unchanged.
 
 Verification:
-- GitHub Actions CI is required on the final PR head before merge.
-- Final Fold acceptance after deployment will focus on perceived latency, bottom-nav swipe behavior, Settings navigation, and primary Home hierarchy.
+- Runtime code head passed GitHub Actions CI run 63: type-check PASS, Vitest PASS, production build PASS.
+- Final PR head `7f5f179` passed GitHub Actions CI run 64: type-check PASS, Vitest PASS, production build PASS.
+- Next Fold acceptance should focus on perceived latency, bottom-nav swipe behavior, Settings navigation, and the new Home hierarchy.
 
 ## Progress log
 
@@ -127,3 +127,5 @@ Verification:
 - 2026-08-17: Persistent/swipeable bottom navigation implemented with Settings as a destination.
 - 2026-08-17: Advanced panels converted to instant lazy-mounted surfaces to eliminate hidden work and layout-animation jank.
 - 2026-08-17: Home reorganized into tempo → transport → lower advanced controls; existing color system preserved.
+- 2026-08-17: PR #5 final head passed type-check, regression tests, and production build.
+- 2026-08-17: PR #5 merged to `main` as `4dc162e`; fluid mobile UX pass marked complete.
