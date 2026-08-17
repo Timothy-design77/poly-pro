@@ -16,6 +16,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -26,7 +27,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -35,17 +36,34 @@ jobs:
       - name: Type-check
         run: npm run lint
 
-      - name: Run tests
+      - name: Run unit and regression tests
         run: npm run test:run
+
+      - name: Audit production dependencies
+        run: npm run audit:prod
 
       - name: Build production bundle
         run: npm run build
 
-      - uses: actions/configure-pages@v4
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Generate deterministic microphone input
+        run: node tests/generate-fake-audio.mjs /tmp/poly-pro-fake-mic.wav
+
+      - name: Run production browser, PWA, recording, and accessibility tests
+        env:
+          PLAYWRIGHT_FAKE_AUDIO: /tmp/poly-pro-fake-mic.wav
+        run: npm run test:browser
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
       - id: deployment
+        name: Deploy
         uses: actions/deploy-pages@v4
