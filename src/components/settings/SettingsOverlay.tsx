@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from 'react';
-import { Toggle } from '../ui/Toggle';
 import { useSettingsStore } from '../../store/settings-store';
 import { SoundSettings } from './SoundSettings';
 import { VibrationSettings } from './VibrationSettings';
@@ -22,10 +21,12 @@ function CollapsibleSection({ title, icon, defaultOpen = false, help, children }
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="border-b border-border-subtle">
+    <div className="border-b border-border-subtle bg-bg-surface">
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-bg-raised transition-all"
+        aria-expanded={isOpen}
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-bg-raised transition-colors"
       >
         <span className="text-text-muted">{icon}</span>
         <span className="text-sm font-semibold text-text-primary flex-1 flex items-center gap-1.5">
@@ -49,9 +50,6 @@ function CollapsibleSection({ title, icon, defaultOpen = false, help, children }
   );
 }
 
-/**
- * Recording settings — full recording controls per plan.
- */
 function RecordingSettings() {
   const sensitivity = useSettingsStore((s) => s.sensitivity);
   const setSensitivity = useSettingsStore((s) => s.setSensitivity);
@@ -66,19 +64,17 @@ function RecordingSettings() {
   const retentionDays = useSettingsStore((s) => s.rawPcmRetentionDays);
   const setRetentionDays = useSettingsStore((s) => s.setRawPcmRetentionDays);
 
-  // Gain label: sensitivity 0 = 1x, 0.5 = 3x, 1.0 = 5x
   const gainValue = 1 + sensitivity * 4;
   const gainLabel = gainValue === 1 ? '1x (off)' : `${gainValue.toFixed(1)}x`;
 
-  const sliderClass = `w-full accent-white h-2 bg-bg-raised rounded-full appearance-none
+  const sliderClass = `w-full accent-accent h-2 bg-bg-raised rounded-full appearance-none
                        [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
                        [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
-                       [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer`;
+                       [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer`;
 
   return (
     <div className="space-y-4">
-      {/* Include Click in Recording */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <label className="text-xs text-text-muted uppercase tracking-wider">
             Include Click
@@ -88,20 +84,21 @@ function RecordingSettings() {
           </p>
         </div>
         <button
+          type="button"
+          aria-pressed={includeClick}
           onClick={() => setIncludeClick(!includeClick)}
-          className={`w-10 h-6 rounded-full transition-colors ${
-            includeClick ? 'bg-accent' : 'bg-bg-raised'
+          className={`w-11 h-7 rounded-full transition-colors border ${
+            includeClick ? 'bg-accent border-accent' : 'bg-bg-raised border-border-subtle'
           }`}
         >
           <div
-            className={`w-4 h-4 rounded-full bg-white mx-1 transition-transform ${
+            className={`w-5 h-5 rounded-full bg-white mx-1 transition-transform shadow-sm ${
               includeClick ? 'translate-x-4' : ''
             }`}
           />
         </button>
       </div>
 
-      {/* Click Volume in Recording */}
       {includeClick && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -124,7 +121,6 @@ function RecordingSettings() {
         </div>
       )}
 
-      {/* Mic Input Gain */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <label className="text-xs text-text-muted uppercase tracking-wider">
@@ -145,8 +141,7 @@ function RecordingSettings() {
         </p>
       </div>
 
-      {/* Live Waveform */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <label className="text-xs text-text-muted uppercase tracking-wider">
             Live Waveform
@@ -156,20 +151,21 @@ function RecordingSettings() {
           </p>
         </div>
         <button
+          type="button"
+          aria-pressed={liveWaveform}
           onClick={() => setLiveWaveform(!liveWaveform)}
-          className={`w-10 h-6 rounded-full transition-colors ${
-            liveWaveform ? 'bg-accent' : 'bg-bg-raised'
+          className={`w-11 h-7 rounded-full transition-colors border ${
+            liveWaveform ? 'bg-accent border-accent' : 'bg-bg-raised border-border-subtle'
           }`}
         >
           <div
-            className={`w-4 h-4 rounded-full bg-white mx-1 transition-transform ${
+            className={`w-5 h-5 rounded-full bg-white mx-1 transition-transform shadow-sm ${
               liveWaveform ? 'translate-x-4' : ''
             }`}
           />
         </button>
       </div>
 
-      {/* Audio After Analysis */}
       <div>
         <label className="text-xs text-text-muted uppercase tracking-wider block mb-1.5">
           Audio After Analysis
@@ -181,12 +177,13 @@ function RecordingSettings() {
             { value: 'delete' as const, label: 'Delete' },
           ]).map((opt) => (
             <button
+              type="button"
               key={opt.value}
               onClick={() => setAudioAfter(opt.value)}
-              className={`flex-1 py-2 rounded-md text-xs min-h-[40px] transition-colors ${
+              className={`flex-1 py-2 rounded-md text-xs min-h-[44px] transition-colors border ${
                 audioAfter === opt.value
-                  ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
-                  : 'bg-bg-raised text-text-muted'
+                  ? 'bg-accent-dim border-border-emphasis text-text-primary font-semibold'
+                  : 'bg-bg-raised border-border-subtle text-text-secondary'
               }`}
             >
               {opt.label}
@@ -202,7 +199,6 @@ function RecordingSettings() {
         </p>
       </div>
 
-      {/* Raw PCM Retention */}
       {audioAfter === 'keep-raw' && (
         <div>
           <label className="text-xs text-text-muted uppercase tracking-wider block mb-1.5">
@@ -211,12 +207,13 @@ function RecordingSettings() {
           <div className="flex gap-1">
             {[7, 14, 30, 60, 90].map((days) => (
               <button
+                type="button"
                 key={days}
                 onClick={() => setRetentionDays(days)}
-                className={`flex-1 py-2 rounded-md text-xs min-h-[40px] transition-colors ${
+                className={`flex-1 py-2 rounded-md text-xs min-h-[44px] transition-colors border ${
                   retentionDays === days
-                    ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
-                    : 'bg-bg-raised text-text-muted'
+                    ? 'bg-accent-dim border-border-emphasis text-text-primary font-semibold'
+                    : 'bg-bg-raised border-border-subtle text-text-secondary'
                 }`}
               >
                 {days}d
@@ -232,15 +229,9 @@ function RecordingSettings() {
   );
 }
 
-/**
- * Settings overlay content — 6 collapsible sections.
- * Phase 1: Sounds + Vibration are functional.
- * Others show "Coming soon" stubs.
- */
 export function SettingsContent() {
   return (
-    <div>
-      {/* Section 1: Sounds */}
+    <div className="bg-bg-surface">
       <CollapsibleSection
         title="Sounds"
         defaultOpen
@@ -256,7 +247,6 @@ export function SettingsContent() {
         <SoundSettings />
       </CollapsibleSection>
 
-      {/* Section 2: Recording */}
       <CollapsibleSection
         title="Recording"
         help="Controls for mic recording during practice. Recordings are stored locally and analyzed for timing accuracy after each session."
@@ -272,7 +262,6 @@ export function SettingsContent() {
         <RecordingSettings />
       </CollapsibleSection>
 
-      {/* Section 3: Detection */}
       <CollapsibleSection
         title="Detection"
         help="Default parameters for onset detection. These apply to new recordings. Existing sessions can be re-tuned from the session detail Tune tab."
@@ -287,7 +276,6 @@ export function SettingsContent() {
         <DetectionSettings />
       </CollapsibleSection>
 
-      {/* Section 4: Vibration */}
       <CollapsibleSection
         title="Vibration"
         help="Haptic feedback on beats. Useful when playing loud — you can feel the beat even if you can't hear the click."
@@ -302,22 +290,6 @@ export function SettingsContent() {
         <VibrationSettings />
       </CollapsibleSection>
 
-      {/* Section: Interface */}
-      <CollapsibleSection
-        title="Interface"
-        help="How the app responds to touch."
-        icon={
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <rect x="5" y="2" width="14" height="20" rx="2" />
-            <path d="M12 18h.01" />
-          </svg>
-        }
-      >
-        <InterfaceSettings />
-      </CollapsibleSection>
-
-      {/* Section 5: Calibration */}
       <CollapsibleSection
         title="Calibration"
         help="Measures your device's audio latency using chirp sounds. This offset is subtracted from all onset times so your scores reflect your actual timing, not device delay."
@@ -332,7 +304,6 @@ export function SettingsContent() {
         <CalibrationSettings />
       </CollapsibleSection>
 
-      {/* Section 6: Instruments */}
       <CollapsibleSection
         title="Instruments"
         help="Train the classifier to recognize your kit. Once trained, each drum hit in your recordings will be labeled with its instrument type, enabling per-instrument timing stats."
@@ -347,7 +318,6 @@ export function SettingsContent() {
         <InstrumentSettings />
       </CollapsibleSection>
 
-      {/* Section 7: Data */}
       <CollapsibleSection
         title="Data"
         help="Export, import, and manage your practice data. Clear sessions, back up to file, or restore from a previous backup."
@@ -363,7 +333,6 @@ export function SettingsContent() {
         <DataSettings />
       </CollapsibleSection>
 
-      {/* Section 8: Cloud Enhancement */}
       <CollapsibleSection
         title="Cloud Enhancement"
         help="Optional: upload recordings to MVSEP for professional drum stem separation. Improves instrument classification accuracy significantly."
@@ -375,30 +344,10 @@ export function SettingsContent() {
       >
         <CloudSettings />
       </CollapsibleSection>
-      {/* Build stamp — verify which version is running */}
-      <p className="text-center text-[10px] text-text-faint font-mono pt-2 pb-6">
+
+      <p className="text-center text-[10px] text-text-faint font-mono pt-3 pb-6 bg-bg-primary">
         build {__BUILD_ID__}
       </p>
-    </div>
-  );
-}
-
-function InterfaceSettings() {
-  const swipeNavEnabled = useSettingsStore((st) => st.swipeNavEnabled);
-  const setSwipeNavEnabled = useSettingsStore((st) => st.setSwipeNavEnabled);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm text-text-primary">Swipe Between Pages</div>
-          <div className="text-[10px] text-text-muted mt-0.5 leading-relaxed">
-            Off = pages only change via the pills at the top. Turn off if you
-            keep changing pages accidentally while using controls.
-          </div>
-        </div>
-        <Toggle enabled={swipeNavEnabled} onChange={setSwipeNavEnabled} />
-      </div>
     </div>
   );
 }

@@ -28,11 +28,11 @@ This file is the short-form progress ledger for the current production-alignment
 - Added deliberate Projects / Home / Progress / Settings navigation.
 - Preserved programmatic navigation through the existing nav store.
 
-### B. Visual system alignment — IN PROGRESS
-- Convert dark palette to light-gray/high-contrast tokens.
-- Remove hard-coded dark-theme assumptions from primary controls.
-- Keep status colors accessible on a light surface.
-- Standardize cards, borders, focus states, and scrollbars.
+### B. Visual system alignment — COMPLETE
+- Converted the core palette to light gray / white surfaces with dark, high-contrast text.
+- Updated primary controls and PWA browser chrome to the light theme.
+- Reworked the canvas dial for light-theme contrast.
+- Removed the fabricated 87% home-screen accuracy arc.
 
 ### C. Home workflow alignment — PLANNED
 - Keep BPM visually dominant and compact near the top.
@@ -41,9 +41,9 @@ This file is the short-form progress ledger for the current production-alignment
 - Keep controls centered and full-width where appropriate.
 - Maintain vertical-only advanced controls below the primary workflow.
 
-### D. Interaction hardening — PLANNED
+### D. Interaction hardening — IN PROGRESS
 - Eliminate stale swipe-navigation settings/state.
-- Audit touch/hold behavior for accidental changes during scroll.
+- Make BPM adjustment scroll-safe: tap = 0.5 BPM; intentional hold accelerates; scroll cancels/reverts.
 - Preserve large touch targets and non-selectable controls.
 - Keep precise sliders/number entry for settings that require exact adjustment.
 
@@ -81,3 +81,5 @@ Only after A–H are complete:
 - 2026-08-17: Navigation architecture changed from swipe-driven to explicit tap navigation.
 - 2026-08-17: User-testing checkpoints consolidated into one final device-verification gate.
 - 2026-08-17: Production-alignment execution ledger added to Git.
+- 2026-08-17: Light/high-contrast semantic color system committed; PWA theme chrome updated.
+- 2026-08-17: Home dial converted to light-theme rendering and false placeholder accuracy removed.

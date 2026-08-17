@@ -1,17 +1,8 @@
 /**
  * Persisted state shapes — single source of truth.
- *
- * Previously the same field lists were hand-maintained in three places
- * (persistence.ts pick functions, db.ts MetronomeSnapshot, project-store
- * captureSnapshot), which let them drift (e.g. the deprecated clickVolume
- * field). Here each shape is DERIVED from the store state types via key
- * arrays, so adding a field to persistence is a one-line change and the
- * compiler enforces that keys actually exist on the store state.
  */
 
 import type { MetronomeState, SettingsState } from './types';
-
-// ─── Key lists (checked against store types at compile time) ───
 
 export const PERSISTED_METRONOME_KEYS = [
   'bpm',
@@ -41,7 +32,6 @@ export const PERSISTED_SETTINGS_KEYS = [
   'accentSound',
   'accentSoundThreshold',
   'hapticEnabled',
-  'swipeNavEnabled',
   'vibrationIntensity',
   'calibratedOffset',
   'manualAdjustment',
@@ -56,7 +46,6 @@ export const PERSISTED_SETTINGS_KEYS = [
   'calibrationConsistency',
 ] as const satisfies readonly (keyof SettingsState)[];
 
-/** Settings subset captured into per-project snapshots. */
 export const SNAPSHOT_SETTINGS_KEYS = [
   'clickSound',
   'accentSound',
@@ -65,33 +54,23 @@ export const SNAPSHOT_SETTINGS_KEYS = [
   'vibrationIntensity',
 ] as const satisfies readonly (keyof SettingsState)[];
 
-// ─── Derived types ───
-
 type MetronomeKey = (typeof PERSISTED_METRONOME_KEYS)[number];
 type SettingsKey = (typeof PERSISTED_SETTINGS_KEYS)[number];
 type SnapshotSettingsKey = (typeof SNAPSHOT_SETTINGS_KEYS)[number];
 
 export interface PersistedMetronome extends Pick<MetronomeState, MetronomeKey> {
-  /** Bumped when the persisted shape changes — see migrations.ts */
   _schemaVersion?: number;
 }
 
 export type PersistedSettings = Pick<SettingsState, SettingsKey>;
 
-/**
- * Full metronome + settings snapshot stored on each project.
- * Includes tracks (which the global persisted metronome state does not —
- * track-0 is rebuilt from meter/subdivision on global hydrate).
- */
 export interface MetronomeSnapshot
   extends Pick<MetronomeState, MetronomeKey>,
     Pick<SettingsState, SnapshotSettingsKey> {
   tracks: MetronomeState['tracks'];
-  /** DEPRECATED — kept optional for IDB backward compat. */
+  /** DEPRECATED — kept optional for IDB backward compatibility. */
   clickVolume?: number;
 }
-
-// ─── Pickers ───
 
 function pickKeys<T extends object, K extends readonly (keyof T)[]>(
   source: T,

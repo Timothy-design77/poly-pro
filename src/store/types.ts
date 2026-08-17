@@ -21,7 +21,7 @@ export interface MetronomeState {
 
   // Bar counter + session timer
   currentBar: number;
-  playStartTime: number; // Date.now() when play started, 0 when stopped
+  playStartTime: number;
 
   // Trainer mode
   trainerEnabled: boolean;
@@ -35,14 +35,14 @@ export interface MetronomeState {
 
   // Practice modes
   gapClickEnabled: boolean;
-  gapClickProbability: number;  // 0-1, probability a beat is muted
+  gapClickProbability: number;
   randomMuteEnabled: boolean;
-  randomMuteProbability: number; // 0-1, probability a measure is muted
+  randomMuteProbability: number;
   playMuteCycleEnabled: boolean;
-  playMuteCyclePlayBars: number;  // bars with click
-  playMuteCycleMuteBars: number;  // bars silent
+  playMuteCyclePlayBars: number;
+  playMuteCycleMuteBars: number;
 
-  // Swing (global default, tracks can override)
+  // Swing
   swing: number;
 
   // Actions
@@ -86,41 +86,33 @@ export interface SettingsState {
 
   // Vibration
   hapticEnabled: boolean;
-  swipeNavEnabled: boolean;
   vibrationIntensity: number;
 
   // Detection
   sensitivity: number;
-  scoringWindowPct: number;    // % of IOI (default 5)
-  flamMergePct: number;        // % of subdivision IOI (default 45)
-  noiseGate: number;           // energy threshold (default 0.05)
-  accentThreshold: number;     // multiplier (default 1.5)
-  highPassHz: number;          // high-pass cutoff, 0 = off
-  detectionPreset: string;     // 'Standard' | 'Strict' | 'Forgiving' | 'Noisy Room' | 'Custom'
-  noiseFloorMultiplier: number; // how aggressively to gate (default 5, range 2–20)
-  minOnsetIntervalMs: number;   // minimum gap between detections (default 60, range 20–150)
-  postHitMaskingMs: number;     // decay masking after hits (default 100, range 0–200)
-  postHitMaskingStrength: number; // masking multiplier (default 10, range 0–30)
-  fluxThresholdOffset: number;  // spectral flux threshold above median (default 1.0, range 0.3–3.0)
+  scoringWindowPct: number;
+  flamMergePct: number;
+  noiseGate: number;
+  accentThreshold: number;
+  highPassHz: number;
+  detectionPreset: string;
+  noiseFloorMultiplier: number;
+  minOnsetIntervalMs: number;
+  postHitMaskingMs: number;
+  postHitMaskingStrength: number;
+  fluxThresholdOffset: number;
 
   // Calibration
-  /** Offset from automated calibration (ms) */
   calibratedOffset: number;
-  /** Manual fine-tune adjustment on top of calibration (ms) */
   manualAdjustment: number;
   lastCalibratedAt: string | null;
   calibrationConsistency: number | null;
 
   // Recording
-  /** Whether metronome click is played through speaker during recording */
   includeClickInRecording: boolean;
-  /** Click volume during recording (0–0.5), separate from playback volume */
   clickVolumeInRecording: number;
-  /** Show live waveform during recording */
   liveWaveform: boolean;
-  /** What to do with raw PCM after analysis */
   audioAfterAnalysis: 'compress' | 'keep-raw' | 'delete';
-  /** How many days to keep raw PCM (only relevant if audioAfterAnalysis === 'keep-raw') */
   rawPcmRetentionDays: number;
 
   // Actions
@@ -128,7 +120,6 @@ export interface SettingsState {
   setAccentSound: (id: string) => void;
   setAccentSoundThreshold: (level: number) => void;
   setHapticEnabled: (enabled: boolean) => void;
-  setSwipeNavEnabled: (enabled: boolean) => void;
   setVibrationIntensity: (intensity: number) => void;
   setCalibratedOffset: (offset: number) => void;
   setManualAdjustment: (adj: number) => void;
@@ -165,7 +156,6 @@ export function createDefaultTrack(
   const totalBeats = numerator * subdivision;
   const accents: VolumeState[] = [];
 
-  // Compute which beat positions are group boundaries
   const groups = grouping || [numerator];
   const groupStarts = new Set<number>([0]);
   let pos = 0;
@@ -181,13 +171,10 @@ export function createDefaultTrack(
     if (isSubdivision) {
       accents.push(VolumeState.SOFT);
     } else if (beatNum === 0) {
-      // Downbeat — always loudest
       accents.push(VolumeState.ACCENT);
     } else if (groupStarts.has(beatNum)) {
-      // Group boundary — strong emphasis
       accents.push(VolumeState.LOUD);
     } else {
-      // Other main beats — moderate
       accents.push(VolumeState.MED);
     }
   }
