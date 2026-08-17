@@ -165,9 +165,10 @@ export async function exportBackup(
           throw new BackupTooLargeError(sourceAudioBytes, maxAudioBytes);
         }
 
-        // Give JSZip the Blob directly. This avoids eagerly materializing a
-        // second ArrayBuffer for every recording before compression begins.
-        recordingsFolder.file(`${session.id}.pcm`, blob, {
+        // JSZip cannot reliably consume OPFS-backed File objects directly.
+        // Convert one recording at a time after enforcing the cumulative cap.
+        const bytes = await blob.arrayBuffer();
+        recordingsFolder.file(`${session.id}.pcm`, bytes, {
           binary: true,
           compression: 'DEFLATE',
         });

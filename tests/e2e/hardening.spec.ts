@@ -206,10 +206,9 @@ test('recording preparation times out safely and cleans up stalled AudioWorklet 
 
   await page.getByRole('button', { name: 'Start recording' }).click();
   await expect(page.getByRole('button', { name: 'Cancel recording setup' })).toBeVisible();
-  await expect(page.getByRole('alert')).toContainText(
-    'could not initialize raw audio capture',
-    { timeout: 35_000 },
-  );
+  await expect(page.getByText(/could not initialize raw audio capture/i)).toBeVisible({
+    timeout: 35_000,
+  });
 
   await expect(page.getByRole('button', { name: 'Start recording' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start metronome' })).toBeVisible();

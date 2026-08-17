@@ -1,6 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import { DB_NAME, DB_VERSION, upgradeDatabase } from './migrations';
 import type { MetronomeSnapshot } from './persisted-shapes';
+import { getManagedRecordingFileName, removeManagedRecordingFile } from '../platform/recordingSink';
 export type { MetronomeSnapshot } from './persisted-shapes';
 
 export interface PolyProDB {
@@ -334,7 +335,16 @@ export async function deleteSession(id: string): Promise<void> {
 
 export async function putRecording(sessionId: string, blob: Blob): Promise<void> {
   const database = await getDB();
+  const previous = await database.get('recordings', sessionId);
   await database.put('recordings', blob, sessionId);
+
+  const previousFileName = previous instanceof Blob
+    ? getManagedRecordingFileName(previous)
+    : null;
+  const nextFileName = getManagedRecordingFileName(blob);
+  if (previousFileName && previousFileName !== nextFileName) {
+    await removeManagedRecordingFile(previousFileName);
+  }
 }
 
 export async function getRecording(sessionId: string): Promise<Blob | undefined> {
@@ -344,7 +354,13 @@ export async function getRecording(sessionId: string): Promise<Blob | undefined>
 
 export async function deleteRecording(sessionId: string): Promise<void> {
   const database = await getDB();
+  const existing = await database.get('recordings', sessionId);
   await database.delete('recordings', sessionId);
+
+  const fileName = existing instanceof Blob
+    ? getManagedRecordingFileName(existing)
+    : null;
+  if (fileName) await removeManagedRecordingFile(fileName);
 }
 
 export async function putHitEvents(record: HitEventsRecord): Promise<void> {
