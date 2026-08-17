@@ -2,73 +2,86 @@
 
 **Repository:** `Timothy-design77/poly-pro`  
 **Working branch:** `agent/no-swipe-navigation`  
-**User-testing policy:** Device/user testing is deferred until the implementation pass is complete and automated verification is green.
+**User-testing policy:** Device/user testing is deferred until implementation is complete and automated verification is green.
 
 This file is the short-form progress ledger for the current production-alignment pass. The larger historical architecture document remains `docs/IMPLEMENTATION-PLAN.md`.
 
 ## Governing product goals
 
-- Mobile-first PWA, optimized for the Samsung Galaxy Z Fold 7.
-- Local-first v1 with no account requirement; retain architecture for advanced capabilities.
-- Quick-start metronome home screen with project access in three actions or fewer.
-- Vertical scrolling only. No horizontal page swiping.
-- Clean, modern, high-contrast light-gray visual system.
+- Mobile-first PWA, optimized for Samsung Galaxy Z Fold 7.
+- Local-first v1 with no account requirement.
+- Quick Start works without a project; project access stays within three actions.
+- Vertical scrolling/navigation only; no horizontal page/tab swiping.
+- Clean modern light-gray UI with high-contrast text.
 - Centered layout, large touch targets, no accidental text selection.
-- BPM is the dominant control, supports keypad entry, rapid adjustment, and 0.5 BPM precision.
-- START and RECORD are the primary actions, with recording immediately adjacent in the main workflow.
-- Recording/analysis remains the central practice workflow; retain raw-audio, detection, calibration, session review, analytics, instrument profiling/classification, groove/dynamics, project tracking, backup/export, and advanced metronome controls already implemented.
-- Preserve explicit presets/defaults and provide clear reset/revert behavior where a section exposes substantial user configuration.
-- Keep implementation progress and verification state in Git.
+- BPM is dominant, with keypad entry, fast adjustment, and 0.5 BPM precision.
+- START then RECORD are the primary actions.
+- Recording/analysis is the central workflow; preserve raw audio, detection, calibration, session review, analytics, instrument classification, groove/dynamics, projects, backup/export, custom samples, and optional cloud enhancement.
+- Configurable practice/settings areas have meaningful reset/preset paths without adding destructive pseudo-resets.
+- Git is the progress/source-of-truth ledger.
 
 ## Execution phases
 
 ### A. Navigation safety — COMPLETE
-- Removed horizontal page-swipe gestures.
+- Removed horizontal main-page swipe gestures.
 - Removed swipe-to-open / swipe-to-close Settings behavior.
-- Added deliberate Projects / Home / Progress / Settings navigation.
-- Preserved programmatic navigation through the existing nav store.
+- Added deliberate Projects / Home / Progress / Settings tap navigation.
+- Preserved programmatic navigation through the nav store.
+- Removed residual swipe navigation from Session Detail; Score / Timeline / Charts / Tune are tap-only tabs.
 
 ### B. Visual system alignment — COMPLETE
-- Converted the core palette to light gray / white surfaces with dark, high-contrast text.
-- Updated primary controls and PWA browser chrome to the light theme.
-- Reworked the canvas dial for light-theme contrast.
-- Removed the fabricated 87% home-screen accuracy arc.
+- Converted semantic palette to light gray / white surfaces with dark high-contrast text.
+- Updated PWA browser chrome and primary controls.
+- Reworked canvas dial for light-theme contrast.
+- Removed fabricated 87% home-screen accuracy arc.
+- Updated precision sliders and frequently used settings/practice controls for light surfaces.
 
 ### C. Home workflow alignment — COMPLETE
 - BPM remains the dominant top-screen control with explicit keypad access.
 - START is the first full-width primary action.
 - RECORD is the next full-width primary action directly below START.
 - BPM touch controls and Tap Tempo follow the primary workflow.
-- Advanced metronome controls remain vertically scrollable below.
+- Advanced controls remain vertically scrollable below.
 
 ### D. Interaction hardening — COMPLETE
-- Removed stale swipe-navigation settings/state and migrated old persisted values away.
-- BPM adjustment is scroll-safe: tap = 0.5 BPM; intentional hold accelerates; scroll cancels/reverts.
-- Project selection uses normal taps with an explicit Edit action rather than long-press-only editing.
+- Removed stale swipe-navigation state and migrate old persisted values away.
+- BPM adjustment is scroll-safe: tap = 0.5 BPM; intentional hold accelerates; vertical movement cancels/reverts.
+- Project selection uses normal taps with explicit Edit rather than long-press-only editing.
 - Precision sliders direction-lock vertical scrolling from horizontal adjustment.
 - Preserved large touch targets and non-selectable controls.
 
-### E. Preset/reset consistency — IN PROGRESS
-- Meter/subdivision, pattern, polyrhythm, trainer, and practice modes now have independent reset actions.
-- Sounds and vibration expose local reset actions.
-- Detection retains named presets plus Custom mode; Standard remains the baseline preset.
+### E. Preset/reset consistency — COMPLETE
+- Meter/subdivision, pattern, polyrhythm, trainer, and practice modes have independent reset actions.
+- Sounds and vibration expose local defaults.
+- Recording exposes a local settings reset.
+- Detection retains named presets plus Custom mode; Standard is the baseline preset.
 - Calibration exposes fine-tune reset and explicit calibration clearing.
-- Remaining settings surfaces are being checked for meaningful local revert behavior rather than indiscriminate destructive resets.
+- Instruments/Data intentionally keep explicit destructive flows rather than misleading reset buttons.
+- Cloud enhancement retains explicit enable/revoke consent behavior.
 
 ### F. Project/session workflow audit — COMPLETE
 - Quick Start is a first-class no-project mode; the app no longer auto-creates or forces a project.
-- Quick Start recordings are stored with `projectId: null` and remain visible in Progress.
+- Quick Start recordings use `projectId: null` and remain visible in Progress.
 - Projects can be entered and returned from within the three-action target.
 - Project switching preserves/restores per-project metronome snapshots.
 
-### G. Advanced-feature completeness audit — PLANNED
-- Verify the existing recording, detection, calibration, analytics, instrument, groove/dynamics, backup/export, cloud-enhancement, and custom-sample surfaces remain reachable after UX changes.
-- Remove obsolete UI/settings left behind by earlier architecture decisions.
+### G. Advanced-feature completeness audit — COMPLETE
+Reachability confirmed after the navigation redesign:
+- Recording → analysis → Review → Session Detail remains connected from Home.
+- Session Detail exposes Score, Timeline, Charts, and Tune via explicit tap tabs.
+- Charts exposes distribution, fatigue, per-beat, drift, push/pull, swing, velocity/dynamics, and per-instrument timing.
+- Settings > Detection exposes presets plus Detection Test Bench.
+- Settings > Calibration opens the calibration flow.
+- Settings > Instruments opens instrument training/management.
+- Settings > Sounds retains built-in and custom-sample management.
+- Settings > Data retains backup export/import, storage inspection, recording cleanup, and destructive delete confirmation.
+- Settings > Cloud Enhancement remains optional and consent-gated.
+- Main Home retains meter/grouping/subdivision, pattern, polyrhythm, trainer, count-in, swing, gap click, random mute, and play/mute cycle controls.
 
 ### H. Automated verification — ACTIVE
-- CI passed through Quick Start commit `d08853f` (type-check, Vitest, production build).
-- Re-run after each subsequent implementation batch.
-- GitHub Actions must be green before final user testing.
+- CI passed through Quick Start commit `d08853f`.
+- CI passed through reset/light-control commit `c9c493a`.
+- Final branch head must pass type-check, Vitest, and production build before device testing.
 
 ### I. Final device/user verification — DEFERRED
 Only after A–H are complete:
@@ -76,17 +89,19 @@ Only after A–H are complete:
 - Metronome playback and BPM-control test.
 - Recording → analysis → review → session detail test.
 - Projects/progress/settings navigation test.
-- PWA install/update persistence test.
+- Calibration/detection/instrument training reachability test.
+- Backup/export and PWA install/update persistence test.
 
 ## Progress log
 
 - 2026-08-17: Repository lineage confirmed; `poly-pro` is canonical.
-- 2026-08-17: Navigation architecture changed from swipe-driven to explicit tap navigation.
-- 2026-08-17: User-testing checkpoints consolidated into one final device-verification gate.
+- 2026-08-17: Main navigation changed from swipe-driven to explicit tap navigation.
+- 2026-08-17: User testing consolidated into one final device-verification gate.
 - 2026-08-17: Production-alignment execution ledger added to Git.
 - 2026-08-17: Light/high-contrast semantic color system committed; PWA theme chrome updated.
-- 2026-08-17: Home dial converted to light-theme rendering and false placeholder accuracy removed.
-- 2026-08-17: BPM controls made scroll-safe; retired swipe state removed from settings and persistence.
+- 2026-08-17: Home dial converted to light rendering and false placeholder accuracy removed.
+- 2026-08-17: BPM controls made scroll-safe; retired swipe state removed from settings/persistence.
 - 2026-08-17: Home primary workflow reordered around BPM → START → RECORD.
-- 2026-08-17: Quick Start converted from a label into a first-class no-project mode with untracked session history.
+- 2026-08-17: Quick Start converted into a first-class no-project mode with session history.
 - 2026-08-17: Independent section resets and light-theme precision/settings controls implemented.
+- 2026-08-17: Residual Session Detail swipe track removed; advanced feature reachability audited.
