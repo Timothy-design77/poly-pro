@@ -20,6 +20,8 @@ import { INSTRUMENT_INFO } from '../analysis/classification';
 import { extractOnsetFeatures } from '../analysis/features';
 import type { SpectralFeatures } from '../analysis/types';
 import { getPreferredMicStream } from '../utils/mic';
+import { acquireCriticalActivity } from '../utils/appActivity';
+import { OperationCancelledError, OperationTimeoutError, withTimeout } from '../utils/async';
 
 const ALL_INSTRUMENTS: InstrumentName[] = [
   'Kick', 'Snare', 'Hi-Hat', 'Tom Hi', 'Tom Lo', 'Ride', 'Crash', 'Other',
@@ -49,7 +51,10 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
   // Audio refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const pcmBufferRef = useRef<Float32Array[]>([]);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const startupAbortRef = useRef<AbortController | null>(null);
+  const releaseActivityRef = useRef<(() => void) | null>(null);
   const featuresRef = useRef<SpectralFeatures[]>([]);
 
   // Onset detection state for real-time feedback
@@ -70,27 +75,41 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
   const startRecording = useCallback(async () => {
     if (!selectedInstrument) return;
 
+    startupAbortRef.current?.abort();
+    const abortController = new AbortController();
+    startupAbortRef.current = abortController;
+    releaseActivityRef.current?.();
+    releaseActivityRef.current = acquireCriticalActivity('instrument-training');
+
     try {
       setError(null);
       setHitCount(0);
       featuresRef.current = [];
-      pcmBufferRef.current = [];
       sampleCountRef.current = 0;
       lastPeakRef.current = 0;
       lastHitTimeRef.current = 0;
 
       // Get mic stream
-      const micResult = await getPreferredMicStream();
+      const micResult = await getPreferredMicStream(abortController.signal);
       const stream = micResult.stream;
       streamRef.current = stream;
 
       // Create AudioContext
       const ctx = new AudioContext({ sampleRate: 48000 });
       audioCtxRef.current = ctx;
+      if (ctx.state === 'suspended') {
+        await withTimeout(
+          ctx.resume(),
+          10_000,
+          'instrument training AudioContext resume',
+          { signal: abortController.signal },
+        );
+      }
 
       // Create a ScriptProcessor for simple onset detection during training
       // (we don't need the full worklet pipeline here — just energy threshold)
       const source = ctx.createMediaStreamSource(stream);
+      sourceRef.current = source;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       source.connect(analyser);
@@ -98,6 +117,7 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
       // Use a script processor for simple real-time onset detection
       const bufferSize = 2048;
       const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
+      processorRef.current = processor;
       source.connect(processor);
       processor.connect(ctx.destination);
 
@@ -107,12 +127,8 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
       processor.onaudioprocess = (e) => {
         const input = e.inputBuffer.getChannelData(0);
 
-        // Store PCM data for feature extraction
-        const copy = new Float32Array(input.length);
-        copy.set(input);
-        pcmBufferRef.current.push(copy);
-
-        // Simple energy-based onset detection
+        // Simple energy-based onset detection. Features are extracted
+        // immediately, so the entire training stream is never retained in RAM.
         let maxAbs = 0;
         for (let i = 0; i < input.length; i++) {
           const abs = Math.abs(input[i]);
@@ -135,24 +151,58 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
         sampleCountRef.current += input.length;
       };
 
+      startupAbortRef.current = null;
       setTrainingState('recording');
     } catch (err) {
       console.error('Training recording error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start recording');
+      startupAbortRef.current = null;
+      if (processorRef.current) {
+        processorRef.current.onaudioprocess = null;
+        try { processorRef.current.disconnect(); } catch {}
+        processorRef.current = null;
+      }
+      if (sourceRef.current) {
+        try { sourceRef.current.disconnect(); } catch {}
+        sourceRef.current = null;
+      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (audioCtxRef.current) {
+        void audioCtxRef.current.close().catch(() => undefined);
+        audioCtxRef.current = null;
+      }
+      releaseActivityRef.current?.();
+      releaseActivityRef.current = null;
+
+      if (err instanceof OperationCancelledError) return;
+      setError(err instanceof OperationTimeoutError
+        ? 'Instrument training audio setup timed out. Close other audio apps and try again.'
+        : err instanceof Error
+          ? err.message
+          : 'Failed to start recording');
     }
   }, [selectedInstrument]);
 
   const stopRecording = useCallback(() => {
-    // Stop mic stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
+    startupAbortRef.current?.abort();
+    startupAbortRef.current = null;
+    if (processorRef.current) {
+      processorRef.current.onaudioprocess = null;
+      try { processorRef.current.disconnect(); } catch {}
+      processorRef.current = null;
     }
-    // Close audio context
+    if (sourceRef.current) {
+      try { sourceRef.current.disconnect(); } catch {}
+      sourceRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
     if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
+      void audioCtxRef.current.close().catch(() => undefined);
       audioCtxRef.current = null;
     }
+    releaseActivityRef.current?.();
+    releaseActivityRef.current = null;
   }, []);
 
   const finishTraining = useCallback(async () => {
@@ -160,6 +210,7 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
 
     stopRecording();
     setTrainingState('processing');
+    const releaseProcessing = acquireCriticalActivity('instrument-training');
 
     try {
       const result = await addTrainingSamples(selectedInstrument, featuresRef.current);
@@ -169,6 +220,8 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
       console.error('Training save error:', err);
       setError(err instanceof Error ? err.message : 'Failed to save training data');
       setTrainingState('select');
+    } finally {
+      releaseProcessing();
     }
   }, [selectedInstrument, stopRecording, addTrainingSamples]);
 
@@ -186,7 +239,7 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
   const content = createPortal(
     <div
       className="fixed inset-0 z-[9999] bg-bg-primary flex flex-col"
-      style={{ touchAction: 'none' }}
+      style={{ touchAction: 'pan-y' }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
@@ -293,41 +346,44 @@ function InstrumentSelectView({
           const isSelected = selectedInstrument === name;
 
           return (
-            <button
+            <div
               key={name}
-              onClick={() => onSelect(name, !!profile)}
-              className={`
-                flex flex-col items-start p-3 rounded-md border transition-colors text-left
-                min-h-[72px]
+              className={`rounded-md border transition-colors min-h-[72px] flex items-stretch
                 ${isSelected
                   ? 'border-accent bg-accent-dim'
-                  : 'border-border-subtle bg-bg-surface hover:bg-bg-raised'
+                  : 'border-border-subtle bg-bg-surface'
                 }
               `}
             >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-lg">{info.icon}</span>
-                <span className="text-text-primary text-sm font-medium">{name}</span>
-              </div>
-              {profile ? (
-                <div className="flex items-center justify-between w-full">
-                  <span className="text-text-muted text-xs">
-                    {profile.samples.length} hits · {Math.round(profile.accuracy * 100)}%
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(name);
-                    }}
-                    className="text-danger text-xs min-w-[44px] min-h-[44px] flex items-center justify-end"
-                  >
-                    Delete
-                  </button>
+              <button
+                type="button"
+                onClick={() => onSelect(name, !!profile)}
+                aria-pressed={isSelected}
+                className="min-w-0 flex-1 flex flex-col items-start p-3 text-left rounded-md
+                           focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg" aria-hidden="true">{info.icon}</span>
+                  <span className="text-text-primary text-sm font-medium">{name}</span>
                 </div>
-              ) : (
-                <span className="text-text-muted text-xs">Not trained</span>
+                <span className="text-text-secondary text-xs">
+                  {profile
+                    ? `${profile.samples.length} hits · ${Math.round(profile.accuracy * 100)}%`
+                    : 'Not trained'}
+                </span>
+              </button>
+              {profile && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(name)}
+                  aria-label={`Delete ${name} instrument profile`}
+                  className="text-danger text-xs min-w-[52px] min-h-[52px] px-2
+                             focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
+                >
+                  Delete
+                </button>
               )}
-            </button>
+            </div>
           );
         })}
       </div>

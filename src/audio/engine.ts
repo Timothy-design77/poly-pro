@@ -57,6 +57,7 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private outputGain: GainNode | null = null;
+  private outputVolumeOverride: number | null = null;
 
   private schedulerTimer: ReturnType<typeof setTimeout> | null = null;
   private nextNoteTime: Record<string, number> = {};
@@ -192,7 +193,7 @@ export class AudioEngine {
     }
 
     if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(this.host.getMetronome().volume);
+      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());
     }
 
     this.schedule();
@@ -242,6 +243,20 @@ export class AudioEngine {
     return this.audioCtx;
   }
 
+  private getEffectiveVolume(): number {
+    return this.outputVolumeOverride ?? this.host.getMetronome().volume;
+  }
+
+  /** Temporarily override audible click output without stopping the timing grid. */
+  setOutputVolumeOverride(volume: number | null): void {
+    this.outputVolumeOverride = volume === null
+      ? null
+      : Math.max(0, Math.min(1, volume));
+    if (this.masterGain) {
+      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());
+    }
+  }
+
   // ─── Core Scheduler ───
 
   private schedule = (): void => {
@@ -252,7 +267,7 @@ export class AudioEngine {
     const settings = this.host.getSettings();
 
     if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(state.volume);
+      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());
     }
 
     const now = ctx.currentTime;
