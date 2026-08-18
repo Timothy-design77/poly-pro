@@ -4,40 +4,48 @@
 
 Keep the real VCSL woodblock timbre while removing audible room/background noise and shortening the sample into a fast metronome-specific transient.
 
-## Processing target
+## Source
 
-Source remains the exact CC0 VCSL recording used by the app:
+The bundled source remains the exact CC0 VCSL recording already in the app:
 
 - `Idiophones/Struck Idiophones/Woodblock/wood_click_mp.wav`
 - Upstream Git blob SHA: `f625cb9b072b8a88ad588f8c125654f31e8c36cb`
 - 44.1 kHz, 16-bit, stereo
 
-The processed default should:
+The original WAV remains intact in `public/sounds/woodblock.wav`. The cleanup is applied once when that WAV is decoded, and only the cleaned `AudioBuffer` is cached for playback.
 
-- remove pre-hit and post-hit room/noise floor;
-- high-pass low-frequency rumble;
-- preserve the natural wooden attack;
-- use an aggressively short decay suitable for repeated metronome clicks;
-- reach exact digital silence after the gated tail;
-- remain local/offline and use the existing `woodblock.wav` path.
+## Runtime DSP
 
-## DSP target
+`src/audio/sounds.ts` now preprocesses only the built-in `woodblock` buffer:
 
-The processing pass will:
+1. Scan all channels and measure the source peak.
+2. Apply a first-order **150 Hz high-pass** to remove low room/handling rumble.
+3. Build a cross-channel transient envelope from the filtered signal.
+4. Open the gate only when the signal reaches the higher of:
+   - 8% of the filtered peak, or
+   - -40 dBFS.
+5. Keep only **0.5 ms of pre-roll** before the detected strike.
+6. Preserve the natural attack/body at full gain.
+7. Begin a cosine fade **45 ms after onset**.
+8. Reach the hard end **70 ms after onset** and force the final sample to exact zero.
+9. Keep peak level close to the original recording, with no more than 1.25x boost and no target above -1 dBFS.
+10. Cache the processed buffer, so the timing-critical per-beat path performs no filtering or gating work.
 
-1. Download and verify the original VCSL source by Git blob SHA.
-2. Detect the strike onset from the real waveform.
-3. Apply a first-order 150 Hz high-pass filter to reduce room/handling rumble.
-4. Keep a tiny pre-roll around the detected attack.
-5. Limit the useful click window to approximately 80 ms.
-6. Apply a short fade over the end of that window instead of preserving the original long room tail.
-7. Trim the WAV at the end of the gated window so there is no residual room tail.
-8. Peak-normalize conservatively so the new gate does not make the click unexpectedly louder.
-9. Replace `public/sounds/woodblock.wav` without changing audio-engine code.
+If onset detection cannot find a meaningful strike, the loader safely falls back to the unprocessed source buffer rather than returning broken audio.
+
+## Expected effect
+
+- practically no pre-hit room tone;
+- no long ambient/room tail;
+- reduced low-frequency rumble;
+- retained real wooden transient;
+- much faster on/off behavior at dense subdivisions and high BPM;
+- no new runtime network dependency;
+- no change to sound IDs, settings, scheduling, or the other built-in/custom samples.
 
 ## Manual checks
 
-Do not mark these PASS until actually heard on-device:
+Do not mark these PASS until actually heard on-device. The authoritative list is also mirrored in `docs/MANUAL-TEST-LEDGER.md`:
 
 - no audible room hiss/noise before or after the click;
 - attack still sounds like real wood rather than a synthesized tick;

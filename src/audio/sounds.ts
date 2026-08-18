@@ -40,6 +40,132 @@ function getSoundBasePath(): string {
 }
 
 /**
+ * Convert the real recorded woodblock into a dry metronome click once at load time.
+ *
+ * The source WAV remains untouched in public/sounds. We detect the real strike,
+ * remove nearly all pre-hit room tone, high-pass low rumble, retain the wooden
+ * attack/body, then fade to exact silence after a very short window. The result
+ * is cached, so there is no DSP work in the timing-critical per-beat path.
+ */
+function tightGateWoodblock(ctx: AudioContext, source: AudioBuffer): AudioBuffer {
+  const channels = source.numberOfChannels;
+  const sampleRate = source.sampleRate;
+  const frameCount = source.length;
+  if (channels < 1 || frameCount < 2 || sampleRate <= 0) return source;
+
+  const sourceChannels: Float32Array[] = [];
+  let sourcePeak = 0;
+  for (let ch = 0; ch < channels; ch += 1) {
+    const data = source.getChannelData(ch);
+    sourceChannels.push(data);
+    for (let i = 0; i < data.length; i += 1) {
+      sourcePeak = Math.max(sourcePeak, Math.abs(data[i]));
+    }
+  }
+
+  // First-order high-pass: enough to remove room/handling rumble without
+  // materially changing the characteristic woodblock attack.
+  const cutoffHz = 150;
+  const dt = 1 / sampleRate;
+  const rc = 1 / (2 * Math.PI * cutoffHz);
+  const alpha = rc / (rc + dt);
+  const filtered = Array.from({ length: channels }, () => new Float32Array(frameCount));
+  const envelope = new Float32Array(frameCount);
+
+  for (let ch = 0; ch < channels; ch += 1) {
+    const input = sourceChannels[ch];
+    const output = filtered[ch];
+    let prevX = 0;
+    let prevY = 0;
+    for (let i = 0; i < frameCount; i += 1) {
+      const x = input[i];
+      const y = alpha * (prevY + x - prevX);
+      output[i] = y;
+      envelope[i] = Math.max(envelope[i], Math.abs(y));
+      prevX = x;
+      prevY = y;
+    }
+  }
+
+  let filteredPeak = 0;
+  for (let i = 0; i < envelope.length; i += 1) {
+    filteredPeak = Math.max(filteredPeak, envelope[i]);
+  }
+  if (filteredPeak <= 0) return source;
+
+  // Require a meaningful transient: 8% of the recording peak or -40 dBFS,
+  // whichever is higher, so room noise cannot open the gate early.
+  const onsetThreshold = Math.max(filteredPeak * 0.08, 0.01);
+  let onset = -1;
+  for (let i = 0; i < envelope.length; i += 1) {
+    if (envelope[i] >= onsetThreshold) {
+      onset = i;
+      break;
+    }
+  }
+  if (onset < 0) return source;
+
+  const preRollFrames = Math.max(1, Math.round(sampleRate * 0.0005));
+  const fadeStartFrames = Math.round(sampleRate * 0.045);
+  const hardEndFrames = Math.round(sampleRate * 0.070);
+  const start = Math.max(0, onset - preRollFrames);
+  const fadeStart = Math.min(frameCount, onset + fadeStartFrames);
+  const hardEnd = Math.min(frameCount, onset + hardEndFrames);
+  const outputLength = Math.max(1, hardEnd - start);
+  const output = ctx.createBuffer(channels, outputLength, sampleRate);
+
+  const localOnset = onset - start;
+  const localFadeStart = Math.max(0, fadeStart - start);
+  const fadeLength = Math.max(1, outputLength - localFadeStart);
+
+  // First pass: apply the tight gate/fade and measure its peak.
+  let processedPeak = 0;
+  for (let ch = 0; ch < channels; ch += 1) {
+    const src = filtered[ch];
+    const dst = output.getChannelData(ch);
+    for (let i = 0; i < outputLength; i += 1) {
+      const sourceIndex = start + i;
+      let gain = 1;
+
+      // Tiny fade-in only covers the pre-roll; the actual strike remains intact.
+      if (i < localOnset) {
+        gain *= i / Math.max(1, localOnset);
+      }
+
+      if (i >= localFadeStart) {
+        const t = Math.min(1, (i - localFadeStart) / fadeLength);
+        gain *= 0.5 * (1 + Math.cos(Math.PI * t));
+      }
+
+      const value = src[sourceIndex] * gain;
+      dst[i] = value;
+      processedPeak = Math.max(processedPeak, Math.abs(value));
+    }
+    dst[outputLength - 1] = 0;
+  }
+
+  // Keep the processed click close to the original recording's peak level.
+  // Never boost more than 1.25x and never target above -1 dBFS.
+  const maxTargetPeak = Math.pow(10, -1 / 20);
+  const targetPeak = Math.min(sourcePeak, maxTargetPeak);
+  const peakGain = processedPeak > 0
+    ? Math.min(1.25, targetPeak / processedPeak)
+    : 1;
+
+  if (Math.abs(peakGain - 1) > 0.0001) {
+    for (let ch = 0; ch < channels; ch += 1) {
+      const dst = output.getChannelData(ch);
+      for (let i = 0; i < dst.length; i += 1) {
+        dst[i] = Math.max(-1, Math.min(1, dst[i] * peakGain));
+      }
+      dst[outputLength - 1] = 0;
+    }
+  }
+
+  return output;
+}
+
+/**
  * Load a single sound into an AudioBuffer.
  */
 export async function loadSound(
@@ -66,7 +192,10 @@ export async function loadSound(
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
+    const audioBuffer = soundId === 'woodblock'
+      ? tightGateWoodblock(ctx, decodedBuffer)
+      : decodedBuffer;
     bufferCache.set(soundId, audioBuffer);
     return audioBuffer;
   } catch (err) {

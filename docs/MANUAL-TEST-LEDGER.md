@@ -47,6 +47,8 @@ This is the source of truth for **what still requires real-device/user verificat
 - TODO — Default `Woodblock` sounds like a real struck wood block rather than a synthetic/compressed waveform.
 - TODO — Default woodblock is pleasant/non-fatiguing during sustained practice at approximately 60, 120, 180, and 240+ BPM.
 - TODO — Default woodblock has no audible clipping, crackle, decode artifact, or obvious bad edit at the start/end.
+- TODO — Tight-gated woodblock has no audible pre-hit room noise, hiss, or lingering room tail after the strike.
+- TODO — Tight gate feels fast/on-off without producing an artificial click, zipper artifact, or obviously chopped wooden attack.
 - TODO — Woodblock decay does not create distracting overlap at fast tempos, including 300–400 BPM.
 - TODO — Woodblock perceived loudness is reasonably balanced against the other built-in click sounds and does not require extreme volume compensation.
 - TODO — Accent/non-accent behavior remains musically distinguishable when Woodblock is selected.
@@ -99,3 +101,4 @@ This is the source of truth for **what still requires real-device/user verificat
 ## Change log
 
 - 2026-08-17 — Ledger created during the real-woodblock sound-quality pass. Existing outstanding device checks from the navigation, fluidity, large-control, full-width-ring, recording, project, and advanced-feature passes were consolidated here.
+- 2026-08-17 — Added explicit tight-gate woodblock checks for room-noise removal and gate-artifact quality.
