@@ -1,0 +1,156 @@
+name: Process tight-gated woodblock
+
+on:
+  push:
+    branches:
+      - agent/woodblock-tight-gate
+    paths:
+      - .github/workflows/process-woodblock-tight-gate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/woodblock-tight-gate
+          fetch-depth: 0
+
+      - name: Process verified VCSL woodblock
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import array
+          import math
+          import os
+          import struct
+          import subprocess
+          import urllib.request
+          import wave
+          from pathlib import Path
+
+          SOURCE_URL = 'https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Woodblock/wood_click_mp.wav'
+          EXPECTED_SOURCE_BLOB = 'f625cb9b072b8a88ad588f8c125654f31e8c36cb'
+          DEST = Path('public/sounds/woodblock.wav')
+          REPORT = Path('docs/WOODBLOCK-DSP-REPORT.md')
+          TMP = Path('/tmp/vcsl-woodblock.wav')
+
+          with urllib.request.urlopen(SOURCE_URL, timeout=30) as response:
+              TMP.write_bytes(response.read())
+
+          source_blob = subprocess.check_output(['git', 'hash-object', str(TMP)], text=True).strip()
+          if source_blob != EXPECTED_SOURCE_BLOB:
+              raise SystemExit(f'Upstream blob mismatch: expected {EXPECTED_SOURCE_BLOB}, got {source_blob}')
+
+          with wave.open(str(TMP), 'rb') as src:
+              channels = src.getnchannels()
+              width = src.getsampwidth()
+              rate = src.getframerate()
+              frame_count = src.getnframes()
+              raw = src.readframes(frame_count)
+
+          if channels != 2 or width != 2 or rate != 44100:
+              raise SystemExit(f'Unexpected source format: channels={channels}, width={width}, rate={rate}')
+
+          samples = array.array('h')
+          samples.frombytes(raw)
+          if os.sys.byteorder != 'little':
+              samples.byteswap()
+
+          frames = [list(samples[i:i + channels]) for i in range(0, len(samples), channels)]
+          original_peak = max(abs(v) for frame in frames for v in frame)
+
+          # First-order high-pass at 150 Hz to remove low room/handling rumble.
+          fc = 150.0
+          dt = 1.0 / rate
+          rc = 1.0 / (2.0 * math.pi * fc)
+          alpha = rc / (rc + dt)
+          filtered = [[0.0] * channels for _ in frames]
+          prev_x = [0.0] * channels
+          prev_y = [0.0] * channels
+          for i, frame in enumerate(frames):
+              for ch in range(channels):
+                  x = float(frame[ch])
+                  y = alpha * (prev_y[ch] + x - prev_x[ch])
+                  filtered[i][ch] = y
+                  prev_x[ch] = x
+                  prev_y[ch] = y
+
+          env = [max(abs(v) for v in frame) for frame in filtered]
+          filtered_peak = max(env)
+          onset_threshold = max(filtered_peak * 0.08, 32767.0 * (10.0 ** (-40.0 / 20.0)))
+
+          onset = next((i for i, value in enumerate(env) if value >= onset_threshold), None)
+          if onset is None:
+              raise SystemExit('Could not detect woodblock onset')
+
+          pre_roll = round(rate * 0.0005)       # 0.5 ms
+          attack_start = max(0, onset - pre_roll)
+          fade_start_after_onset = round(rate * 0.045)  # 45 ms
+          hard_end_after_onset = round(rate * 0.070)    # 70 ms
+          fade_start = onset + fade_start_after_onset
+          hard_end = min(len(filtered), onset + hard_end_after_onset)
+          if hard_end <= fade_start:
+              raise SystemExit('Invalid gate window')
+
+          gated = [frame[:] for frame in filtered[attack_start:hard_end]]
+          local_fade_start = max(0, fade_start - attack_start)
+          fade_len = max(1, len(gated) - local_fade_start)
+
+          # Start from exact zero during the tiny pre-roll to prevent a splice discontinuity.
+          pre_len = max(1, onset - attack_start)
+          for i in range(min(pre_len, len(gated))):
+              attack_gain = i / pre_len
+              gated[i] = [v * attack_gain for v in gated[i]]
+
+          # Smooth cosine decay to exact silence; the file is trimmed immediately afterward.
+          for i in range(local_fade_start, len(gated)):
+              t = (i - local_fade_start) / fade_len
+              gain = 0.5 * (1.0 + math.cos(math.pi * min(1.0, t)))
+              gated[i] = [v * gain for v in gated[i]]
+
+          if gated:
+              gated[-1] = [0.0] * channels
+
+          processed_peak = max(abs(v) for frame in gated for v in frame) if gated else 1.0
+          target_peak = min(float(original_peak), 32767.0 * (10.0 ** (-1.0 / 20.0)))
+          gain = min(1.25, target_peak / max(1.0, processed_peak))
+
+          out = array.array('h')
+          for frame in gated:
+              for value in frame:
+                  sample = int(round(value * gain))
+                  out.append(max(-32768, min(32767, sample)))
+          if os.sys.byteorder != 'little':
+              out.byteswap()
+
+          with wave.open(str(DEST), 'wb') as dst:
+              dst.setnchannels(channels)
+              dst.setsampwidth(width)
+              dst.setframerate(rate)
+              dst.writeframes(out.tobytes())
+
+          output_blob = subprocess.check_output(['git', 'hash-object', str(DEST)], text=True).strip()
+          output_frames = len(gated)
+          output_ms = output_frames / rate * 1000.0
+          onset_ms = onset / rate * 1000.0
+          source_ms = frame_count / rate * 1000.0
+          output_peak = max(abs(v) for v in out) if out else 0
+
+          REPORT.write_text(f'''# Woodblock DSP Report\n\nGenerated deterministically from the verified VCSL source.\n\n- Source Git blob: `{source_blob}`\n- Output Git blob: `{output_blob}`\n- Source format: {rate} Hz / 16-bit / {channels} channels\n- Source duration: {source_ms:.2f} ms\n- Detected onset: {onset_ms:.2f} ms\n- Onset threshold: {onset_threshold:.1f} sample units\n- High-pass: 150 Hz, first-order\n- Pre-roll: 0.5 ms\n- Full-body window before fade: 45 ms after detected onset\n- Hard end: 70 ms after detected onset\n- Output duration including pre-roll: {output_ms:.2f} ms\n- Source peak: {original_peak}\n- Output peak: {output_peak}\n- Peak gain multiplier: {gain:.4f}\n- Tail policy: cosine fade to exact zero, then file trim; no retained room tail\n\nThe runtime audio engine is unchanged; this file replaces only `public/sounds/woodblock.wav`.\n''')
+          print(REPORT.read_text())
+          PY
+
+      - name: Commit processed sample and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/process-woodblock-tight-gate.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/sounds/woodblock.wav docs/WOODBLOCK-DSP-REPORT.md .github/workflows/process-woodblock-tight-gate.yml
+          git commit -m "Tight-gate default woodblock sample"
+          git push origin HEAD:agent/woodblock-tight-gate
