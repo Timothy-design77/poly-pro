@@ -75,15 +75,31 @@ This file is the short-form implementation/progress ledger. The manual ledger is
 
 ### Default Woodblock audio-quality pass — IMPLEMENTATION COMPLETE
 
+Base real-sample replacement:
+
 - PR #8 replaced the synthetic/fake default `public/sounds/woodblock.wav` with a real recorded woodblock hit from the **Versilian Community Sample Library (VCSL)**.
 - Selected upstream sample: `Idiophones/Struck Idiophones/Woodblock/wood_click_mp.wav`.
 - VCSL license: Creative Commons Zero (CC0 / public-domain-equivalent).
 - Upstream/bundled Git blob SHA: `f625cb9b072b8a88ad588f8c125654f31e8c36cb`.
-- Main-branch `public/sounds/woodblock.wav` was re-read after merge and reports that exact blob SHA.
-- Existing `src/audio/sounds.ts` and the audio engine were intentionally unchanged; the same local filename continues to be loaded/cached.
-- The import used a temporary branch-only workflow that verified the upstream blob and deleted itself; there is no permanent importer and no runtime network dependency.
+- Main-branch `public/sounds/woodblock.wav` reports that exact blob SHA.
+- There is no runtime network dependency; the sample is bundled locally.
 - Detailed provenance: `docs/AUDIO-PASS-WOODBLOCK.md`.
-- **Listening/feel acceptance is NOT yet marked PASS.** All required sound checks remain TODO in section D of `docs/MANUAL-TEST-LEDGER.md`.
+
+Tight-gate follow-up:
+
+- PR #10 keeps the original VCSL WAV intact but preprocesses only the built-in `woodblock` once when decoded.
+- A first-order **150 Hz high-pass** removes low room/handling rumble.
+- Cross-channel transient detection opens the gate at the higher of **8% of filtered peak** or **-40 dBFS**, preventing room noise from opening the gate early.
+- Only **0.5 ms of pre-roll** is retained before the detected real strike.
+- Natural attack/body stays at full gain.
+- A cosine fade begins **45 ms after onset**.
+- The processed buffer hard-ends **70 ms after onset** and its last sample is forced to exact zero.
+- Peak is kept close to the original recording, with no more than 1.25x boost and no target above -1 dBFS.
+- The processed result is cached; the timing-critical per-beat scheduler performs no filter/gate work.
+- If onset detection cannot identify a valid strike, loading safely falls back to the original decoded source.
+- Other built-in sounds, custom samples, sound IDs, settings, and scheduling logic are untouched.
+- Detailed DSP record: `docs/AUDIO-PASS-WOODBLOCK-TIGHT-GATE.md`.
+- **Listening/feel acceptance is NOT yet marked PASS.** Room-noise removal, gate-artifact quality, timbre, fatigue, clipping, fast-tempo overlap, loudness, load behavior, offline behavior, and sound switching remain TODO in section D of `docs/MANUAL-TEST-LEDGER.md`.
 
 ## Automated verification history
 
@@ -92,6 +108,7 @@ This file is the short-form implementation/progress ledger. The manual ledger is
 - PR #6 — large primary controls: CI run 67, type-check PASS, Vitest PASS, production build PASS; merge commit `0b70c9d`.
 - PR #7 — full-width BPM ring: CI run 69, type-check PASS, Vitest PASS, production build PASS; merge commit `12a4d09`.
 - PR #8 — real default woodblock: CI run 74, type-check PASS, Vitest PASS, production build PASS, upstream audio blob integrity PASS; merge commit `bcc0ae6`.
+- PR #10 — tight-gated real woodblock: CI run 80, type-check PASS, Vitest PASS, production build PASS; merge commit `96207e3`.
 
 ## Manual testing policy / current status
 
@@ -102,7 +119,7 @@ All known required device checks have been consolidated into `docs/MANUAL-TEST-L
 - Home/ring/button ergonomics and scroll behavior.
 - Bottom-nav tap/swipe behavior and Settings persistence during playback/recording.
 - BPM keypad, Fine Tempo, Tap Tempo, timing, and playback behavior.
-- Real default woodblock timbre, fatigue, clipping, fast-tempo overlap, loudness balance, first-load behavior, offline behavior, and sound switching.
+- Real default woodblock timbre, room-noise/tail removal, gate artifacts, fatigue, clipping, fast-tempo overlap, loudness balance, first-load behavior, offline behavior, and sound switching.
 - Recording → analysis → Review → Session Detail.
 - Quick Start / projects / Progress and project snapshot restore.
 - Advanced controls, resets, detection, calibration, instruments, backup/data, and cloud-consent behavior.
@@ -119,3 +136,4 @@ Items remain TODO until the user actually verifies them on-device. New nitpicks 
 - 2026-08-17 — PR #7 enlarged the BPM ring to a near-full-width/full-bleed presentation to move primary actions lower for easier reach.
 - 2026-08-17 — `docs/MANUAL-TEST-LEDGER.md` created as the cumulative source of truth for everything still requiring real-device verification.
 - 2026-08-17 — PR #8 replaced the default fake woodblock with the verified CC0 VCSL `wood_click_mp.wav` recording; CI run 74 passed all automated gates; merge commit `bcc0ae6`.
+- 2026-08-17 — PR #10 added load-time high-pass filtering, onset gating, and a short 70 ms metronome-specific envelope to the real woodblock without altering the source WAV; CI run 80 passed all automated gates; merge commit `96207e3`.
