@@ -12,6 +12,7 @@ export const PERSISTED_METRONOME_KEYS = [
   'subdivision',
   'volume',
   'swing',
+  'tracks',
   'trainerEnabled',
   'trainerStartBpm',
   'trainerEndBpm',
@@ -67,7 +68,6 @@ export type PersistedSettings = Pick<SettingsState, SettingsKey>;
 export interface MetronomeSnapshot
   extends Pick<MetronomeState, MetronomeKey>,
     Pick<SettingsState, SnapshotSettingsKey> {
-  tracks: MetronomeState['tracks'];
   /** DEPRECATED — kept optional for IDB backward compatibility. */
   clickVolume?: number;
 }
@@ -93,6 +93,5 @@ export function captureSnapshot(m: MetronomeState, s: SettingsState): MetronomeS
   return {
     ...pickKeys(m, PERSISTED_METRONOME_KEYS),
     ...pickKeys(s, SNAPSHOT_SETTINGS_KEYS),
-    tracks: m.tracks,
   };
 }
