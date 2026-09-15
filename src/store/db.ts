@@ -141,6 +141,8 @@ export interface RecordingManifest {
   totalSamples: number;
   finalized: boolean;
   createdAt: string;
+  /** Updated on every durable chunk write; absent on older manifests. */
+  updatedAt?: string;
   projectId: string | null;
   bpm: number;
   meterNumerator: number;
@@ -297,13 +299,15 @@ export async function beginChunkedRecording(
   metadata: RecordingManifestMetadata,
 ): Promise<void> {
   const db = await getDB();
+  const now = new Date().toISOString();
   const manifest: RecordingManifest = {
     sessionId,
     sampleRate,
     chunkCount: 0,
     totalSamples: 0,
     finalized: false,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     ...metadata,
   };
   await db.put('recordingManifests', manifest);
@@ -328,6 +332,7 @@ export async function appendRecordingChunk(
   await chunkStore.put(blob, recordingChunkKey(sessionId, index));
   manifest.chunkCount = Math.max(manifest.chunkCount, index + 1);
   manifest.totalSamples += samples.length;
+  manifest.updatedAt = new Date().toISOString();
   await manifestStore.put(manifest);
   await tx.done;
 }
@@ -336,7 +341,7 @@ export async function finalizeChunkedRecording(sessionId: string): Promise<Recor
   const db = await getDB();
   const manifest = await db.get('recordingManifests', sessionId) as RecordingManifest | undefined;
   if (!manifest || manifest.chunkCount === 0) throw new Error('No audio chunks were captured');
-  const finalized = { ...manifest, finalized: true };
+  const finalized = { ...manifest, finalized: true, updatedAt: new Date().toISOString() };
   await db.put('recordingManifests', finalized);
   return finalized;
 }
@@ -372,7 +377,7 @@ export async function discardChunkedRecording(sessionId: string): Promise<void> 
  * but never got its final SessionRecord. At most the final in-flight sub-second
  * worklet buffer is lost; completed chunks remain user-visible and playable.
  */
-export async function recoverOrphanedRecordings(): Promise<number> {
+export async function recoverOrphanedRecordings(staleMs = 10_000): Promise<number> {
   const db = await getDB();
   const [manifests, sessions] = await Promise.all([
     db.getAll('recordingManifests') as Promise<RecordingManifest[]>,
@@ -383,6 +388,10 @@ export async function recoverOrphanedRecordings(): Promise<number> {
 
   for (const manifest of manifests) {
     if (sessionIds.has(manifest.sessionId) || manifest.chunkCount === 0 || manifest.totalSamples === 0) continue;
+    const lastWriteMs = new Date(manifest.updatedAt ?? manifest.createdAt).getTime();
+    // A non-finalized manifest may belong to a recording still active in another tab.
+    // Only recover it after its durable chunk heartbeat has gone stale.
+    if (!manifest.finalized && Date.now() - lastWriteMs < staleMs) continue;
     const durationMs = Math.max(1, Math.round((manifest.totalSamples / manifest.sampleRate) * 1000));
     const recoveredSession: SessionRecord = {
       id: manifest.sessionId,
@@ -404,7 +413,7 @@ export async function recoverOrphanedRecordings(): Promise<number> {
     const tx = db.transaction(['sessions', 'recordingManifests'], 'readwrite');
     await Promise.all([
       tx.objectStore('sessions').put(recoveredSession),
-      tx.objectStore('recordingManifests').put({ ...manifest, finalized: true }),
+      tx.objectStore('recordingManifests').put({ ...manifest, finalized: true, updatedAt: new Date().toISOString() }),
     ]);
     await tx.done;
     recovered++;

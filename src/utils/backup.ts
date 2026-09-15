@@ -243,20 +243,20 @@ export async function importBackup(
       }
     }
 
-    const recordingIds = new Set<string>();
     const recordingsFolder = zip.folder('recordings');
-    recordingsFolder?.forEach((path) => {
-      if (path.endsWith('.pcm')) recordingIds.add(path.replace('.pcm', ''));
-    });
 
     const sessionsFile = zip.file('sessions.json');
     const sessions: db.SessionRecord[] = sessionsFile ? JSON.parse(await sessionsFile.async('text')) : [];
-    const existingSessionIds = new Set((await db.getAllSessions()).map((session) => session.id));
+    const existingSessions = await db.getAllSessions();
+    const sessionMap = new Map(existingSessions.map((session) => [session.id, session]));
     for (let i = 0; i < sessions.length; i++) {
       onProgress?.({ stage: 'sessions', current: i, total: sessions.length });
       const session = sessions[i];
-      if (existingSessionIds.has(session.id)) { skipped++; continue; }
-      await db.putSession({ ...session, hasRecording: recordingIds.has(session.id) });
+      if (sessionMap.has(session.id)) { skipped++; continue; }
+      // Audio is claimed only after its blob has been restored successfully below.
+      const imported = { ...session, hasRecording: false };
+      await db.putSession(imported);
+      sessionMap.set(session.id, imported);
       importedSessions++;
     }
 
@@ -267,7 +267,8 @@ export async function importBackup(
       for (let i = 0; i < files.length; i++) {
         onProgress?.({ stage: 'hitevents', current: i, total: files.length });
         const sessionId = files[i].name.replace('.json', '');
-        if (existingSessionIds.has(sessionId)) continue;
+        // Preserve any existing event set, but repair a partial prior import.
+        if (await db.getHitEvents(sessionId)) continue;
         await db.putHitEvents(JSON.parse(await files[i].file.async('text')));
       }
     }
@@ -278,8 +279,17 @@ export async function importBackup(
       for (let i = 0; i < files.length; i++) {
         onProgress?.({ stage: 'recordings', current: i, total: files.length });
         const sessionId = files[i].name.replace('.pcm', '');
-        if (existingSessionIds.has(sessionId)) continue;
-        await db.putRecording(sessionId, new Blob([await files[i].file.async('arraybuffer')], { type: 'application/octet-stream' }));
+        let recording = await db.getRecording(sessionId);
+        if (!recording) {
+          recording = new Blob([await files[i].file.async('arraybuffer')], { type: 'application/octet-stream' });
+          await db.putRecording(sessionId, recording);
+        }
+        const currentSession = sessionMap.get(sessionId);
+        if (currentSession && !currentSession.hasRecording) {
+          const reconciled = { ...currentSession, hasRecording: true };
+          await db.putSession(reconciled);
+          sessionMap.set(sessionId, reconciled);
+        }
       }
     }
 

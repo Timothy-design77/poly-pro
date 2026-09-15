@@ -22,6 +22,7 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let delayedRecoveryTimer: number | null = null;
     setReady(false);
     setLoadError(null);
 
@@ -35,6 +36,17 @@ export function App() {
         startPersistence();
         setReady(true);
         navigator.storage?.persist?.().catch(() => {});
+        delayedRecoveryTimer = window.setTimeout(async () => {
+          try {
+            const additional = await db.recoverOrphanedRecordings();
+            if (!cancelled && additional > 0) {
+              setRecoveredCount((count) => count + additional);
+              await loadSessions();
+            }
+          } catch (error) {
+            console.warn('Delayed recording recovery failed:', error);
+          }
+        }, 12_000);
       } catch (error) {
         if (cancelled) return;
         console.error('Failed to load Poly Pro data:', error);
@@ -42,7 +54,7 @@ export function App() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (delayedRecoveryTimer !== null) window.clearTimeout(delayedRecoveryTimer); };
   }, [loadProjects, loadSessions, loadInstruments, loadAttempt]);
 
   if (loadError) {

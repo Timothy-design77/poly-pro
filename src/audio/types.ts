@@ -52,6 +52,8 @@ export interface ScheduledBeat {
   time: number;
   trackId: string;
   volumeState: VolumeState;
+  /** Count-in cues are never expected player hits and must not enter scoring grids. */
+  isCountIn?: boolean;
 }
 
 /** Beat event pushed to the visual queue for UI animation */

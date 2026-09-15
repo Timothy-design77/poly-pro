@@ -338,7 +338,7 @@ export class AudioEngine {
         }
 
         // Record scheduled beat
-        this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState });
+        this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState, isCountIn: this.countInActive });
 
         // Notify UI for ALL tracks (each track gets its own dial ring)
         const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
