@@ -3,7 +3,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../../store/db';
 import * as db from '../../../store/db';
 import { useSettingsStore } from '../../../store/settings-store';
-import { useMetronomeStore } from '../../../store/metronome-store';
 import { VOLUME_GAINS } from '../../../audio/types';
 import { createPlaybackLimiter, recordingPlaybackGain } from '../../../audio/recording-playback';
 import { forEachClickBeat } from './timeline-shared';
@@ -13,6 +12,10 @@ export interface TimelinePlayback {
   playbackPos: number;
   playbackSpeed: number;
   setPlaybackSpeed: (speed: number) => void;
+  playbackVolume: number;
+  setPlaybackVolume: (value: number) => void;
+  followPlayhead: boolean;
+  setFollowPlayhead: (value: boolean) => void;
   clickOverlay: boolean;
   setClickOverlay: (value: boolean) => void;
   clickVolume: number;
@@ -46,6 +49,8 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPos, setPlaybackPos] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [playbackVolume, setPlaybackVolumeState] = useState(0.72);
+  const [followPlayhead, setFollowPlayhead] = useState(true);
   const [clickOverlay, setClickOverlay] = useState(true);
   const [clickVolume, setClickVolume] = useState(0.5);
   const [cleanupEnabled, setCleanupEnabled] = useState(false);
@@ -67,7 +72,6 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
   const playStartTimeRef = useRef(0);
   const playOffsetRef = useRef(0);
   const animFrameRef = useRef(0);
-  const volUnsubRef = useRef<(() => void) | null>(null);
   const savedClickVolRef = useRef(0.5);
   const gridBeatsRef = useRef<HitEventsRecord['gridBeats']>(undefined);
 
@@ -99,8 +103,6 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
     clickNodesRef.current = [];
     if (clickGainRef.current) { try { clickGainRef.current.disconnect(); } catch {} clickGainRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
-    volUnsubRef.current?.();
-    volUnsubRef.current = null;
     setIsPlaying(false);
   }, []);
 
@@ -118,8 +120,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
 
     const gain = ctx.createGain();
     const limiter = createPlaybackLimiter(ctx);
-    const volume = useMetronomeStore.getState().volume;
-    gain.gain.value = recordingPlaybackGain(volume);
+    gain.gain.value = recordingPlaybackGain(playbackVolume);
     gain.connect(limiter);
     limiter.connect(ctx.destination);
     gainNodeRef.current = gain;
@@ -186,14 +187,6 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
       clickNodesRef.current = scheduled;
     }
 
-    volUnsubRef.current?.();
-    let previousVolume = volume;
-    volUnsubRef.current = useMetronomeStore.subscribe((state) => {
-      if (state.volume === previousVolume) return;
-      previousVolume = state.volume;
-      if (gainNodeRef.current) gainNodeRef.current.gain.value = recordingPlaybackGain(state.volume);
-    });
-
     sourceNodeRef.current = source;
     source.onended = () => stopPlayback();
     playStartTimeRef.current = ctx.currentTime;
@@ -208,7 +201,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
       const width = containerRef.current?.clientWidth ?? 350;
       const totalWidth = width * zoom;
       const playheadX = pos * totalWidth;
-      setScrollX((previous) => {
+      if (followPlayhead) setScrollX((previous) => {
         if (playheadX < previous || playheadX > previous + width) {
           const target = Math.max(0, playheadX - width * 0.3);
           return previous + (target - previous) * 0.15;
@@ -224,7 +217,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
     animFrameRef.current = requestAnimationFrame(animate);
   }, [audioBufferRef, playbackSpeed, cleanupEnabled, highPassHz, lowPassHz, presenceBoostDb,
     clickSoundId, accentSoundId, accentThreshold, clickOverlay, clickVolume, latencyOffsetMs,
-    session, containerRef, zoom, setScrollX, stopPlayback]);
+    session, containerRef, zoom, setScrollX, stopPlayback, playbackVolume, followPlayhead]);
 
   const togglePlayback = useCallback(async () => {
     if (isPlaying) {
@@ -299,6 +292,12 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
     savedClickVolRef.current = clickVolume;
     if (clickGainRef.current && clickOverlay) clickGainRef.current.gain.value = clickVolume;
   }, [clickVolume, clickOverlay]);
+
+  const setPlaybackVolume = useCallback((value: number) => {
+    const next = Math.max(0, Math.min(1, value));
+    setPlaybackVolumeState(next);
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = recordingPlaybackGain(next);
+  }, []);
 
   useEffect(() => () => stopPlayback(), [stopPlayback]);
 
@@ -376,7 +375,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
   }, [audioBufferRef, session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs]);
 
   return {
-    isPlaying, playbackPos, playbackSpeed, setPlaybackSpeed,
+    isPlaying, playbackPos, playbackSpeed, setPlaybackSpeed, playbackVolume, setPlaybackVolume, followPlayhead, setFollowPlayhead,
     clickOverlay, setClickOverlay, clickVolume, setClickVolume,
     cleanupEnabled, setCleanupEnabled, highPassHz, setHighPassHz,
     lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb,

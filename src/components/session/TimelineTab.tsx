@@ -32,6 +32,21 @@ interface Props {
   hitEvents: HitEventsRecord | null;
 }
 
+type PanelId = 'audio' | 'loop' | 'edit' | 'export' | null;
+
+function IconButton({ label, onClick, children, active = false, disabled = false, className = '' }: {
+  label: string; onClick: () => void; children: React.ReactNode; active?: boolean; disabled?: boolean; className?: string;
+}) {
+  return (
+    <button type="button" aria-label={label} aria-pressed={active || undefined} onClick={onClick} disabled={disabled}
+      className={`min-h-[42px] rounded-xl border text-xs font-bold transition-colors touch-manipulation disabled:opacity-30 ${active
+        ? 'bg-accent text-bg-primary border-accent'
+        : 'bg-bg-surface text-text-secondary border-border-subtle active:bg-bg-raised'} ${className}`}>
+      {children}
+    </button>
+  );
+}
+
 export function TimelineTab({ session, hitEvents }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showBass, setShowBass] = useState(true);
@@ -42,6 +57,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(1);
+  const [panel, setPanel] = useState<PanelId>(null);
 
   useEffect(() => {
     setEditableHitEvents(hitEvents);
@@ -58,6 +74,9 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const gestures = useTimelineGestures((clientX) => onTapRef.current(clientX));
   const { zoom, scrollX, setScrollX, containerWidth, totalWidth, containerRef } = gestures;
   const playback = useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX });
+
+  const onsets = liveOnsets ?? editableHitEvents?.scoredOnsets ?? [];
+  const currentTimeMs = playback.playbackPos * session.durationMs;
 
   const handleCanvasTap = useCallback((clientX: number) => {
     const container = containerRef.current;
@@ -90,6 +109,30 @@ export function TimelineTab({ session, hitEvents }: Props) {
     setLoopEnd(1);
   }, []);
 
+  const jumpToHit = useCallback((direction: -1 | 1) => {
+    if (!onsets.length || session.durationMs <= 0) return;
+    const currentSec = currentTimeMs / 1000;
+    const sorted = [...onsets].sort((a, b) => a.time - b.time);
+    const target = direction > 0
+      ? sorted.find((hit) => hit.time > currentSec + 0.025) ?? sorted[sorted.length - 1]
+      : [...sorted].reverse().find((hit) => hit.time < currentSec - 0.025) ?? sorted[0];
+    playback.seekToFraction(Math.max(0, Math.min(1, target.time / (session.durationMs / 1000))));
+  }, [onsets, currentTimeMs, session.durationMs, playback]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, button, [contenteditable="true"]')) return;
+      if (event.code === 'Space') { event.preventDefault(); void playback.togglePlayback(); }
+      else if (event.key === 'ArrowLeft') { event.preventDefault(); void playback.skip(-5); }
+      else if (event.key === 'ArrowRight') { event.preventDefault(); void playback.skip(5); }
+      else if (event.key.toLowerCase() === 'c') playback.setClickOverlay(!playback.clickOverlay);
+      else if (event.key.toLowerCase() === 'l') setLoopEnabled((value) => !value);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [playback]);
+
   const handleScoringResult = useCallback((result: SessionAnalysis) => setLiveOnsets(result.scoredOnsets), []);
 
   useEffect(() => {
@@ -99,62 +142,131 @@ export function TimelineTab({ session, hitEvents }: Props) {
       canvas, spectrogramData, session, totalWidth, zoom,
       latencyOffsetMs: playback.latencyOffsetMs,
       showBass, showMid, showHigh,
-      onsets: liveOnsets ?? editableHitEvents?.scoredOnsets,
+      onsets,
       rawPcm: rawPcmRef.current,
     });
-  }, [spectrogramData, session, totalWidth, zoom, playback.latencyOffsetMs, showBass, showMid, showHigh, liveOnsets, editableHitEvents, rawPcmRef]);
+  }, [spectrogramData, session, totalWidth, zoom, playback.latencyOffsetMs, showBass, showMid, showHigh, onsets, rawPcmRef]);
 
   if (!session.hasRecording) return <div className="flex items-center justify-center h-32"><p className="text-text-muted text-sm">No recording for this session</p></div>;
-  if (isLoading) return <div className="flex flex-col items-center justify-center h-48 gap-3"><div className="w-8 h-8 border-2 border-t-transparent border-white/30 rounded-full animate-spin" /><p className="text-text-muted text-xs">Analyzing waveform…</p></div>;
+  if (isLoading) return <div className="flex flex-col items-center justify-center h-48 gap-3"><div className="w-8 h-8 border-2 border-t-transparent border-text-muted/30 rounded-full animate-spin" /><p className="text-text-muted text-xs">Preparing playback…</p></div>;
+
+  const togglePanel = (next: Exclude<PanelId, null>) => setPanel((current) => current === next ? null : next);
 
   return (
-    <div className="flex flex-col gap-2">
-      <MiniMap spectrogramData={spectrogramData} containerWidth={containerWidth} zoom={zoom} scrollX={scrollX} totalWidth={totalWidth} playbackPos={playback.playbackPos} onSeekFraction={playback.seekToFraction} />
-
-      <div ref={containerRef} className="overflow-hidden rounded-lg border border-border-subtle relative bg-[rgba(0,0,0,0.3)]" style={{ touchAction: 'none' }} onTouchStart={gestures.handleTouchStart} onTouchMove={gestures.handleTouchMove} onTouchEnd={gestures.handleTouchEnd}>
-        <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth, position: 'relative' }}>
-          <canvas ref={canvasRef} style={{ width: totalWidth, height: CANVAS_HEIGHT }} />
-          {loopEnabled && <div aria-hidden="true" style={{ position: 'absolute', left: `${loopStart * 100}%`, width: `${(loopEnd - loopStart) * 100}%`, top: 0, bottom: 0, background: 'rgba(255,255,255,0.045)', borderLeft: '1px solid rgba(255,255,255,0.45)', borderRight: '1px solid rgba(255,255,255,0.45)', pointerEvents: 'none' }} />}
-          <div style={{ position: 'absolute', left: `${playback.playbackPos * 100}%`, top: 0, bottom: 0, width: 2, backgroundColor: 'rgba(255,255,255,0.95)', pointerEvents: 'none', boxShadow: '0 0 8px rgba(255,255,255,0.5)' }} />
+    <div className="flex flex-col gap-3 pb-28">
+      <div className="flex items-end justify-between gap-3 pt-1">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.16em] font-bold text-text-muted">Playback</p>
+          <p className="text-xl font-mono font-bold text-text-primary tabular-nums mt-0.5">{formatTime(currentTimeMs)} <span className="text-sm font-medium text-text-muted">/ {formatTime(session.durationMs)}</span></p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-mono font-semibold text-text-secondary">{session.bpm} BPM · {session.meter}</p>
+          <p className="text-[10px] text-text-muted mt-0.5">{onsets.length} detected hits</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <button onClick={() => setShowBass(!showBass)} className={`px-2 py-1 rounded text-[10px] font-bold ${showBass ? 'text-white' : 'text-white/20'}`} style={{ backgroundColor: showBass ? 'hsla(15,80%,55%,0.3)' : 'rgba(255,255,255,0.05)' }}>Bass</button>
-        <button onClick={() => setShowMid(!showMid)} className={`px-2 py-1 rounded text-[10px] font-bold ${showMid ? 'text-white' : 'text-white/20'}`} style={{ backgroundColor: showMid ? 'hsla(140,60%,50%,0.3)' : 'rgba(255,255,255,0.05)' }}>Mid</button>
-        <button onClick={() => setShowHigh(!showHigh)} className={`px-2 py-1 rounded text-[10px] font-bold ${showHigh ? 'text-white' : 'text-white/20'}`} style={{ backgroundColor: showHigh ? 'hsla(195,80%,55%,0.3)' : 'rgba(255,255,255,0.05)' }}>High</button>
-        <div className="w-px h-5 bg-border-subtle mx-1" />
-        {ZOOM_LEVELS.map((z) => <button key={z} onClick={() => gestures.setZoomLevel(z)} className={`px-2 py-1 rounded text-[10px] font-mono font-bold ${Math.abs(zoom - z) < 0.5 ? 'bg-[rgba(255,255,255,0.15)] text-white' : 'bg-[rgba(255,255,255,0.04)] text-white/30'}`}>{z}×</button>)}
+      <MiniMap spectrogramData={spectrogramData} containerWidth={containerWidth} zoom={zoom} scrollX={scrollX} totalWidth={totalWidth} playbackPos={playback.playbackPos} onSeekFraction={playback.seekToFraction} />
+
+      <div className="rounded-2xl border border-border-subtle overflow-hidden bg-bg-surface shadow-sm">
+        <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-border-subtle overflow-x-auto">
+          <button type="button" onClick={() => setShowBass(!showBass)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showBass ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Bass</button>
+          <button type="button" onClick={() => setShowMid(!showMid)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showMid ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Mid</button>
+          <button type="button" onClick={() => setShowHigh(!showHigh)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showHigh ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>High</button>
+          <div className="w-px h-5 bg-border-subtle mx-1 shrink-0" />
+          {ZOOM_LEVELS.map((z) => <button type="button" key={z} onClick={() => gestures.setZoomLevel(z)} className={`h-8 px-2.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap ${Math.abs(zoom - z) < 0.5 ? 'bg-accent text-bg-primary' : 'text-text-muted'}`}>{z}×</button>)}
+          <button type="button" onClick={() => playback.setFollowPlayhead(!playback.followPlayhead)} className={`ml-auto h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${playback.followPlayhead ? 'bg-accent-dim text-accent' : 'text-text-muted'}`}>Follow</button>
+        </div>
+
+        <div ref={containerRef} className="overflow-hidden relative bg-[rgba(0,0,0,0.34)]" style={{ touchAction: 'none' }} onTouchStart={gestures.handleTouchStart} onTouchMove={gestures.handleTouchMove} onTouchEnd={gestures.handleTouchEnd}>
+          <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth, position: 'relative' }}>
+            <canvas ref={canvasRef} style={{ width: totalWidth, height: CANVAS_HEIGHT }} />
+            {loopEnabled && <div aria-hidden="true" style={{ position: 'absolute', left: `${loopStart * 100}%`, width: `${(loopEnd - loopStart) * 100}%`, top: 0, bottom: 0, background: 'rgba(255,255,255,0.055)', borderLeft: '2px solid rgba(255,255,255,0.65)', borderRight: '2px solid rgba(255,255,255,0.65)', pointerEvents: 'none' }} />}
+            <div style={{ position: 'absolute', left: `${playback.playbackPos * 100}%`, top: 0, bottom: 0, width: 2, backgroundColor: 'rgba(255,255,255,0.98)', pointerEvents: 'none', boxShadow: '0 0 10px rgba(255,255,255,0.55)' }} />
+          </div>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 bg-bg-raised/60 rounded-lg px-3 py-2 border border-border-subtle">
-        <button onClick={() => playback.skip(-5)} className="w-8 h-8 rounded text-white/60">−5</button>
-        <button onClick={playback.togglePlayback} disabled={!isReady} className={`w-10 h-10 rounded-lg ${playback.isPlaying ? 'bg-white/15 text-white' : 'bg-white/8 text-white/70'} ${!isReady ? 'opacity-30' : ''}`}>{playback.isPlaying ? 'Ⅱ' : '▶'}</button>
-        <button onClick={() => playback.skip(5)} className="w-8 h-8 rounded text-white/60">+5</button>
-        <span className="text-xs font-mono text-white/40 min-w-[70px] text-center">{formatTime(playback.playbackPos * session.durationMs)} / {formatTime(session.durationMs)}</span>
-        <button onClick={() => { const idx = SPEED_OPTIONS.indexOf(playback.playbackSpeed); playback.setPlaybackSpeed(SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]); }} className={`px-2 py-1 rounded text-[10px] font-mono font-bold ${playback.playbackSpeed !== 1 ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/40'}`}>{playback.playbackSpeed}×</button>
-        <button onClick={() => playback.setClickOverlay(!playback.clickOverlay)} className={`ml-auto px-2 h-8 rounded text-[10px] font-bold ${playback.clickOverlay ? 'text-white/80 bg-white/10' : 'text-white/20 bg-white/5'}`}>Click</button>
+      <div className="grid grid-cols-4 gap-2">
+        <IconButton label="Previous detected hit" onClick={() => jumpToHit(-1)}>‹ Hit</IconButton>
+        <IconButton label="Toggle click overlay" active={playback.clickOverlay} onClick={() => playback.setClickOverlay(!playback.clickOverlay)}>Click</IconButton>
+        <IconButton label="Toggle loop" active={loopEnabled} onClick={() => setLoopEnabled((value) => !value)}>Loop</IconButton>
+        <IconButton label="Next detected hit" onClick={() => jumpToHit(1)}>Hit ›</IconButton>
       </div>
 
-      <div className="rounded-lg border border-border-subtle bg-bg-raised/40 p-2 space-y-2">
-        <div className="flex items-center justify-between gap-2"><div><p className="text-[10px] font-bold text-text-secondary">Playback Cleanup</p><p className="text-[9px] text-text-muted">Nondestructive. Raw recording stays unchanged.</p></div><button onClick={() => playback.setCleanupEnabled(!playback.cleanupEnabled)} className={`min-h-[34px] px-3 rounded text-[10px] font-bold ${playback.cleanupEnabled ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/40'}`}>{playback.cleanupEnabled ? 'On' : 'Off'}</button></div>
-        {playback.cleanupEnabled && <div className="grid gap-2">
-          <label className="grid grid-cols-[72px_1fr_58px] items-center gap-2 text-[9px] text-text-muted"><span>Low cut</span><input type="range" min="20" max="800" step="10" value={playback.highPassHz} onChange={(e) => playback.setHighPassHz(Number(e.target.value))} /><span className="font-mono text-right">{playback.highPassHz}Hz</span></label>
-          <label className="grid grid-cols-[72px_1fr_58px] items-center gap-2 text-[9px] text-text-muted"><span>High cut</span><input type="range" min="3000" max="20000" step="250" value={playback.lowPassHz} onChange={(e) => playback.setLowPassHz(Number(e.target.value))} /><span className="font-mono text-right">{(playback.lowPassHz / 1000).toFixed(1)}kHz</span></label>
-          <label className="grid grid-cols-[72px_1fr_58px] items-center gap-2 text-[9px] text-text-muted"><span>Presence</span><input type="range" min="-6" max="9" step="1" value={playback.presenceBoostDb} onChange={(e) => playback.setPresenceBoostDb(Number(e.target.value))} /><span className="font-mono text-right">{playback.presenceBoostDb > 0 ? '+' : ''}{playback.presenceBoostDb}dB</span></label>
-        </div>}
+      {playback.clickOverlay && (
+        <div className="grid grid-cols-[70px_1fr_42px] items-center gap-2 px-2">
+          <span className="text-[10px] font-semibold text-text-muted">Click level</span>
+          <input aria-label="Click level" type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(e) => playback.setClickVolume(Number(e.target.value) / 100)} />
+          <span className="text-[10px] text-text-muted font-mono text-right">{Math.round(playback.clickVolume * 100)}%</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-4 gap-2">
+        <IconButton label="Audio cleanup controls" active={panel === 'audio'} onClick={() => togglePanel('audio')}>Audio</IconButton>
+        <IconButton label="Loop region controls" active={panel === 'loop'} onClick={() => togglePanel('loop')}>A / B</IconButton>
+        <IconButton label="Hit correction tools" active={panel === 'edit'} onClick={() => togglePanel('edit')}>Edit Hits</IconButton>
+        <IconButton label="Export audio" active={panel === 'export'} onClick={() => togglePanel('export')}>Export</IconButton>
       </div>
 
-      <div className="grid grid-cols-4 gap-2 bg-bg-raised/40 rounded-lg p-2 border border-border-subtle">
-        <button onClick={setLoopA} className="min-h-[36px] rounded bg-white/5 text-[10px] font-bold text-white/70">Set A</button><button onClick={setLoopB} className="min-h-[36px] rounded bg-white/5 text-[10px] font-bold text-white/70">Set B</button><button onClick={() => setLoopEnabled((v) => !v)} className={`min-h-[36px] rounded text-[10px] font-bold ${loopEnabled ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/50'}`}>{loopEnabled ? 'Loop On' : 'Loop Off'}</button><button onClick={clearLoop} className="min-h-[36px] rounded bg-white/5 text-[10px] font-bold text-white/40">Clear</button>
-        <div className="col-span-4 flex justify-between px-1 text-[9px] font-mono text-white/30"><span>A {formatTime(loopStart * session.durationMs)}</span><span>B {formatTime(loopEnd * session.durationMs)}</span></div>
-      </div>
+      {panel === 'audio' && (
+        <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div><p className="text-xs font-bold text-text-primary">Playback cleanup</p><p className="text-[10px] text-text-muted mt-0.5">Nondestructive. The stored recording stays unchanged.</p></div>
+            <button type="button" onClick={() => playback.setCleanupEnabled(!playback.cleanupEnabled)} className={`h-9 px-4 rounded-full text-[10px] font-bold ${playback.cleanupEnabled ? 'bg-accent text-bg-primary' : 'bg-bg-raised text-text-muted'}`}>{playback.cleanupEnabled ? 'On' : 'Off'}</button>
+          </div>
+          {playback.cleanupEnabled && <div className="grid gap-3">
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-[10px] text-text-muted"><span>Low cut</span><input type="range" min="20" max="800" step="10" value={playback.highPassHz} onChange={(e) => playback.setHighPassHz(Number(e.target.value))} /><span className="font-mono text-right">{playback.highPassHz}Hz</span></label>
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-[10px] text-text-muted"><span>High cut</span><input type="range" min="3000" max="20000" step="250" value={playback.lowPassHz} onChange={(e) => playback.setLowPassHz(Number(e.target.value))} /><span className="font-mono text-right">{(playback.lowPassHz / 1000).toFixed(1)}k</span></label>
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-[10px] text-text-muted"><span>Presence</span><input type="range" min="-6" max="9" step="1" value={playback.presenceBoostDb} onChange={(e) => playback.setPresenceBoostDb(Number(e.target.value))} /><span className="font-mono text-right">{playback.presenceBoostDb > 0 ? '+' : ''}{playback.presenceBoostDb}dB</span></label>
+          </div>}
+        </div>
+      )}
 
-      {editableHitEvents && hitEvents && session.analyzed && <HitEditor session={session} hitEvents={editableHitEvents} originalHitEvents={hitEvents} playheadFraction={playback.playbackPos} onChange={handleHitEventsChange} />}
+      {panel === 'loop' && (
+        <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-3">
+          <div className="grid grid-cols-4 gap-2">
+            <IconButton label="Set loop start" onClick={setLoopA}>Set A</IconButton>
+            <IconButton label="Set loop end" onClick={setLoopB}>Set B</IconButton>
+            <IconButton label="Enable or disable loop" active={loopEnabled} onClick={() => setLoopEnabled((value) => !value)}>{loopEnabled ? 'On' : 'Off'}</IconButton>
+            <IconButton label="Clear loop" onClick={clearLoop}>Clear</IconButton>
+          </div>
+          <div className="flex justify-between text-[10px] font-mono text-text-muted"><span>A {formatTime(loopStart * session.durationMs)}</span><span>{formatTime((loopEnd - loopStart) * session.durationMs)} loop</span><span>B {formatTime(loopEnd * session.durationMs)}</span></div>
+        </div>
+      )}
 
-      {playback.clickOverlay && <div className="flex items-center gap-2 px-3"><span className="text-[9px] text-white/30">Click Vol</span><input type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(e) => playback.setClickVolume(Number(e.target.value) / 100)} className="flex-1 max-w-[160px]" /><span className="text-[9px] text-white/30 font-mono w-7 text-right">{Math.round(playback.clickVolume * 100)}%</span></div>}
-      {isReady && <div className="flex gap-2"><button onClick={() => playback.saveAudio(false)} disabled={playback.isSaving} className="flex-1 py-2 bg-bg-raised border border-border-subtle text-text-secondary rounded-md text-[10px] min-h-[38px] disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'Save Raw'}</button><button onClick={() => playback.saveAudio(true)} disabled={playback.isSaving} className="flex-1 py-2 bg-bg-raised border border-border-subtle text-text-primary rounded-md text-[10px] min-h-[38px] disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'Save with Click'}</button></div>}
+      {panel === 'edit' && editableHitEvents && hitEvents && session.analyzed && <HitEditor session={session} hitEvents={editableHitEvents} originalHitEvents={hitEvents} playheadFraction={playback.playbackPos} onChange={handleHitEventsChange} />}
+
+      {panel === 'export' && isReady && (
+        <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-2">
+          <p className="text-xs font-bold text-text-primary">Export WAV</p>
+          <p className="text-[10px] text-text-muted">Exports the full-quality stored recording. Click export uses the stored timing grid.</p>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button type="button" onClick={() => playback.saveAudio(false)} disabled={playback.isSaving} className="min-h-[44px] rounded-xl bg-bg-raised border border-border-subtle text-text-secondary text-xs font-semibold disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'Raw recording'}</button>
+            <button type="button" onClick={() => playback.saveAudio(true)} disabled={playback.isSaving} className="min-h-[44px] rounded-xl bg-accent text-bg-primary text-xs font-semibold disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'With click'}</button>
+          </div>
+        </div>
+      )}
+
       <TuneDrawer session={session} hitEvents={editableHitEvents} onResult={handleScoringResult} onLatencyChange={playback.setLatencyOffsetMs} />
+
+      <div className="sticky bottom-2 z-20 rounded-[22px] border border-border-emphasis bg-bg-surface/95 backdrop-blur-xl shadow-lg p-2.5">
+        <div className="grid grid-cols-[46px_46px_1fr_46px_46px] items-center gap-2">
+          <button type="button" aria-label="Skip back 5 seconds" onClick={() => void playback.skip(-5)} className="h-11 rounded-xl bg-bg-raised text-text-secondary font-mono text-xs">−5</button>
+          <button type="button" aria-label="Previous detected hit" onClick={() => jumpToHit(-1)} className="h-11 rounded-xl text-text-muted text-lg">‹</button>
+          <button type="button" aria-label={playback.isPlaying ? 'Pause playback' : 'Start playback'} onClick={() => void playback.togglePlayback()} disabled={!isReady}
+            className={`h-14 rounded-2xl text-xl font-bold disabled:opacity-30 ${playback.isPlaying ? 'bg-text-primary text-bg-primary' : 'bg-accent text-bg-primary'}`}>
+            {playback.isPlaying ? 'Ⅱ' : '▶'}
+          </button>
+          <button type="button" aria-label="Next detected hit" onClick={() => jumpToHit(1)} className="h-11 rounded-xl text-text-muted text-lg">›</button>
+          <button type="button" aria-label="Skip forward 5 seconds" onClick={() => void playback.skip(5)} className="h-11 rounded-xl bg-bg-raised text-text-secondary font-mono text-xs">+5</button>
+        </div>
+        <div className="grid grid-cols-[52px_1fr_58px_52px] gap-2 items-center mt-2">
+          <button type="button" onClick={() => { const idx = SPEED_OPTIONS.indexOf(playback.playbackSpeed); playback.setPlaybackSpeed(SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]); }} className="h-9 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">{playback.playbackSpeed}×</button>
+          <input aria-label="Playback volume" type="range" min="0" max="100" value={Math.round(playback.playbackVolume * 100)} onChange={(e) => playback.setPlaybackVolume(Number(e.target.value) / 100)} />
+          <span className="text-[10px] font-mono text-text-muted text-right">Vol {Math.round(playback.playbackVolume * 100)}</span>
+          <button type="button" onClick={() => playback.setClickOverlay(!playback.clickOverlay)} className={`h-9 rounded-lg text-[10px] font-bold ${playback.clickOverlay ? 'bg-accent-dim text-accent' : 'bg-bg-raised text-text-muted'}`}>Click</button>
+        </div>
+      </div>
     </div>
   );
 }
