@@ -92,6 +92,7 @@ export interface SessionRecord {
   velocityDecaySlope?: number | null;
   velocityDecayLabel?: string;
   recordingSampleRate?: number;
+  recoveredRecording?: boolean;
 }
 
 export interface HitEventsRecord {
@@ -140,6 +141,19 @@ export interface RecordingManifest {
   totalSamples: number;
   finalized: boolean;
   createdAt: string;
+  projectId: string | null;
+  bpm: number;
+  meterNumerator: number;
+  meterDenominator: number;
+  subdivision: number;
+}
+
+export interface RecordingManifestMetadata {
+  projectId: string | null;
+  bpm: number;
+  meterNumerator: number;
+  meterDenominator: number;
+  subdivision: number;
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -277,7 +291,11 @@ function recordingChunkKey(sessionId: string, index: number): string {
   return `${sessionId}:${String(index).padStart(6, '0')}`;
 }
 
-export async function beginChunkedRecording(sessionId: string, sampleRate: number): Promise<void> {
+export async function beginChunkedRecording(
+  sessionId: string,
+  sampleRate: number,
+  metadata: RecordingManifestMetadata,
+): Promise<void> {
   const db = await getDB();
   const manifest: RecordingManifest = {
     sessionId,
@@ -286,6 +304,7 @@ export async function beginChunkedRecording(sessionId: string, sampleRate: numbe
     totalSamples: 0,
     finalized: false,
     createdAt: new Date().toISOString(),
+    ...metadata,
   };
   await db.put('recordingManifests', manifest);
 }
@@ -302,7 +321,10 @@ export async function appendRecordingChunk(
   const manifest = await manifestStore.get(sessionId) as RecordingManifest | undefined;
   if (!manifest) throw new Error('Recording manifest missing while saving audio');
 
-  const blob = new Blob([samples.buffer], { type: 'application/octet-stream' });
+  // Copy exactly this typed-array view into an ArrayBuffer accepted by Blob.
+  const bytes = new Uint8Array(samples.byteLength);
+  bytes.set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength));
+  const blob = new Blob([bytes.buffer], { type: 'application/octet-stream' });
   await chunkStore.put(blob, recordingChunkKey(sessionId, index));
   manifest.chunkCount = Math.max(manifest.chunkCount, index + 1);
   manifest.totalSamples += samples.length;
@@ -345,11 +367,63 @@ export async function discardChunkedRecording(sessionId: string): Promise<void> 
   await tx.done;
 }
 
+/**
+ * Recover audio that reached durable chunk storage before an app/browser crash
+ * but never got its final SessionRecord. At most the final in-flight sub-second
+ * worklet buffer is lost; completed chunks remain user-visible and playable.
+ */
+export async function recoverOrphanedRecordings(): Promise<number> {
+  const db = await getDB();
+  const [manifests, sessions] = await Promise.all([
+    db.getAll('recordingManifests') as Promise<RecordingManifest[]>,
+    db.getAll('sessions') as Promise<SessionRecord[]>,
+  ]);
+  const sessionIds = new Set(sessions.map((session) => session.id));
+  let recovered = 0;
+
+  for (const manifest of manifests) {
+    if (sessionIds.has(manifest.sessionId) || manifest.chunkCount === 0 || manifest.totalSamples === 0) continue;
+    const durationMs = Math.max(1, Math.round((manifest.totalSamples / manifest.sampleRate) * 1000));
+    const recoveredSession: SessionRecord = {
+      id: manifest.sessionId,
+      date: manifest.createdAt,
+      projectId: manifest.projectId,
+      bpm: manifest.bpm,
+      meter: `${manifest.meterNumerator}/${manifest.meterDenominator}`,
+      subdivision: manifest.subdivision,
+      durationMs,
+      totalHits: 0,
+      avgDelta: 0,
+      stdDev: 0,
+      perfectPct: 0,
+      hasRecording: true,
+      analyzed: false,
+      recordingSampleRate: manifest.sampleRate,
+      recoveredRecording: true,
+    };
+    const tx = db.transaction(['sessions', 'recordingManifests'], 'readwrite');
+    await Promise.all([
+      tx.objectStore('sessions').put(recoveredSession),
+      tx.objectStore('recordingManifests').put({ ...manifest, finalized: true }),
+    ]);
+    await tx.done;
+    recovered++;
+  }
+  return recovered;
+}
+
 export async function cleanupIncompleteRecordings(maxAgeMs = 60 * 60 * 1000): Promise<void> {
   const manifests = await getAllRecordingManifests();
+  const sessions = await getAllSessions();
+  const sessionIds = new Set(sessions.map((session) => session.id));
   const now = Date.now();
   for (const manifest of manifests) {
-    if (!manifest.finalized && now - new Date(manifest.createdAt).getTime() > maxAgeMs) {
+    if (
+      !manifest.finalized &&
+      manifest.chunkCount === 0 &&
+      !sessionIds.has(manifest.sessionId) &&
+      now - new Date(manifest.createdAt).getTime() > maxAgeMs
+    ) {
       await discardChunkedRecording(manifest.sessionId);
     }
   }

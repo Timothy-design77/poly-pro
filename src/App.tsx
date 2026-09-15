@@ -15,6 +15,7 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [recoveredCount, setRecoveredCount] = useState(0);
   const loadProjects = useProjectStore((s) => s.loadFromDB);
   const loadSessions = useSessionStore((s) => s.loadFromDB);
   const loadInstruments = useInstrumentStore((s) => s.loadFromDB);
@@ -24,19 +25,22 @@ export function App() {
     setReady(false);
     setLoadError(null);
 
-    Promise.all([loadProjects(), loadSessions(), loadInstruments(), hydrateStores()])
-      .then(async () => {
+    (async () => {
+      try {
+        const recovered = await db.recoverOrphanedRecordings();
+        await db.cleanupIncompleteRecordings();
+        await Promise.all([loadProjects(), loadSessions(), loadInstruments(), hydrateStores()]);
         if (cancelled) return;
+        setRecoveredCount(recovered);
         startPersistence();
         setReady(true);
         navigator.storage?.persist?.().catch(() => {});
-        db.cleanupIncompleteRecordings().catch(console.warn);
-      })
-      .catch((error) => {
+      } catch (error) {
         if (cancelled) return;
         console.error('Failed to load Poly Pro data:', error);
         setLoadError(error instanceof Error ? error.message : 'Unable to open local storage.');
-      });
+      }
+    })();
 
     return () => { cancelled = true; };
   }, [loadProjects, loadSessions, loadInstruments, loadAttempt]);
@@ -47,14 +51,7 @@ export function App() {
         <h1 className="text-lg font-semibold text-text-primary">Local data is temporarily unavailable</h1>
         <p className="text-sm text-text-secondary max-w-sm">{loadError}</p>
         <p className="text-xs text-text-muted max-w-sm">Poly Pro will not delete the database automatically. Your existing data is left untouched.</p>
-        <button
-          type="button"
-          className="min-h-[44px] px-5 rounded-xl bg-accent text-bg-primary text-sm font-semibold"
-          onClick={() => {
-            db.resetDBConnection();
-            setLoadAttempt((value) => value + 1);
-          }}
-        >
+        <button type="button" className="min-h-[44px] px-5 rounded-xl bg-accent text-bg-primary text-sm font-semibold" onClick={() => { db.resetDBConnection(); setLoadAttempt((value) => value + 1); }}>
           Retry storage
         </button>
       </div>
@@ -76,6 +73,11 @@ export function App() {
   return (
     <div className="h-full animate-app-enter">
       <UpdateBanner />
+      {recoveredCount > 0 && (
+        <div className="fixed top-0 left-0 right-0 z-[9998] bg-warning/95 px-4 py-2 text-center" role="status">
+          <p className="text-bg-primary text-xs font-semibold">Recovered {recoveredCount} interrupted recording{recoveredCount === 1 ? '' : 's'} from durable storage.</p>
+        </div>
+      )}
       <SwipeNavigation
         pages={[<ProjectsPage />, <HomePage />, <ProgressPage />]}
         pageLabels={['Projects', 'Home', 'Progress']}

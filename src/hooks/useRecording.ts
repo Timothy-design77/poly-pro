@@ -53,8 +53,6 @@ async function preferredMicWithTimeout(): Promise<Awaited<ReturnType<typeof getP
   try {
     return await Promise.race([request, timeout]);
   } catch (error) {
-    // If getUserMedia resolves after our timeout, stop that late stream instead
-    // of leaking an active microphone track.
     request.then((result) => result.stream.getTracks().forEach((track) => track.stop())).catch(() => {});
     throw error;
   } finally {
@@ -86,7 +84,6 @@ export function useRecording() {
   const recordingStartCtxTimeRef = useRef(0);
   const realtimeOnsetCountRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
-  const sampleRateRef = useRef(48000);
   const chunkIndexRef = useRef(0);
   const writeChainRef = useRef<Promise<void>>(Promise.resolve());
   const writeErrorRef = useRef<unknown>(null);
@@ -157,9 +154,9 @@ export function useRecording() {
 
       const ctx = await audioEngine.initContext();
       await ensurePcmCaptureWorklet(ctx);
-      sampleRateRef.current = ctx.sampleRate;
 
       const metronome = useMetronomeStore.getState();
+      const activeProjectId = useProjectStore.getState().activeProjectId;
       recordingConfigRef.current = {
         bpm: metronome.bpm,
         meterNumerator: metronome.meterNumerator,
@@ -168,7 +165,13 @@ export function useRecording() {
       };
       metronomeWasRunningRef.current = audioEngine.running;
 
-      await db.beginChunkedRecording(sessionId, ctx.sampleRate);
+      await db.beginChunkedRecording(sessionId, ctx.sampleRate, {
+        projectId: activeProjectId,
+        bpm: metronome.bpm,
+        meterNumerator: metronome.meterNumerator,
+        meterDenominator: metronome.meterDenominator,
+        subdivision: metronome.subdivision,
+      });
       chunkIndexRef.current = 0;
       writeChainRef.current = Promise.resolve();
       writeErrorRef.current = null;
@@ -216,8 +219,6 @@ export function useRecording() {
       startTimeRef.current = Date.now();
       isRecordingRef.current = true;
 
-      // Start the metronome only after capture is ready. This guarantees that
-      // every auto-started click belongs to the stored recording timeline.
       if (!audioEngine.running) {
         const started = audioEngine.startSync();
         if (!started) await audioEngine.start();
@@ -301,11 +302,10 @@ export function useRecording() {
       setPhase('saving');
       const config = recordingConfigRef.current;
       const manifest = await db.finalizeChunkedRecording(sessionId);
-      const activeProjectId = useProjectStore.getState().activeProjectId;
       const session: db.SessionRecord = {
         id: sessionId,
         date: new Date(startTimeRef.current).toISOString(),
-        projectId: activeProjectId,
+        projectId: manifest.projectId,
         bpm: config.bpm,
         meter: `${config.meterNumerator}/${config.meterDenominator}`,
         subdivision: config.subdivision,
@@ -320,10 +320,10 @@ export function useRecording() {
       };
 
       await useSessionStore.getState().addSession(session);
-      if (activeProjectId) {
-        const project = useProjectStore.getState().projects.find((item) => item.id === activeProjectId);
+      if (manifest.projectId) {
+        const project = useProjectStore.getState().projects.find((item) => item.id === manifest.projectId);
         if (project) {
-          useProjectStore.getState().updateProject(activeProjectId, {
+          useProjectStore.getState().updateProject(manifest.projectId, {
             sessionIds: project.sessionIds.includes(sessionId) ? project.sessionIds : [...project.sessionIds, sessionId],
             lastOpened: new Date().toISOString(),
           }).catch(console.error);
