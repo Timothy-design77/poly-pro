@@ -1,29 +1,33 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { audioEngine } from '../audio';
+import { ensurePcmCaptureWorklet } from '../audio/worklets';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
 import { getPreferredMicStream, hasBtAudioOutput } from '../utils/mic';
+import { beginCriticalActivity } from '../utils/critical-activity';
 import * as db from '../store/db';
 import type { ScheduledBeat } from '../audio/types';
 
 const MAX_RECORDING_MS = 30 * 60 * 1000;
 const WARNING_MS = 25 * 60 * 1000;
+const MIC_TIMEOUT_MS = 15_000;
+const WORKLET_FLUSH_TIMEOUT_MS = 2_000;
+
+export type RecordingPhase = 'idle' | 'preparing' | 'recording' | 'stopping' | 'saving' | 'error';
 
 export interface RecordingState {
+  phase: RecordingPhase;
   isRecording: boolean;
   elapsed: number;
   micLevel: number;
   warning: string | null;
   btTip: string | null;
   isRawAudio: boolean;
-  /** Real-time onset count from Mode 1 (visual feedback only) */
   realtimeOnsetCount: number;
-  /** User-facing error message (e.g., mic permission denied) */
   error: string | null;
 }
 
-/** Returned after recording stops — enough info to trigger analysis */
 export interface RecordingResult {
   sessionId: string;
   bpm: number;
@@ -36,19 +40,31 @@ export interface RecordingResult {
   recordingEndTime: number;
 }
 
-/**
- * Recording hook using AudioWorklet for raw PCM capture.
- *
- * Mic → createMediaStreamSource → AudioWorkletNode → raw Float32 PCM (48kHz)
- *
- * Phase 5 additions:
- * - Captures scheduledBeats from engine for grid alignment
- * - Tracks AudioContext recording start/end times
- * - Receives real-time onset detections from worklet (Mode 1)
- * - Returns RecordingResult for analysis pipeline
- */
+function generateSessionId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+async function preferredMicWithTimeout(): Promise<Awaited<ReturnType<typeof getPreferredMicStream>>> {
+  const request = getPreferredMicStream();
+  let timeoutId = 0;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error('Microphone setup timed out. Check browser microphone permission and try again.')), MIC_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([request, timeout]);
+  } catch (error) {
+    // If getUserMedia resolves after our timeout, stop that late stream instead
+    // of leaking an active microphone track.
+    request.then((result) => result.stream.getTracks().forEach((track) => track.stop())).catch(() => {});
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 export function useRecording() {
   const [state, setState] = useState<RecordingState>({
+    phase: 'idle',
     isRecording: false,
     elapsed: 0,
     micLevel: 0,
@@ -63,33 +79,41 @@ export function useRecording() {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
-  const pcmChunksRef = useRef<Float32Array[]>([]);
   const startTimeRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isRecordingRef = useRef(false);
-
-  // Phase 5: capture engine state for analysis
+  const phaseRef = useRef<RecordingPhase>('idle');
   const recordingStartCtxTimeRef = useRef(0);
   const realtimeOnsetCountRef = useRef(0);
+  const sessionIdRef = useRef<string | null>(null);
+  const sampleRateRef = useRef(48000);
+  const chunkIndexRef = useRef(0);
+  const writeChainRef = useRef<Promise<void>>(Promise.resolve());
+  const writeErrorRef = useRef<unknown>(null);
+  const donePromiseRef = useRef<Promise<void> | null>(null);
+  const doneResolveRef = useRef<(() => void) | null>(null);
+  const releaseCriticalRef = useRef<(() => void) | null>(null);
+  const metronomeWasRunningRef = useRef(false);
+  const recordingConfigRef = useRef({ bpm: 120, meterNumerator: 4, meterDenominator: 4, subdivision: 1 });
 
-  // Callback for real-time onset events (Mode 1 visual feedback)
   const onRealtimeOnsetRef = useRef<((time: number, peak: number) => void) | null>(null);
-
-  // Callback fired when the 30-minute limit auto-stops the recording —
-  // gives the caller the RecordingResult so analysis/review still run.
   const onAutoStopRef = useRef<((result: RecordingResult) => void) | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (isRecordingRef.current) cleanupRecording();
-    };
+  const setPhase = useCallback((phase: RecordingPhase) => {
+    phaseRef.current = phase;
+    setState((current) => ({ ...current, phase }));
+  }, []);
+
+  const releaseCritical = useCallback(() => {
+    releaseCriticalRef.current?.();
+    releaseCriticalRef.current = null;
   }, []);
 
   const cleanupRecording = useCallback(() => {
-    isRecordingRef.current = false;
     if (timerRef.current) clearInterval(timerRef.current);
-
+    timerRef.current = undefined;
     if (workletNodeRef.current) {
+      workletNodeRef.current.port.onmessage = null;
       try { workletNodeRef.current.disconnect(); } catch {}
       workletNodeRef.current = null;
     }
@@ -102,296 +126,264 @@ export function useRecording() {
       silentGainRef.current = null;
     }
     if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current.getTracks().forEach((track) => track.stop());
       micStreamRef.current = null;
     }
   }, []);
 
+  useEffect(() => () => {
+    cleanupRecording();
+    releaseCritical();
+  }, [cleanupRecording, releaseCritical]);
+
   const startRecording = useCallback(async () => {
-    if (isRecordingRef.current) return;
+    if (isRecordingRef.current || !['idle', 'error'].includes(phaseRef.current)) return;
+
+    const sessionId = generateSessionId();
+    sessionIdRef.current = sessionId;
+    releaseCriticalRef.current = beginCriticalActivity('recording');
+    setState((current) => ({ ...current, phase: 'preparing', error: null, warning: 'Preparing microphone…' }));
+    phaseRef.current = 'preparing';
 
     try {
-      // Auto-start metronome if not running
+      const micResult = await preferredMicWithTimeout();
+      micStreamRef.current = micResult.stream;
+      const btDetected = await hasBtAudioOutput().catch(() => false);
+      const btTip = btDetected
+        ? micResult.isBuiltIn
+          ? `Mic: ${micResult.deviceLabel}`
+          : `Using "${micResult.deviceLabel}" — Bluetooth may switch to call mode.`
+        : null;
+
+      const ctx = await audioEngine.initContext();
+      await ensurePcmCaptureWorklet(ctx);
+      sampleRateRef.current = ctx.sampleRate;
+
+      const metronome = useMetronomeStore.getState();
+      recordingConfigRef.current = {
+        bpm: metronome.bpm,
+        meterNumerator: metronome.meterNumerator,
+        meterDenominator: metronome.meterDenominator,
+        subdivision: metronome.subdivision,
+      };
+      metronomeWasRunningRef.current = audioEngine.running;
+
+      await db.beginChunkedRecording(sessionId, ctx.sampleRate);
+      chunkIndexRef.current = 0;
+      writeChainRef.current = Promise.resolve();
+      writeErrorRef.current = null;
+      donePromiseRef.current = new Promise<void>((resolve) => { doneResolveRef.current = resolve; });
+
+      const source = ctx.createMediaStreamSource(micResult.stream);
+      const workletNode = new AudioWorkletNode(ctx, 'pcm-capture-processor');
+      const silentGain = ctx.createGain();
+      silentGain.gain.value = 0;
+      micSourceRef.current = source;
+      workletNodeRef.current = workletNode;
+      silentGainRef.current = silentGain;
+      source.connect(workletNode);
+      workletNode.connect(silentGain);
+      silentGain.connect(ctx.destination);
+
+      realtimeOnsetCountRef.current = 0;
+      workletNode.port.onmessage = (event) => {
+        const message = event.data;
+        if (message.type === 'pcm') {
+          const samples = message.samples instanceof Float32Array ? message.samples : new Float32Array(message.samples);
+          const index = chunkIndexRef.current++;
+          writeChainRef.current = writeChainRef.current.then(async () => {
+            if (writeErrorRef.current) return;
+            try {
+              await db.appendRecordingChunk(sessionId, index, samples);
+            } catch (error) {
+              writeErrorRef.current = error;
+            }
+          });
+        } else if (message.type === 'done') {
+          doneResolveRef.current?.();
+          doneResolveRef.current = null;
+        } else if (message.type === 'level') {
+          setState((current) => ({ ...current, micLevel: message.peak }));
+        } else if (message.type === 'onset') {
+          realtimeOnsetCountRef.current++;
+          setState((current) => ({ ...current, realtimeOnsetCount: realtimeOnsetCountRef.current }));
+          onRealtimeOnsetRef.current?.(message.time, message.peak);
+        }
+      };
+
+      workletNode.port.postMessage({ type: 'start' });
+      recordingStartCtxTimeRef.current = ctx.currentTime;
+      startTimeRef.current = Date.now();
+      isRecordingRef.current = true;
+
+      // Start the metronome only after capture is ready. This guarantees that
+      // every auto-started click belongs to the stored recording timeline.
       if (!audioEngine.running) {
         const started = audioEngine.startSync();
         if (!started) await audioEngine.start();
         useMetronomeStore.getState().setPlaying(true);
       }
 
-      // Get mic stream — forces built-in mic to avoid BT HFP switch
-      const micResult = await getPreferredMicStream();
-      micStreamRef.current = micResult.stream;
-
-      // BT tip
-      const btDetected = await hasBtAudioOutput();
-      let btTip: string | null = null;
-      if (btDetected && !micResult.isBuiltIn) {
-        btTip = `⚠️ Using "${micResult.deviceLabel}" — BT may switch to call mode.`;
-      } else if (btDetected) {
-        btTip = `Mic: ${micResult.deviceLabel}`;
-      }
-
-      // Set up AudioWorklet for raw PCM capture
-      const ctx = await audioEngine.initContext();
-      const basePath = (import.meta as any).env?.BASE_URL || '/poly-pro/';
-      await ctx.audioWorklet.addModule(`${basePath}worklets/pcm-capture.js`);
-
-      const source = ctx.createMediaStreamSource(micResult.stream);
-      micSourceRef.current = source;
-
-      const workletNode = new AudioWorkletNode(ctx, 'pcm-capture-processor');
-      workletNodeRef.current = workletNode;
-
-      // Silent gain — keeps worklet alive without playing mic through speakers
-      const silentGain = ctx.createGain();
-      silentGain.gain.value = 0;
-      silentGainRef.current = silentGain;
-
-      source.connect(workletNode);
-      workletNode.connect(silentGain);
-      silentGain.connect(ctx.destination);
-
-      // Phase 5: capture AudioContext time at recording start
-      recordingStartCtxTimeRef.current = ctx.currentTime;
-      realtimeOnsetCountRef.current = 0;
-
-      // Listen for PCM chunks, mic levels, and onset events from worklet
-      pcmChunksRef.current = [];
-      workletNode.port.onmessage = (e) => {
-        const msg = e.data;
-        if (msg.type === 'pcm') {
-          const arr = msg.samples instanceof Float32Array
-            ? msg.samples
-            : new Float32Array(msg.samples);
-          pcmChunksRef.current.push(arr);
-        } else if (msg.type === 'level') {
-          setState((s) => ({ ...s, micLevel: msg.peak }));
-        } else if (msg.type === 'onset') {
-          // Mode 1: real-time onset detected in worklet
-          realtimeOnsetCountRef.current++;
-          setState((s) => ({
-            ...s,
-            realtimeOnsetCount: realtimeOnsetCountRef.current,
-          }));
-          // Notify external callback (e.g., for beat dot flash)
-          onRealtimeOnsetRef.current?.(msg.time, msg.peak);
-        }
-      };
-
-      workletNode.port.postMessage({ type: 'start' });
-
-      isRecordingRef.current = true;
-      startTimeRef.current = Date.now();
-
       setState({
+        phase: 'recording',
         isRecording: true,
         elapsed: 0,
         micLevel: 0,
         warning: null,
         btTip,
-        isRawAudio: true,
+        isRawAudio: micResult.isRaw,
         realtimeOnsetCount: 0,
         error: null,
       });
+      phaseRef.current = 'recording';
 
-      // Elapsed timer
       timerRef.current = setInterval(() => {
-        const el = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        let warning: string | null = null;
-
-        if (Date.now() - startTimeRef.current > WARNING_MS) {
-          warning = 'Recording will auto-stop at 30:00';
-        }
-        if (Date.now() - startTimeRef.current > MAX_RECORDING_MS) {
-          stopRecording().then((result) => {
-            if (result) onAutoStopRef.current?.(result);
-          });
+        const elapsedMs = Date.now() - startTimeRef.current;
+        const elapsed = Math.floor(elapsedMs / 1000);
+        const warning = elapsedMs > WARNING_MS ? 'Recording will auto-stop at 30:00' : null;
+        if (elapsedMs > MAX_RECORDING_MS) {
+          stopRecording().then((result) => { if (result) onAutoStopRef.current?.(result); });
           return;
         }
-
-        setState((s) => ({ ...s, elapsed: el, warning }));
+        setState((current) => ({ ...current, elapsed, warning }));
       }, 1000);
-
-    } catch (err) {
-      console.error('Failed to start recording:', err);
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      isRecordingRef.current = false;
       cleanupRecording();
+      if (!metronomeWasRunningRef.current && audioEngine.running) {
+        audioEngine.stop();
+        useMetronomeStore.getState().setPlaying(false);
+      }
+      db.discardChunkedRecording(sessionId).catch(() => {});
+      releaseCritical();
 
-      // Friendly error messages
-      let errorMsg = 'Recording failed. Please try again.';
-      if (err instanceof DOMException) {
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          errorMsg = 'Microphone access denied. Enable mic permission in your browser settings and try again.';
-        } else if (err.name === 'NotFoundError') {
-          errorMsg = 'No microphone found. Connect a mic and try again.';
-        } else if (err.name === 'NotReadableError' || err.name === 'AbortError') {
-          errorMsg = 'Microphone is in use by another app. Close other apps and try again.';
+      let message = error instanceof Error ? error.message : 'Recording failed. Please try again.';
+      if (error instanceof DOMException) {
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') message = 'Microphone access denied. Enable microphone permission and try again.';
+        else if (error.name === 'NotFoundError') message = 'No microphone found.';
+        else if (error.name === 'NotReadableError' || error.name === 'AbortError') message = 'Microphone is unavailable or in use by another app.';
+      }
+      phaseRef.current = 'error';
+      setState({ phase: 'error', isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false, realtimeOnsetCount: 0, error: message });
+    }
+  }, [cleanupRecording, releaseCritical]);
+
+  const stopRecording = useCallback(async (): Promise<RecordingResult | null> => {
+    if (!isRecordingRef.current || phaseRef.current !== 'recording') return null;
+    isRecordingRef.current = false;
+    setPhase('stopping');
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = undefined;
+
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) return null;
+
+    try {
+      const durationMs = Date.now() - startTimeRef.current;
+      const ctx = audioEngine.getContext();
+      const recordingEndTime = ctx?.currentTime ?? 0;
+      const recordingStartTime = recordingStartCtxTimeRef.current;
+      const scheduledBeats = audioEngine.scheduledBeats.filter(
+        (beat) => beat.time >= recordingStartTime - 0.01 && beat.time <= recordingEndTime + 0.11,
+      );
+
+      workletNodeRef.current?.port.postMessage({ type: 'stop' });
+      if (donePromiseRef.current) {
+        await Promise.race([
+          donePromiseRef.current,
+          new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('Audio capture did not flush cleanly.')), WORKLET_FLUSH_TIMEOUT_MS)),
+        ]);
+      }
+      await writeChainRef.current;
+      if (writeErrorRef.current) throw writeErrorRef.current;
+
+      setPhase('saving');
+      const config = recordingConfigRef.current;
+      const manifest = await db.finalizeChunkedRecording(sessionId);
+      const activeProjectId = useProjectStore.getState().activeProjectId;
+      const session: db.SessionRecord = {
+        id: sessionId,
+        date: new Date(startTimeRef.current).toISOString(),
+        projectId: activeProjectId,
+        bpm: config.bpm,
+        meter: `${config.meterNumerator}/${config.meterDenominator}`,
+        subdivision: config.subdivision,
+        durationMs,
+        totalHits: 0,
+        avgDelta: 0,
+        stdDev: 0,
+        perfectPct: 0,
+        hasRecording: true,
+        analyzed: false,
+        recordingSampleRate: manifest.sampleRate,
+      };
+
+      await useSessionStore.getState().addSession(session);
+      if (activeProjectId) {
+        const project = useProjectStore.getState().projects.find((item) => item.id === activeProjectId);
+        if (project) {
+          useProjectStore.getState().updateProject(activeProjectId, {
+            sessionIds: project.sessionIds.includes(sessionId) ? project.sessionIds : [...project.sessionIds, sessionId],
+            lastOpened: new Date().toISOString(),
+          }).catch(console.error);
         }
       }
 
-      setState({
-        isRecording: false, elapsed: 0, micLevel: 0,
-        warning: null, btTip: null, isRawAudio: false,
-        realtimeOnsetCount: 0, error: errorMsg,
-      });
-    }
-  }, [cleanupRecording]);
+      cleanupRecording();
+      audioEngine.stop();
+      useMetronomeStore.getState().setPlaying(false);
+      releaseCritical();
+      phaseRef.current = 'idle';
+      setState({ phase: 'idle', isRecording: false, elapsed: 0, micLevel: 0, warning: null, btTip: null, isRawAudio: false, realtimeOnsetCount: 0, error: null });
 
-  const stopRecording = useCallback(async (): Promise<RecordingResult | null> => {
-    if (!isRecordingRef.current) return null;
-
-    const durationMs = Date.now() - startTimeRef.current;
-
-    // Phase 5: capture AudioContext time at recording end
-    const ctx = audioEngine.getContext();
-    const recordingEndTime = ctx?.currentTime ?? 0;
-    const recordingStartTime = recordingStartCtxTimeRef.current;
-
-    // Phase 5: snapshot scheduledBeats from engine (beats during recording
-    // only). Filter by time rather than index — the engine may have
-    // restarted (resetting the array) or trimmed old beats, which would
-    // invalidate a start index captured at recording start.
-    const scheduledBeats = audioEngine.scheduledBeats.filter(
-      (b) => b.time >= recordingStartTime - 0.05,
-    );
-
-    // Tell worklet to stop and flush remaining samples
-    if (workletNodeRef.current) {
-      workletNodeRef.current.port.postMessage({ type: 'stop' });
-    }
-    await new Promise((r) => setTimeout(r, 150)); // Wait for final flush
-
-    // Grab chunks
-    const chunks = pcmChunksRef.current;
-    pcmChunksRef.current = [];
-
-    // Snapshot metronome state BEFORE stopping (engine reads might change)
-    const metronome = useMetronomeStore.getState();
-    const sessionBpm = metronome.bpm;
-    const sessionMeterNum = metronome.meterNumerator;
-    const sessionMeterDen = metronome.meterDenominator;
-    const sessionSubdivision = metronome.subdivision;
-
-    // Cleanup
-    cleanupRecording();
-    audioEngine.stop();
-    useMetronomeStore.getState().setPlaying(false);
-
-    if (chunks.length === 0) {
-      console.warn('No audio captured');
-      setState({
-        isRecording: false, elapsed: 0, micLevel: 0,
-        warning: null, btTip: null, isRawAudio: false,
-        realtimeOnsetCount: 0, error: null,
-      });
+      return {
+        sessionId,
+        bpm: config.bpm,
+        meterNumerator: config.meterNumerator,
+        meterDenominator: config.meterDenominator,
+        subdivision: config.subdivision,
+        durationMs,
+        scheduledBeats,
+        recordingStartTime,
+        recordingEndTime,
+      };
+    } catch (error) {
+      console.error('Failed to stop/save recording:', error);
+      cleanupRecording();
+      audioEngine.stop();
+      useMetronomeStore.getState().setPlaying(false);
+      releaseCritical();
+      phaseRef.current = 'error';
+      setState((current) => ({
+        ...current,
+        phase: 'error',
+        isRecording: false,
+        warning: null,
+        error: `Recording stopped, but saving did not complete: ${error instanceof Error ? error.message : 'unknown storage error'}`,
+      }));
       return null;
     }
-
-    // Combine float32 chunks into single buffer
-    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
-    const combined = new Float32Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    const pcmBlob = new Blob([combined.buffer], { type: 'application/octet-stream' });
-
-    // Build session record
-    const activeProjectId = useProjectStore.getState().activeProjectId;
-    const sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-
-    const session: db.SessionRecord = {
-      id: sessionId,
-      date: new Date().toISOString(),
-      projectId: activeProjectId,
-      bpm: sessionBpm,
-      meter: `${sessionMeterNum}/${sessionMeterDen}`,
-      subdivision: sessionSubdivision,
-      durationMs,
-      totalHits: 0,
-      avgDelta: 0,
-      stdDev: 0,
-      perfectPct: 0,
-      hasRecording: true,
-      analyzed: false,
-    };
-
-    // Save to IDB — raw PCM for analysis + playback
-    await Promise.all([
-      db.putSession(session),
-      db.putRecording(sessionId, pcmBlob),
-    ]);
-
-    // Update stores
-    await useSessionStore.getState().addSession(session);
-
-    if (activeProjectId) {
-      const project = useProjectStore.getState().projects.find((p) => p.id === activeProjectId);
-      if (project) {
-        await useProjectStore.getState().updateProject(activeProjectId, {
-          sessionIds: [...project.sessionIds, sessionId],
-          lastOpened: new Date().toISOString(),
-        });
-      }
-    }
-
-    setState({
-      isRecording: false, elapsed: 0, micLevel: 0,
-      warning: null, btTip: null, isRawAudio: false,
-      realtimeOnsetCount: 0, error: null,
-    });
-
-    // Return analysis params (caller handles navigation + analysis trigger)
-    return {
-      sessionId,
-      bpm: sessionBpm,
-      meterNumerator: sessionMeterNum,
-      meterDenominator: sessionMeterDen,
-      subdivision: sessionSubdivision,
-      durationMs,
-      scheduledBeats,
-      recordingStartTime,
-      recordingEndTime,
-    };
-  }, [cleanupRecording]);
+  }, [cleanupRecording, releaseCritical, setPhase]);
 
   const toggleRecording = useCallback(async (): Promise<RecordingResult | null> => {
-    if (isRecordingRef.current) {
-      return stopRecording();
-    } else {
-      await startRecording();
-      return null;
-    }
+    if (phaseRef.current === 'recording') return stopRecording();
+    if (phaseRef.current === 'idle' || phaseRef.current === 'error') await startRecording();
+    return null;
   }, [startRecording, stopRecording]);
 
-  /** Register callback for real-time onset events (Mode 1 visual feedback) */
-  const setOnRealtimeOnset = useCallback(
-    (cb: ((time: number, peak: number) => void) | null) => {
-      onRealtimeOnsetRef.current = cb;
-    },
-    [],
-  );
-
-  /** Register callback for the 30-minute auto-stop (receives the result) */
-  const setOnAutoStop = useCallback(
-    (cb: ((result: RecordingResult) => void) | null) => {
-      onAutoStopRef.current = cb;
-    },
-    [],
-  );
-
-  const clearError = useCallback(() => {
-    setState((s) => ({ ...s, error: null }));
+  const setOnRealtimeOnset = useCallback((cb: ((time: number, peak: number) => void) | null) => {
+    onRealtimeOnsetRef.current = cb;
   }, []);
 
-  return {
-    ...state,
-    startRecording,
-    stopRecording,
-    toggleRecording,
-    setOnRealtimeOnset,
-    setOnAutoStop,
-    clearError,
-  };
+  const setOnAutoStop = useCallback((cb: ((result: RecordingResult) => void) | null) => {
+    onAutoStopRef.current = cb;
+  }, []);
+
+  const clearError = useCallback(() => {
+    phaseRef.current = 'idle';
+    setState((current) => ({ ...current, phase: 'idle', error: null }));
+  }, []);
+
+  return { ...state, startRecording, stopRecording, toggleRecording, setOnRealtimeOnset, setOnAutoStop, clearError };
 }

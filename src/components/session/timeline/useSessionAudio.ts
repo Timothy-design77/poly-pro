@@ -1,8 +1,4 @@
-/**
- * useSessionAudio — loads the session recording from IDB, prepares an
- * AudioBuffer for playback, and computes the spectrogram for rendering.
- */
-
+/** Loads stored session audio, builds playback buffer, and computes spectrogram. */
 import { useState, useEffect, useRef } from 'react';
 import type { SessionRecord } from '../../../store/db';
 import * as db from '../../../store/db';
@@ -21,71 +17,57 @@ export function useSessionAudio(session: SessionRecord): SessionAudio {
   const [spectrogramData, setSpectrogramData] = useState<SpectrogramData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
-
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const rawPcmRef = useRef<Float32Array | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
+    setIsReady(false);
+    setSpectrogramData(null);
+    audioBufferRef.current = null;
+    rawPcmRef.current = null;
+
     (async () => {
-      setIsLoading(true);
-      const blob = await db.getRecording(session.id);
-      if (!blob || blob.size === 0 || cancelled) {
-        setIsLoading(false);
-        return;
-      }
+      try {
+        const blob = await db.getRecording(session.id);
+        if (!blob || blob.size === 0 || cancelled) return;
+        const arrayBuffer = await blob.arrayBuffer();
+        let pcm: Float32Array;
+        let sampleRate = session.recordingSampleRate ?? 48000;
 
-      const arrayBuffer = await blob.arrayBuffer();
-      let pcm: Float32Array;
-      let sampleRate = 48000;
-
-      if (blob.type.startsWith('audio/') || blob.type === '') {
-        // Handle both raw PCM and compressed formats
-        try {
-          // Try raw PCM first
+        if (blob.type.startsWith('audio/')) {
+          const { audioEngine } = await import('../../../audio');
+          const ctx = await audioEngine.initContext();
+          const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+          sampleRate = decoded.sampleRate;
+          pcm = new Float32Array(decoded.length);
+          pcm.set(decoded.getChannelData(0));
+        } else {
           pcm = new Float32Array(arrayBuffer);
-          if (pcm.length === 0) {
-            setIsLoading(false);
-            return;
-          }
-          // Look up sample rate
-          try {
-            const sessions = await db.getAllSessions();
-            const s = sessions.find((s) => s.id === session.id);
-            if (s?.recordingSampleRate) sampleRate = s.recordingSampleRate;
-          } catch { /* default */ }
-        } catch {
-          setIsLoading(false);
-          return;
         }
-      } else {
-        setIsLoading(false);
-        return;
-      }
 
-      if (cancelled) return;
+        if (pcm.length === 0 || cancelled) return;
+        rawPcmRef.current = pcm;
 
-      // Store raw PCM for playback
-      rawPcmRef.current = pcm;
+        const { audioEngine } = await import('../../../audio');
+        const ctx = await audioEngine.initContext();
+        const audioBuffer = ctx.createBuffer(1, pcm.length, sampleRate);
+        audioBuffer.getChannelData(0).set(pcm);
+        audioBufferRef.current = audioBuffer;
+        setIsReady(true);
 
-      // Build AudioBuffer for playback
-      const { audioEngine } = await import('../../../audio');
-      const ctx = await audioEngine.initContext();
-      const audioBuf = ctx.createBuffer(1, pcm.length, sampleRate);
-      audioBuf.getChannelData(0).set(pcm);
-      audioBufferRef.current = audioBuf;
-      setIsReady(true);
-
-      // Compute spectrogram (this may take 1-2s on long recordings)
-      const specData = computeSpectrogram(pcm, sampleRate);
-      if (!cancelled) {
-        setSpectrogramData(specData);
-        setIsLoading(false);
+        const specData = computeSpectrogram(pcm, sampleRate);
+        if (!cancelled) setSpectrogramData(specData);
+      } catch (error) {
+        console.error('Failed to prepare session audio:', error);
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
     })();
 
     return () => { cancelled = true; };
-  }, [session.id]);
+  }, [session.id, session.recordingSampleRate]);
 
   return { isLoading, isReady, spectrogramData, audioBufferRef, rawPcmRef };
 }

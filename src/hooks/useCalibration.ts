@@ -1,20 +1,9 @@
-/**
- * useCalibration hook — orchestrates loopback chirp calibration.
- *
- * Flow:
- * 1. Acquire mic (same as recording — built-in mic forced)
- * 2. Load AudioWorklet for PCM capture
- * 3. Wait 500ms for noise floor
- * 4. Play 5 chirps, 1 second apart, recording all audio
- * 5. Stop recording, run cross-correlation
- * 6. Present results: offset, consistency, quality
- *
- * Falls back to manual if loopback fails.
- */
-
+/** Loopback chirp calibration with update/lifecycle protection. */
 import { useState, useCallback, useRef } from 'react';
 import { audioEngine } from '../audio';
+import { ensurePcmCaptureWorklet } from '../audio/worklets';
 import { getPreferredMicStream } from '../utils/mic';
+import { beginCriticalActivity } from '../utils/critical-activity';
 import {
   createChirpBuffer,
   playChirp,
@@ -27,131 +16,73 @@ import {
 import { useSettingsStore } from '../store/settings-store';
 
 export type CalibrationStep = 'idle' | 'setup' | 'measuring' | 'results' | 'failed';
-
 export interface CalibrationState {
   step: CalibrationStep;
-  /** Which chirp is currently playing (1-based, 0 = not started) */
   chirpProgress: number;
-  /** Final offset in ms */
   offsetMs: number;
-  /** Consistency (std dev) in ms */
   consistencyMs: number;
-  /** Quality rating */
   quality: 'excellent' | 'good' | 'poor' | 'failed';
-  /** How many chirps were successfully detected */
   accepted: number;
-  /** Error message if failed */
   error: string | null;
 }
 
 export function useCalibration() {
-  const [state, setState] = useState<CalibrationState>({
-    step: 'idle',
-    chirpProgress: 0,
-    offsetMs: 0,
-    consistencyMs: 0,
-    quality: 'failed',
-    accepted: 0,
-    error: null,
-  });
-
+  const [state, setState] = useState<CalibrationState>({ step: 'idle', chirpProgress: 0, offsetMs: 0, consistencyMs: 0, quality: 'failed', accepted: 0, error: null });
   const micStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
   const pcmChunksRef = useRef<Float32Array[]>([]);
   const isRunningRef = useRef(false);
+  const releaseCriticalRef = useRef<(() => void) | null>(null);
 
   const cleanup = useCallback(() => {
     isRunningRef.current = false;
-    if (workletNodeRef.current) {
-      try { workletNodeRef.current.disconnect(); } catch {}
-      workletNodeRef.current = null;
-    }
-    if (micSourceRef.current) {
-      try { micSourceRef.current.disconnect(); } catch {}
-      micSourceRef.current = null;
-    }
-    if (silentGainRef.current) {
-      try { silentGainRef.current.disconnect(); } catch {}
-      silentGainRef.current = null;
-    }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((t) => t.stop());
-      micStreamRef.current = null;
-    }
+    if (workletNodeRef.current) { workletNodeRef.current.port.onmessage = null; try { workletNodeRef.current.disconnect(); } catch {} workletNodeRef.current = null; }
+    if (micSourceRef.current) { try { micSourceRef.current.disconnect(); } catch {} micSourceRef.current = null; }
+    if (silentGainRef.current) { try { silentGainRef.current.disconnect(); } catch {} silentGainRef.current = null; }
+    if (micStreamRef.current) { micStreamRef.current.getTracks().forEach((track) => track.stop()); micStreamRef.current = null; }
+    releaseCriticalRef.current?.();
+    releaseCriticalRef.current = null;
   }, []);
 
   const runCalibration = useCallback(async () => {
     if (isRunningRef.current) return;
     isRunningRef.current = true;
-
-    setState({
-      step: 'measuring',
-      chirpProgress: 0,
-      offsetMs: 0,
-      consistencyMs: 0,
-      quality: 'failed',
-      accepted: 0,
-      error: null,
-    });
+    releaseCriticalRef.current = beginCriticalActivity('calibration');
+    setState({ step: 'measuring', chirpProgress: 0, offsetMs: 0, consistencyMs: 0, quality: 'failed', accepted: 0, error: null });
 
     try {
-      // Stop metronome if running
-      if (audioEngine.running) {
-        audioEngine.stop();
-      }
-
-      // Get mic stream
+      if (audioEngine.running) audioEngine.stop();
       const micResult = await getPreferredMicStream();
       micStreamRef.current = micResult.stream;
-
-      // Set up AudioWorklet
       const ctx = await audioEngine.initContext();
-      const basePath = (import.meta as any).env?.BASE_URL || '/poly-pro/';
-      await ctx.audioWorklet.addModule(`${basePath}worklets/pcm-capture.js`);
-
+      await ensurePcmCaptureWorklet(ctx);
       const source = ctx.createMediaStreamSource(micResult.stream);
-      micSourceRef.current = source;
-
       const workletNode = new AudioWorkletNode(ctx, 'pcm-capture-processor');
-      workletNodeRef.current = workletNode;
-
       const silentGain = ctx.createGain();
       silentGain.gain.value = 0;
+      micSourceRef.current = source;
+      workletNodeRef.current = workletNode;
       silentGainRef.current = silentGain;
-
       source.connect(workletNode);
       workletNode.connect(silentGain);
       silentGain.connect(ctx.destination);
 
-      // Collect PCM chunks
       pcmChunksRef.current = [];
-      workletNode.port.onmessage = (e) => {
-        const msg = e.data;
-        if (msg.type === 'pcm') {
-          const arr = msg.samples instanceof Float32Array
-            ? msg.samples
-            : new Float32Array(msg.samples);
-          pcmChunksRef.current.push(arr);
-        }
+      workletNode.port.onmessage = (event) => {
+        if (event.data.type !== 'pcm') return;
+        const samples = event.data.samples instanceof Float32Array ? event.data.samples : new Float32Array(event.data.samples);
+        pcmChunksRef.current.push(samples);
       };
 
-      // Start capturing
       workletNode.port.postMessage({ type: 'start' });
       const recordingStartTime = ctx.currentTime;
-
-      // Wait for noise floor estimation
       await sleep(NOISE_FLOOR_WAIT_S * 1000);
-
       if (!isRunningRef.current) return;
 
-      // Generate chirp buffer
       const chirpBuffer = createChirpBuffer(ctx);
       const chirpPlayTimes: number[] = [];
-
-      // Schedule all 5 chirps at precise absolute times
-      // Start first chirp 100ms from now to ensure clean scheduling
       const firstChirpTime = ctx.currentTime + 0.1;
       for (let i = 0; i < CHIRP_COUNT; i++) {
         const playTime = firstChirpTime + i * CHIRP_INTERVAL_S;
@@ -159,70 +90,29 @@ export function useCalibration() {
         playChirp(ctx, chirpBuffer, playTime);
       }
 
-      // Wait for all chirps to finish + 300ms for last chirp's round trip
-
-      // Update progress as chirps play
       for (let i = 0; i < CHIRP_COUNT; i++) {
         if (!isRunningRef.current) return;
         const waitUntil = (chirpPlayTimes[i] - ctx.currentTime) * 1000 + 200;
         if (waitUntil > 0) await sleep(waitUntil);
-        setState((s) => ({ ...s, chirpProgress: i + 1 }));
+        setState((current) => ({ ...current, chirpProgress: i + 1 }));
       }
-
-      // Wait for the final chirp's echo to be captured
       await sleep(500);
-
       if (!isRunningRef.current) return;
-
-      // Stop worklet
       workletNode.port.postMessage({ type: 'stop' });
       await sleep(150);
 
-      // Run cross-correlation
-      const { latencies, correlations } = measureLatencies(
-        pcmChunksRef.current,
-        chirpPlayTimes,
-        recordingStartTime,
-        ctx.sampleRate,
-      );
-
+      const { latencies, correlations } = measureLatencies(pcmChunksRef.current, chirpPlayTimes, recordingStartTime, ctx.sampleRate);
       const result = computeCalibrationResult(latencies, correlations);
-
       cleanup();
-
       if (result.quality === 'failed') {
-        setState({
-          step: 'failed',
-          chirpProgress: CHIRP_COUNT,
-          offsetMs: 0,
-          consistencyMs: 0,
-          quality: 'failed',
-          accepted: result.accepted,
-          error: "Couldn't detect chirps clearly. Try a quieter room or move your phone closer.",
-        });
+        setState({ step: 'failed', chirpProgress: CHIRP_COUNT, offsetMs: 0, consistencyMs: 0, quality: 'failed', accepted: result.accepted, error: "Couldn't detect chirps clearly. Try a quieter room or move your phone closer." });
       } else {
-        setState({
-          step: 'results',
-          chirpProgress: CHIRP_COUNT,
-          offsetMs: result.offsetMs,
-          consistencyMs: result.consistencyMs,
-          quality: result.quality,
-          accepted: result.accepted,
-          error: null,
-        });
+        setState({ step: 'results', chirpProgress: CHIRP_COUNT, offsetMs: result.offsetMs, consistencyMs: result.consistencyMs, quality: result.quality, accepted: result.accepted, error: null });
       }
-    } catch (err) {
+    } catch (error) {
       cleanup();
-      console.error('Calibration failed:', err);
-      setState({
-        step: 'failed',
-        chirpProgress: 0,
-        offsetMs: 0,
-        consistencyMs: 0,
-        quality: 'failed',
-        accepted: 0,
-        error: err instanceof Error ? err.message : 'Calibration failed',
-      });
+      console.error('Calibration failed:', error);
+      setState({ step: 'failed', chirpProgress: 0, offsetMs: 0, consistencyMs: 0, quality: 'failed', accepted: 0, error: error instanceof Error ? error.message : 'Calibration failed' });
     }
   }, [cleanup]);
 
@@ -230,47 +120,24 @@ export function useCalibration() {
     if (state.step !== 'results') return;
     const settings = useSettingsStore.getState();
     settings.setCalibratedOffset(state.offsetMs);
-    settings.setManualAdjustment(0); // Reset fine-tune when accepting new calibration
+    settings.setManualAdjustment(0);
     settings.setLastCalibratedAt(new Date().toISOString());
     settings.setCalibrationConsistency(state.consistencyMs);
-    setState((s) => ({ ...s, step: 'idle' }));
+    setState((current) => ({ ...current, step: 'idle' }));
   }, [state.step, state.offsetMs, state.consistencyMs]);
 
   const cancel = useCallback(() => {
-    isRunningRef.current = false;
     cleanup();
-    setState({
-      step: 'idle',
-      chirpProgress: 0,
-      offsetMs: 0,
-      consistencyMs: 0,
-      quality: 'failed',
-      accepted: 0,
-      error: null,
-    });
+    setState({ step: 'idle', chirpProgress: 0, offsetMs: 0, consistencyMs: 0, quality: 'failed', accepted: 0, error: null });
   }, [cleanup]);
 
   const reset = useCallback(() => {
-    setState({
-      step: 'idle',
-      chirpProgress: 0,
-      offsetMs: 0,
-      consistencyMs: 0,
-      quality: 'failed',
-      accepted: 0,
-      error: null,
-    });
+    setState({ step: 'idle', chirpProgress: 0, offsetMs: 0, consistencyMs: 0, quality: 'failed', accepted: 0, error: null });
   }, []);
 
-  return {
-    ...state,
-    runCalibration,
-    acceptResult,
-    cancel,
-    reset,
-  };
+  return { ...state, runCalibration, acceptResult, cancel, reset };
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
