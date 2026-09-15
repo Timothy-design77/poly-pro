@@ -3,6 +3,7 @@ import { audioEngine } from '../audio';
 import { ensurePcmCaptureWorklet } from '../audio/worklets';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
+import { useSettingsStore } from '../store/settings-store';
 import { useSessionStore } from '../store/session-store';
 import { getPreferredMicStream, hasBtAudioOutput } from '../utils/mic';
 import { beginCriticalActivity } from '../utils/critical-activity';
@@ -91,7 +92,7 @@ export function useRecording() {
   const doneResolveRef = useRef<(() => void) | null>(null);
   const releaseCriticalRef = useRef<(() => void) | null>(null);
   const metronomeWasRunningRef = useRef(false);
-  const recordingConfigRef = useRef({ bpm: 120, meterNumerator: 4, meterDenominator: 4, subdivision: 1 });
+  const recordingConfigRef = useRef({ bpm: 120, meterNumerator: 4, meterDenominator: 4, subdivision: 1, countInBars: 0 });
 
   const onRealtimeOnsetRef = useRef<((time: number, peak: number) => void) | null>(null);
   const onAutoStopRef = useRef<((result: RecordingResult) => void) | null>(null);
@@ -162,8 +163,10 @@ export function useRecording() {
         meterNumerator: metronome.meterNumerator,
         meterDenominator: metronome.meterDenominator,
         subdivision: metronome.subdivision,
+        countInBars: metronome.countInBars,
       };
       metronomeWasRunningRef.current = audioEngine.running;
+      const autoStartMetronome = !audioEngine.running && useSettingsStore.getState().includeClickInRecording;
 
       await db.beginChunkedRecording(sessionId, ctx.sampleRate, {
         projectId: activeProjectId,
@@ -219,7 +222,7 @@ export function useRecording() {
       startTimeRef.current = Date.now();
       isRecordingRef.current = true;
 
-      if (!audioEngine.running) {
+      if (autoStartMetronome) {
         const started = audioEngine.startSync();
         if (!started) await audioEngine.start();
         useMetronomeStore.getState().setPlaying(true);
@@ -285,9 +288,19 @@ export function useRecording() {
       const ctx = audioEngine.getContext();
       const recordingEndTime = ctx?.currentTime ?? 0;
       const recordingStartTime = recordingStartCtxTimeRef.current;
-      const scheduledBeats = audioEngine.scheduledBeats.filter(
+      const capturedScheduledBeats = audioEngine.scheduledBeats.filter(
         (beat) => beat.time >= recordingStartTime - 0.01 && beat.time <= recordingEndTime + 0.11,
       );
+      let scheduledBeats = capturedScheduledBeats;
+      if (!metronomeWasRunningRef.current && recordingConfigRef.current.countInBars > 0) {
+        let remaining = recordingConfigRef.current.countInBars
+          * recordingConfigRef.current.meterNumerator
+          * recordingConfigRef.current.subdivision;
+        scheduledBeats = capturedScheduledBeats.filter((beat) => {
+          if (beat.trackId === 'track-0' && remaining > 0) { remaining--; return false; }
+          return true;
+        });
+      }
 
       workletNodeRef.current?.port.postMessage({ type: 'stop' });
       if (donePromiseRef.current) {

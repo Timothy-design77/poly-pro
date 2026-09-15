@@ -156,18 +156,18 @@ export function estimateNoiseFloor(
   sampleRate: number,
   multiplier: number = 5,
 ): number {
-  // Analyze first 500ms
-  const samples = Math.min(Math.floor(sampleRate * 0.5), pcm.length);
-  if (samples < 256) return 0.01;
-
-  let sumSq = 0;
-  for (let i = 0; i < samples; i++) {
-    sumSq += pcm[i] * pcm[i];
+  const windowSize = Math.max(128, Math.floor(sampleRate * 0.02));
+  const maxSamples = Math.min(pcm.length, Math.floor(sampleRate * 8));
+  if (maxSamples < windowSize) return 0.01;
+  const rmsWindows: number[] = [];
+  for (let start = 0; start + windowSize <= maxSamples; start += windowSize) {
+    let sumSq = 0;
+    for (let i = start; i < start + windowSize; i++) sumSq += pcm[i] * pcm[i];
+    rmsWindows.push(Math.sqrt(sumSq / windowSize));
   }
-
-  const rms = Math.sqrt(sumSq / samples);
-  // Gate at multiplier × noise RMS, with a sensible minimum
-  return Math.max(rms * multiplier, 0.01);
+  rmsWindows.sort((a, b) => a - b);
+  const index = Math.min(rmsWindows.length - 1, Math.floor(rmsWindows.length * 0.2));
+  return Math.max((rmsWindows[index] ?? 0) * multiplier, 0.003);
 }
 
 // ─── Stage 2: Auto-Latency Detection ───
@@ -508,24 +508,23 @@ export async function runOnsetDetection(
   const sampleRate = config.sampleRate;
   const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
 
-  // Stage 1: Noise floor estimation
+  let processedPcm = pcm;
+  if (config.inputGain !== 1) {
+    processedPcm = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) processedPcm[i] = pcm[i] * config.inputGain;
+  }
+  if (config.highPassHz > 0) processedPcm = applyHighPass(processedPcm, sampleRate, config.highPassHz);
+
   onProgress?.({ stage: 'noise-floor', progress: 0 });
-  const noiseFloor = estimateNoiseFloor(pcm, sampleRate, config.noiseFloorMultiplier);
+  const noiseFloor = estimateNoiseFloor(processedPcm, sampleRate, config.noiseFloorMultiplier);
   const effectiveNoiseGate = Math.max(noiseFloor, config.noiseGate);
   onProgress?.({ stage: 'noise-floor', progress: 1 });
   await yieldToMain();
 
-  // Stage 2: Auto-latency
   onProgress?.({ stage: 'latency-detect', progress: 0 });
-  const autoLatencyMs = detectAutoLatency(pcm, sampleRate);
+  const autoLatencyMs = 0;
   onProgress?.({ stage: 'latency-detect', progress: 1 });
   await yieldToMain();
-
-  // Apply high-pass filter if configured
-  let processedPcm = pcm;
-  if (config.highPassHz > 0) {
-    processedPcm = applyHighPass(pcm, sampleRate, config.highPassHz);
-  }
 
   // Stage 3: Coarse onset detection (with post-hit masking)
   onProgress?.({ stage: 'coarse-onset', progress: 0 });
