@@ -1,0 +1,147 @@
+name: Integrity Follow-up
+
+on:
+  push:
+    branches: [agent/remediation-followup-integrity]
+    paths: [.github/workflows/integrity-followup.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/remediation-followup-integrity
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply integrity corrections
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Explicitly identify count-in beats at the scheduler source.
+          p = Path('src/audio/types.ts')
+          s = p.read_text()
+          target = """export interface ScheduledBeat {\n  beatIndex: number;\n  time: number;\n  trackId: string;\n  volumeState: VolumeState;\n}"""
+          replacement = """export interface ScheduledBeat {\n  beatIndex: number;\n  time: number;\n  trackId: string;\n  volumeState: VolumeState;\n  /** Count-in cues are never expected player hits and must not enter scoring grids. */\n  isCountIn?: boolean;\n}"""
+          if target not in s: raise SystemExit('ScheduledBeat target not found')
+          p.write_text(s.replace(target, replacement, 1))
+
+          p = Path('src/audio/engine.ts')
+          s = p.read_text()
+          target = "this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState });"
+          replacement = "this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState, isCountIn: this.countInActive });"
+          if target not in s: raise SystemExit('engine scheduled-beat target not found')
+          p.write_text(s.replace(target, replacement, 1))
+
+          p = Path('src/analysis/grid.ts')
+          s = p.read_text()
+          target = """      b.time <= recordingEndTime &&\n      b.trackId === 'track-0',"""
+          replacement = """      b.time <= recordingEndTime &&\n      b.trackId === 'track-0' &&\n      !b.isCountIn,"""
+          if target not in s: raise SystemExit('grid filter target not found')
+          p.write_text(s.replace(target, replacement, 1))
+
+          # Prevent a second tab from recovering a recording that another tab is still writing.
+          p = Path('src/store/db.ts')
+          s = p.read_text()
+          target = """  finalized: boolean;\n  createdAt: string;\n  projectId: string | null;"""
+          replacement = """  finalized: boolean;\n  createdAt: string;\n  /** Updated on every durable chunk write; absent on older manifests. */\n  updatedAt?: string;\n  projectId: string | null;"""
+          if target not in s: raise SystemExit('manifest interface target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = """  const manifest: RecordingManifest = {\n    sessionId,\n    sampleRate,\n    chunkCount: 0,\n    totalSamples: 0,\n    finalized: false,\n    createdAt: new Date().toISOString(),\n    ...metadata,\n  };"""
+          replacement = """  const now = new Date().toISOString();\n  const manifest: RecordingManifest = {\n    sessionId,\n    sampleRate,\n    chunkCount: 0,\n    totalSamples: 0,\n    finalized: false,\n    createdAt: now,\n    updatedAt: now,\n    ...metadata,\n  };"""
+          if target not in s: raise SystemExit('begin manifest target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = """  manifest.chunkCount = Math.max(manifest.chunkCount, index + 1);\n  manifest.totalSamples += samples.length;\n  await manifestStore.put(manifest);"""
+          replacement = """  manifest.chunkCount = Math.max(manifest.chunkCount, index + 1);\n  manifest.totalSamples += samples.length;\n  manifest.updatedAt = new Date().toISOString();\n  await manifestStore.put(manifest);"""
+          if target not in s: raise SystemExit('append manifest target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = "const finalized = { ...manifest, finalized: true };"
+          replacement = "const finalized = { ...manifest, finalized: true, updatedAt: new Date().toISOString() };"
+          if target not in s: raise SystemExit('finalize target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = "export async function recoverOrphanedRecordings(): Promise<number> {"
+          replacement = "export async function recoverOrphanedRecordings(staleMs = 10_000): Promise<number> {"
+          if target not in s: raise SystemExit('recovery signature target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = """  for (const manifest of manifests) {\n    if (sessionIds.has(manifest.sessionId) || manifest.chunkCount === 0 || manifest.totalSamples === 0) continue;\n    const durationMs"""
+          replacement = """  for (const manifest of manifests) {\n    if (sessionIds.has(manifest.sessionId) || manifest.chunkCount === 0 || manifest.totalSamples === 0) continue;\n    const lastWriteMs = new Date(manifest.updatedAt ?? manifest.createdAt).getTime();\n    // A non-finalized manifest may belong to a recording still active in another tab.\n    // Only recover it after its durable chunk heartbeat has gone stale.\n    if (!manifest.finalized && Date.now() - lastWriteMs < staleMs) continue;\n    const durationMs"""
+          if target not in s: raise SystemExit('recovery stale target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = "tx.objectStore('recordingManifests').put({ ...manifest, finalized: true }),"
+          replacement = "tx.objectStore('recordingManifests').put({ ...manifest, finalized: true, updatedAt: new Date().toISOString() }),"
+          if target not in s: raise SystemExit('recovery finalization target not found')
+          p.write_text(s.replace(target, replacement, 1))
+
+          # Retry stale orphan recovery shortly after startup so an immediate reopen after a crash
+          # does not need a second manual relaunch, while still protecting an active second tab.
+          p = Path('src/App.tsx')
+          s = p.read_text()
+          target = """  useEffect(() => {\n    let cancelled = false;\n    setReady(false);"""
+          replacement = """  useEffect(() => {\n    let cancelled = false;\n    let delayedRecoveryTimer: number | null = null;\n    setReady(false);"""
+          if target not in s: raise SystemExit('App effect header target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = """        startPersistence();\n        setReady(true);\n        navigator.storage?.persist?.().catch(() => {});"""
+          replacement = """        startPersistence();\n        setReady(true);\n        navigator.storage?.persist?.().catch(() => {});\n        delayedRecoveryTimer = window.setTimeout(async () => {\n          try {\n            const additional = await db.recoverOrphanedRecordings();\n            if (!cancelled && additional > 0) {\n              setRecoveredCount((count) => count + additional);\n              await loadSessions();\n            }\n          } catch (error) {\n            console.warn('Delayed recording recovery failed:', error);\n          }\n        }, 12_000);"""
+          if target not in s: raise SystemExit('App recovery timer target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = "return () => { cancelled = true; };"
+          replacement = "return () => { cancelled = true; if (delayedRecoveryTimer !== null) window.clearTimeout(delayedRecoveryTimer); };"
+          if target not in s: raise SystemExit('App cleanup target not found')
+          p.write_text(s.replace(target, replacement, 1))
+
+          # Make backup import idempotent/resumable: metadata is written without claiming audio,
+          # then missing dependent hit/audio data are reconciled even for an existing session ID.
+          p = Path('src/utils/backup.ts')
+          s = p.read_text()
+          target = """    const recordingIds = new Set<string>();\n    const recordingsFolder = zip.folder('recordings');\n    recordingsFolder?.forEach((path) => {\n      if (path.endsWith('.pcm')) recordingIds.add(path.replace('.pcm', ''));\n    });\n\n    const sessionsFile = zip.file('sessions.json');\n    const sessions: db.SessionRecord[] = sessionsFile ? JSON.parse(await sessionsFile.async('text')) : [];\n    const existingSessionIds = new Set((await db.getAllSessions()).map((session) => session.id));\n    for (let i = 0; i < sessions.length; i++) {\n      onProgress?.({ stage: 'sessions', current: i, total: sessions.length });\n      const session = sessions[i];\n      if (existingSessionIds.has(session.id)) { skipped++; continue; }\n      await db.putSession({ ...session, hasRecording: recordingIds.has(session.id) });\n      importedSessions++;\n    }"""
+          replacement = """    const recordingsFolder = zip.folder('recordings');\n\n    const sessionsFile = zip.file('sessions.json');\n    const sessions: db.SessionRecord[] = sessionsFile ? JSON.parse(await sessionsFile.async('text')) : [];\n    const existingSessions = await db.getAllSessions();\n    const sessionMap = new Map(existingSessions.map((session) => [session.id, session]));\n    for (let i = 0; i < sessions.length; i++) {\n      onProgress?.({ stage: 'sessions', current: i, total: sessions.length });\n      const session = sessions[i];\n      if (sessionMap.has(session.id)) { skipped++; continue; }\n      // Audio is claimed only after its blob has been restored successfully below.\n      const imported = { ...session, hasRecording: false };\n      await db.putSession(imported);\n      sessionMap.set(session.id, imported);\n      importedSessions++;\n    }"""
+          if target not in s: raise SystemExit('backup session target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = """        const sessionId = files[i].name.replace('.json', '');\n        if (existingSessionIds.has(sessionId)) continue;\n        await db.putHitEvents(JSON.parse(await files[i].file.async('text')));"""
+          replacement = """        const sessionId = files[i].name.replace('.json', '');\n        // Preserve any existing event set, but repair a partial prior import.\n        if (await db.getHitEvents(sessionId)) continue;\n        await db.putHitEvents(JSON.parse(await files[i].file.async('text')));"""
+          if target not in s: raise SystemExit('backup hitevents target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = """        const sessionId = files[i].name.replace('.pcm', '');\n        if (existingSessionIds.has(sessionId)) continue;\n        await db.putRecording(sessionId, new Blob([await files[i].file.async('arraybuffer')], { type: 'application/octet-stream' }));"""
+          replacement = """        const sessionId = files[i].name.replace('.pcm', '');\n        let recording = await db.getRecording(sessionId);\n        if (!recording) {\n          recording = new Blob([await files[i].file.async('arraybuffer')], { type: 'application/octet-stream' });\n          await db.putRecording(sessionId, recording);\n        }\n        const currentSession = sessionMap.get(sessionId);\n        if (currentSession && !currentSession.hasRecording) {\n          const reconciled = { ...currentSession, hasRecording: true };\n          await db.putSession(reconciled);\n          sessionMap.set(sessionId, reconciled);\n        }"""
+          if target not in s: raise SystemExit('backup recording target not found')
+          p.write_text(s.replace(target, replacement, 1))
+
+          # Regression test: count-in cues must never enter scoring grid.
+          Path('src/analysis/countin-grid.test.ts').write_text("""import { describe, expect, it } from 'vitest';\nimport { VolumeState, type ScheduledBeat } from '../audio/types';\nimport { gridFromScheduledBeats } from './grid';\n\ndescribe('count-in scoring isolation', () => {\n  it('excludes scheduler-marked count-in beats from the recording grid', () => {\n    const beats: ScheduledBeat[] = [\n      { beatIndex: 0, time: 10.0, trackId: 'track-0', volumeState: VolumeState.LOUD, isCountIn: true },\n      { beatIndex: 1, time: 10.5, trackId: 'track-0', volumeState: VolumeState.LOUD, isCountIn: true },\n      { beatIndex: 0, time: 11.0, trackId: 'track-0', volumeState: VolumeState.ACCENT, isCountIn: false },\n      { beatIndex: 1, time: 11.5, trackId: 'track-0', volumeState: VolumeState.LOUD, isCountIn: false },\n    ];\n    const grid = gridFromScheduledBeats(beats, 9.5, 12, 1);\n    expect(grid).toHaveLength(2);\n    expect(grid.map((beat) => beat.time)).toEqual([1.5, 2]);\n    expect(grid[0].isDownbeat).toBe(true);\n  });\n});\n""")
+          PY
+
+      - name: Verify patch
+        run: |
+          npm ci
+          npm run typecheck
+          npm run test:run
+          npm run build
+          npm audit --audit-level=high
+
+      - name: Commit verified patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "Close count-in recovery and resumable-import integrity gaps"
+          git push origin HEAD:agent/remediation-followup-integrity
