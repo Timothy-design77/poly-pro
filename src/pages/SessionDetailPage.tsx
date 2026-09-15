@@ -20,7 +20,7 @@ interface Props {
 
 const TABS: { id: TabId; label: string; help: string }[] = [
   { id: 'score', label: 'Score', help: 'Overall session score, consistency metrics, and insights.' },
-  { id: 'timeline', label: 'Timeline', help: 'Recording timeline with waveform/spectrogram, timing markers, playback, loops, and correction tools.' },
+  { id: 'timeline', label: 'Playback', help: 'Review the recording, seek precisely, loop sections, compare hits, clean up playback, and export audio.' },
   { id: 'charts', label: 'Charts', help: 'Timing, drift, fatigue, groove, instrument, and dynamics charts.' },
   { id: 'tune', label: 'Tune', help: 'Re-score the stored hit set with scoring-only parameters.' },
 ];
