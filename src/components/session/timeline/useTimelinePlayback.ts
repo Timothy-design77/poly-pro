@@ -1,10 +1,7 @@
 /**
  * useTimelinePlayback — playback transport for the session timeline:
  * play/pause/seek/skip, speed control, click overlay scheduling,
- * live volume tracking, playhead-follow scrolling, and WAV export.
- *
- * Extracted from TimelineTab; behavior unchanged. Click-beat iteration
- * is shared with WAV export via forEachClickBeat (previously duplicated).
+ * nondestructive playback cleanup, playhead-follow scrolling, and WAV export.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -12,11 +9,7 @@ import type { SessionRecord } from '../../../store/db';
 import { useSettingsStore } from '../../../store/settings-store';
 import { useMetronomeStore } from '../../../store/metronome-store';
 import { VOLUME_GAINS } from '../../../audio/types';
-import {
-  MIC_BOOST,
-  perceptualGain,
-  forEachClickBeat,
-} from './timeline-shared';
+import { MIC_BOOST, perceptualGain, forEachClickBeat } from './timeline-shared';
 
 export interface TimelinePlayback {
   isPlaying: boolean;
@@ -27,12 +20,19 @@ export interface TimelinePlayback {
   setClickOverlay: (v: boolean) => void;
   clickVolume: number;
   setClickVolume: (v: number) => void;
+  cleanupEnabled: boolean;
+  setCleanupEnabled: (v: boolean) => void;
+  highPassHz: number;
+  setHighPassHz: (v: number) => void;
+  lowPassHz: number;
+  setLowPassHz: (v: number) => void;
+  presenceBoostDb: number;
+  setPresenceBoostDb: (v: number) => void;
   isSaving: boolean;
   latencyOffsetMs: number;
   setLatencyOffsetMs: (ms: number) => void;
   togglePlayback: () => Promise<void>;
   skip: (deltaS: number) => Promise<void>;
-  /** Seek to a 0–1 fraction of the recording. */
   seekToFraction: (fraction: number) => void;
   saveAudio: (withClick: boolean) => Promise<void>;
 }
@@ -40,33 +40,30 @@ export interface TimelinePlayback {
 interface Options {
   session: SessionRecord;
   audioBufferRef: React.MutableRefObject<AudioBuffer | null>;
-  /** Current zoom level (for playhead-follow scrolling). */
   zoom: number;
   containerRef: React.RefObject<HTMLDivElement>;
   setScrollX: React.Dispatch<React.SetStateAction<number>>;
 }
 
-export function useTimelinePlayback({
-  session,
-  audioBufferRef,
-  zoom,
-  containerRef,
-  setScrollX,
-}: Options): TimelinePlayback {
+export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX }: Options): TimelinePlayback {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPos, setPlaybackPos] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [clickOverlay, setClickOverlay] = useState(true);
   const [clickVolume, setClickVolume] = useState(0.5);
+  const [cleanupEnabled, setCleanupEnabled] = useState(false);
+  const [highPassHz, setHighPassHz] = useState(90);
+  const [lowPassHz, setLowPassHz] = useState(12000);
+  const [presenceBoostDb, setPresenceBoostDb] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [latencyOffsetMs, setLatencyOffsetMs] = useState(() => {
     const s = useSettingsStore.getState();
     return s.calibratedOffset + s.manualAdjustment;
   });
 
-  // Audio refs
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const filterNodesRef = useRef<AudioNode[]>([]);
   const clickNodesRef = useRef<AudioBufferSourceNode[]>([]);
   const clickGainRef = useRef<GainNode | null>(null);
   const playStartTimeRef = useRef(0);
@@ -75,7 +72,6 @@ export function useTimelinePlayback({
   const volUnsubRef = useRef<(() => void) | null>(null);
   const savedClickVolRef = useRef(0.5);
 
-  // Click sound settings
   const clickSoundId = useSettingsStore((s) => s.clickSound);
   const accentSoundId = useSettingsStore((s) => s.accentSound);
   const accentThreshold = useSettingsStore((s) => s.accentSoundThreshold);
@@ -85,6 +81,10 @@ export function useTimelinePlayback({
       try { sourceNodeRef.current.stop(); } catch {}
       sourceNodeRef.current = null;
     }
+    for (const node of filterNodesRef.current) {
+      try { node.disconnect(); } catch {}
+    }
+    filterNodesRef.current = [];
     if (gainNodeRef.current) {
       try { gainNodeRef.current.disconnect(); } catch {}
       gainNodeRef.current = null;
@@ -112,31 +112,58 @@ export function useTimelinePlayback({
     const ctx = await audioEngine.initContext();
     if (ctx.state === 'suspended') await ctx.resume();
 
-    const offset = playOffsetRef.current;
     const duration = audioBufferRef.current.duration;
-    if (offset >= duration) {
-      playOffsetRef.current = 0;
-    }
+    if (playOffsetRef.current >= duration) playOffsetRef.current = 0;
 
     const source = ctx.createBufferSource();
     source.buffer = audioBufferRef.current;
     source.playbackRate.value = playbackSpeed;
 
-    // Gain with volume slider
     const gain = ctx.createGain();
     const vol = useMetronomeStore.getState().volume;
     gain.gain.value = MIC_BOOST * perceptualGain(vol);
-    source.connect(gain);
+
+    if (cleanupEnabled) {
+      const highPass = ctx.createBiquadFilter();
+      highPass.type = 'highpass';
+      highPass.frequency.value = Math.max(20, highPassHz);
+      highPass.Q.value = 0.707;
+
+      const lowPass = ctx.createBiquadFilter();
+      lowPass.type = 'lowpass';
+      lowPass.frequency.value = Math.max(highPassHz + 100, lowPassHz);
+      lowPass.Q.value = 0.707;
+
+      const presence = ctx.createBiquadFilter();
+      presence.type = 'peaking';
+      presence.frequency.value = 3200;
+      presence.Q.value = 0.8;
+      presence.gain.value = presenceBoostDb;
+
+      const compressor = ctx.createDynamicsCompressor();
+      compressor.threshold.value = -20;
+      compressor.knee.value = 18;
+      compressor.ratio.value = 2.5;
+      compressor.attack.value = 0.004;
+      compressor.release.value = 0.16;
+
+      source.connect(highPass);
+      highPass.connect(lowPass);
+      lowPass.connect(presence);
+      presence.connect(compressor);
+      compressor.connect(gain);
+      filterNodesRef.current = [highPass, lowPass, presence, compressor];
+    } else {
+      source.connect(gain);
+    }
     gain.connect(ctx.destination);
 
     sourceNodeRef.current = source;
     gainNodeRef.current = gain;
 
-    // Schedule click overlay
     const { getBuffer } = await import('../../../audio/sounds');
     const latencyOffsetS = latencyOffsetMs / 1000;
     const durationS = session.durationMs / 1000;
-
     const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
     const accentBuf = getBuffer(accentSoundId) || clickBuf;
 
@@ -149,12 +176,10 @@ export function useTimelinePlayback({
 
       const scheduled: AudioBufferSourceNode[] = [];
       forEachClickBeat(session, latencyOffsetS, ({ adjustedBeatTime, volState }) => {
-        // Only schedule future beats (adjusted for speed)
         const playbackTime = (adjustedBeatTime - playOffsetRef.current) / playbackSpeed;
         if (playbackTime > 0 && adjustedBeatTime < durationS) {
           const useAccent = volState >= accentThreshold;
           const buf = useAccent ? (accentBuf || clickBuf) : clickBuf;
-
           const clickSource = ctx.createBufferSource();
           clickSource.buffer = buf;
           const clickNodeGain = ctx.createGain();
@@ -168,15 +193,12 @@ export function useTimelinePlayback({
       clickNodesRef.current = scheduled;
     }
 
-    // Subscribe to volume changes during playback
     volUnsubRef.current?.();
     let prevVol = vol;
     volUnsubRef.current = useMetronomeStore.subscribe((state) => {
       if (state.volume !== prevVol) {
         prevVol = state.volume;
-        if (gainNodeRef.current) {
-          gainNodeRef.current.gain.value = MIC_BOOST * perceptualGain(state.volume);
-        }
+        if (gainNodeRef.current) gainNodeRef.current.gain.value = MIC_BOOST * perceptualGain(state.volume);
       }
     });
 
@@ -185,24 +207,20 @@ export function useTimelinePlayback({
     source.start(0, playOffsetRef.current);
     setIsPlaying(true);
 
-    // Animation loop: update playhead + smooth scroll
     const animate = () => {
       if (!sourceNodeRef.current) return;
       const elapsed = (ctx.currentTime - playStartTimeRef.current) * playbackSpeed + playOffsetRef.current;
       const pos = Math.min(1, elapsed / (session.durationMs / 1000));
       setPlaybackPos(pos);
 
-      // Smooth scroll to follow playhead
       const cw = containerRef.current?.clientWidth ?? 350;
       const tw = cw * zoom;
       const playheadX = pos * tw;
       setScrollX((prev) => {
-        // If playhead is off-screen, lerp toward it
         if (playheadX < prev || playheadX > prev + cw) {
           const target = Math.max(0, playheadX - cw * 0.3);
-          return prev + (target - prev) * 0.15; // Smooth lerp
+          return prev + (target - prev) * 0.15;
         }
-        // If playhead is near right edge, gently scroll
         if (playheadX > prev + cw * 0.7) {
           const target = Math.max(0, playheadX - cw * 0.3);
           return prev + (target - prev) * 0.08;
@@ -210,36 +228,30 @@ export function useTimelinePlayback({
         return prev;
       });
 
-      if (pos < 1) {
-        animFrameRef.current = requestAnimationFrame(animate);
-      }
+      if (pos < 1) animFrameRef.current = requestAnimationFrame(animate);
     };
     animFrameRef.current = requestAnimationFrame(animate);
-  }, [stopPlayback, session, zoom, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold, latencyOffsetMs, playbackSpeed, audioBufferRef, containerRef, setScrollX]);
+  }, [stopPlayback, session, zoom, clickOverlay, clickVolume, clickSoundId, accentSoundId,
+      accentThreshold, latencyOffsetMs, playbackSpeed, audioBufferRef, containerRef, setScrollX,
+      cleanupEnabled, highPassHz, lowPassHz, presenceBoostDb]);
 
   const togglePlayback = useCallback(async () => {
     if (isPlaying) {
-      // Pause: save current position
       const { audioEngine } = await import('../../../audio');
       const ctx = audioEngine.getContext();
-      if (ctx) {
-        playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-      }
+      if (ctx) playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
       stopPlayback();
     } else {
       startPlayback();
     }
   }, [isPlaying, stopPlayback, startPlayback, playbackSpeed]);
 
-  // Skip ±5 seconds
   const skip = useCallback(async (deltaS: number) => {
     const durationS = session.durationMs / 1000;
     if (isPlaying) {
       const { audioEngine } = await import('../../../audio');
       const ctx = audioEngine.getContext();
-      if (ctx) {
-        playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-      }
+      if (ctx) playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
       stopPlayback();
       playOffsetRef.current = Math.max(0, Math.min(durationS, playOffsetRef.current + deltaS));
       startPlayback();
@@ -251,25 +263,21 @@ export function useTimelinePlayback({
 
   const seekToFraction = useCallback((fraction: number) => {
     const durationS = session.durationMs / 1000;
-    playOffsetRef.current = fraction * durationS;
-    setPlaybackPos(fraction);
-
+    playOffsetRef.current = Math.max(0, Math.min(1, fraction)) * durationS;
+    setPlaybackPos(Math.max(0, Math.min(1, fraction)));
     if (isPlaying) {
       stopPlayback();
       startPlayback();
     }
   }, [session.durationMs, isPlaying, stopPlayback, startPlayback]);
 
-  // Latency offset restart
   const prevLatencyRef = useRef(latencyOffsetMs);
   useEffect(() => {
     if (prevLatencyRef.current !== latencyOffsetMs && isPlaying) {
       const restart = async () => {
         const { audioEngine: eng } = await import('../../../audio');
         const ctx = eng.getContext();
-        if (ctx) {
-          playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-        }
+        if (ctx) playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
         stopPlayback();
         setTimeout(() => startPlayback(), 50);
       };
@@ -278,39 +286,42 @@ export function useTimelinePlayback({
     prevLatencyRef.current = latencyOffsetMs;
   }, [latencyOffsetMs, isPlaying, stopPlayback, startPlayback, playbackSpeed]);
 
-  // Mid-playback click toggle
+  const cleanupKey = `${cleanupEnabled}:${highPassHz}:${lowPassHz}:${presenceBoostDb}`;
+  const prevCleanupKeyRef = useRef(cleanupKey);
   useEffect(() => {
-    if (clickGainRef.current) {
-      clickGainRef.current.gain.value = clickOverlay ? savedClickVolRef.current : 0;
+    if (prevCleanupKeyRef.current !== cleanupKey && isPlaying) {
+      const restart = async () => {
+        const { audioEngine: eng } = await import('../../../audio');
+        const ctx = eng.getContext();
+        if (ctx) playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
+        stopPlayback();
+        setTimeout(() => startPlayback(), 25);
+      };
+      restart();
     }
+    prevCleanupKeyRef.current = cleanupKey;
+  }, [cleanupKey, isPlaying, stopPlayback, startPlayback, playbackSpeed]);
+
+  useEffect(() => {
+    if (clickGainRef.current) clickGainRef.current.gain.value = clickOverlay ? savedClickVolRef.current : 0;
   }, [clickOverlay]);
 
-  // Click volume slider: update gain in real-time
   useEffect(() => {
     savedClickVolRef.current = clickVolume;
-    if (clickGainRef.current && clickOverlay) {
-      clickGainRef.current.gain.value = clickVolume;
-    }
+    if (clickGainRef.current && clickOverlay) clickGainRef.current.gain.value = clickVolume;
   }, [clickVolume, clickOverlay]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => stopPlayback();
-  }, [stopPlayback]);
-
-  // ─── Save / Export ───
+  useEffect(() => () => stopPlayback(), [stopPlayback]);
 
   const saveAudio = useCallback(async (withClick: boolean) => {
     if (!audioBufferRef.current) return;
     setIsSaving(true);
-
     try {
       const { getBuffer } = await import('../../../audio/sounds');
       const srcBuf = audioBufferRef.current;
       const sampleRate = srcBuf.sampleRate;
       const durationS = srcBuf.duration;
       const totalSamples = Math.ceil(durationS * sampleRate);
-
       const offline = new OfflineAudioContext(1, totalSamples, sampleRate);
 
       const recSource = offline.createBufferSource();
@@ -324,18 +335,15 @@ export function useTimelinePlayback({
       if (withClick) {
         const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
         const accentBuf = getBuffer(accentSoundId) || clickBuf;
-
         if (clickBuf) {
           const clickMasterGain = offline.createGain();
           clickMasterGain.gain.value = clickVolume;
           clickMasterGain.connect(offline.destination);
           const latencyOffsetS = latencyOffsetMs / 1000;
-
           forEachClickBeat(session, latencyOffsetS, ({ adjustedBeatTime, volState }) => {
             if (adjustedBeatTime >= 0 && adjustedBeatTime < durationS) {
               const useAccent = volState >= accentThreshold;
               const buf = useAccent ? (accentBuf || clickBuf) : clickBuf;
-
               const clickSource = offline.createBufferSource();
               clickSource.buffer = buf;
               const clickNodeGain = offline.createGain();
@@ -354,7 +362,6 @@ export function useTimelinePlayback({
       const wavBuf = new ArrayBuffer(44 + dataSize);
       const v = new DataView(wavBuf);
       const w = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
-
       w(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true); w(8, 'WAVE');
       w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
       v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
@@ -362,12 +369,8 @@ export function useTimelinePlayback({
       w(36, 'data'); v.setUint32(40, dataSize, true);
 
       let peak = 0;
-      for (let i = 0; i < pcm.length; i++) {
-        const abs = Math.abs(pcm[i]);
-        if (abs > peak) peak = abs;
-      }
+      for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
       const scale = peak > 0 ? 0.89 / peak : 1;
-
       let off = 44;
       for (let i = 0; i < pcm.length; i++) {
         const s = pcm[i] * scale;
@@ -394,20 +397,11 @@ export function useTimelinePlayback({
   }, [session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs, audioBufferRef]);
 
   return {
-    isPlaying,
-    playbackPos,
-    playbackSpeed,
-    setPlaybackSpeed,
-    clickOverlay,
-    setClickOverlay,
-    clickVolume,
-    setClickVolume,
-    isSaving,
-    latencyOffsetMs,
-    setLatencyOffsetMs,
-    togglePlayback,
-    skip,
-    seekToFraction,
-    saveAudio,
+    isPlaying, playbackPos, playbackSpeed, setPlaybackSpeed,
+    clickOverlay, setClickOverlay, clickVolume, setClickVolume,
+    cleanupEnabled, setCleanupEnabled, highPassHz, setHighPassHz,
+    lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb,
+    isSaving, latencyOffsetMs, setLatencyOffsetMs,
+    togglePlayback, skip, seekToFraction, saveAudio,
   };
 }
