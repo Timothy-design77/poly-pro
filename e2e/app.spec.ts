@@ -20,8 +20,10 @@ test('primary navigation and BPM keypad are usable and accessible', async ({ pag
   await page.goto('./');
   await expect(page.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
 
-  await page.getByRole('button', { name: 'Projects' }).click();
-  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+  const projectsNav = page.getByRole('button', { name: 'Projects' });
+  await projectsNav.click();
+  await expect(projectsNav).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByText('Tap a project to make it active. Use Edit for project settings.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Home' }).click();
   await page.getByRole('button', { name: /Tempo .* BPM\. Open tempo keypad/i }).click();

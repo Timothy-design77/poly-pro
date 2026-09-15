@@ -139,6 +139,9 @@ export function useRecording() {
 
     const sessionId = generateSessionId();
     sessionIdRef.current = sessionId;
+    // Snapshot transport state before any microphone permission request can fail.
+    // A denied mic must not stop a metronome the user already had running.
+    metronomeWasRunningRef.current = audioEngine.running;
     releaseCriticalRef.current = beginCriticalActivity('recording');
     setState((current) => ({ ...current, phase: 'preparing', error: null, warning: 'Preparing microphone…' }));
     phaseRef.current = 'preparing';
@@ -165,7 +168,6 @@ export function useRecording() {
         subdivision: metronome.subdivision,
         countInBars: metronome.countInBars,
       };
-      metronomeWasRunningRef.current = audioEngine.running;
       const autoStartMetronome = !audioEngine.running && useSettingsStore.getState().includeClickInRecording;
 
       await db.beginChunkedRecording(sessionId, ctx.sampleRate, {
