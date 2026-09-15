@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { AnalysisProgress, SessionAnalysis } from '../analysis/types';
 import type { ScheduledBeat } from '../audio/types';
 import { runAnalysisInWorker } from '../analysis/worker-client';
@@ -22,6 +22,17 @@ export interface AnalysisState {
 export function useAnalysis() {
   const [state, setState] = useState<AnalysisState>({ isAnalyzing: false, progress: null, result: null, error: null });
   const cancelWorkerRef = useRef<(() => void) | null>(null);
+
+  const abort = useCallback(() => {
+    cancelWorkerRef.current?.();
+    cancelWorkerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const handler = () => abort();
+    window.addEventListener('polypro:cancel-analysis', handler);
+    return () => window.removeEventListener('polypro:cancel-analysis', handler);
+  }, [abort]);
 
   const analyze = useCallback(async (
     sessionId: string,
@@ -65,6 +76,7 @@ export function useAnalysis() {
           accentThreshold: settings.accentThreshold,
           highPassHz: settings.highPassHz,
           latencyOffsetMs: settings.calibratedOffset + settings.manualAdjustment,
+          inputGain: 1 + settings.sensitivity * 4,
           noiseFloorMultiplier: settings.noiseFloorMultiplier,
           minOnsetIntervalMs: settings.minOnsetIntervalMs,
           postHitMaskingMs: settings.postHitMaskingMs,
@@ -95,9 +107,7 @@ export function useAnalysis() {
       if (sessionRecord.projectId && result.totalScored >= AUTO_ADVANCE_MIN_HITS) {
         try {
           const advancement = await useProjectStore.getState().recordSessionResult(sessionRecord.projectId, result.score, params.bpm);
-          if (advancement.advanced && advancement.newBpm !== null) {
-            result.headlines.unshift({ text: `Project advanced to ${advancement.newBpm} BPM` });
-          }
+          if (advancement.advanced && advancement.newBpm !== null) result.headlines.unshift({ text: `Project advanced to ${advancement.newBpm} BPM` });
         } catch (error) {
           console.warn('Auto-advance check failed:', error);
         }
@@ -124,11 +134,6 @@ export function useAnalysis() {
     } finally {
       releaseCritical();
     }
-  }, []);
-
-  const abort = useCallback(() => {
-    cancelWorkerRef.current?.();
-    cancelWorkerRef.current = null;
   }, []);
 
   return { ...state, analyze, abort };
