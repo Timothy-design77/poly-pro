@@ -5,7 +5,7 @@
 import type { IDBPDatabase } from 'idb';
 import type { PersistedMetronome, PersistedSettings } from './persisted-shapes';
 
-export const METRONOME_SCHEMA_VERSION = 2;
+export const METRONOME_SCHEMA_VERSION = 3;
 
 type MetronomeMigration = (data: PersistedMetronome) => void;
 
@@ -13,6 +13,9 @@ const METRONOME_MIGRATIONS: Record<number, MetronomeMigration> = {
   2: (data) => {
     data.volume = 0.8;
   },
+  // v3 starts persisting the complete track pattern for Quick Start.
+  // Older records simply hydrate with a rebuilt default track in persistence.ts.
+  3: () => {},
 };
 
 export function migrateMetronome(data: PersistedMetronome): PersistedMetronome {
@@ -38,8 +41,6 @@ export function migrateSettings(
     data.manualAdjustment = 0;
   }
 
-  // Navigation is deliberately tap-only now. Remove the retired setting so
-  // old IndexedDB records cannot re-introduce dead state during hydration.
   if ('swipeNavEnabled' in data) {
     delete data.swipeNavEnabled;
   }
@@ -48,30 +49,27 @@ export function migrateSettings(
 }
 
 export const DB_NAME = 'polypro';
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 export function upgradeDatabase(db: IDBPDatabase): void {
-  if (!db.objectStoreNames.contains('settings')) {
-    db.createObjectStore('settings');
-  }
-  if (!db.objectStoreNames.contains('presets')) {
-    db.createObjectStore('presets', { keyPath: 'id' });
-  }
-  if (!db.objectStoreNames.contains('projects')) {
-    db.createObjectStore('projects', { keyPath: 'id' });
-  }
+  if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+  if (!db.objectStoreNames.contains('presets')) db.createObjectStore('presets', { keyPath: 'id' });
+  if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
   if (!db.objectStoreNames.contains('sessions')) {
     const store = db.createObjectStore('sessions', { keyPath: 'id' });
     store.createIndex('projectId', 'projectId');
     store.createIndex('date', 'date');
   }
-  if (!db.objectStoreNames.contains('recordings')) {
-    db.createObjectStore('recordings');
+  if (!db.objectStoreNames.contains('recordings')) db.createObjectStore('recordings');
+  if (!db.objectStoreNames.contains('instrumentProfiles')) db.createObjectStore('instrumentProfiles', { keyPath: 'name' });
+  if (!db.objectStoreNames.contains('customSamples')) db.createObjectStore('customSamples', { keyPath: 'id' });
+
+  // v5: durable segmented recording storage. Chunks are written as they are
+  // captured so long recordings never need to live entirely in React memory.
+  if (!db.objectStoreNames.contains('recordingManifests')) {
+    db.createObjectStore('recordingManifests', { keyPath: 'sessionId' });
   }
-  if (!db.objectStoreNames.contains('instrumentProfiles')) {
-    db.createObjectStore('instrumentProfiles', { keyPath: 'name' });
-  }
-  if (!db.objectStoreNames.contains('customSamples')) {
-    db.createObjectStore('customSamples', { keyPath: 'id' });
+  if (!db.objectStoreNames.contains('recordingChunks')) {
+    db.createObjectStore('recordingChunks');
   }
 }

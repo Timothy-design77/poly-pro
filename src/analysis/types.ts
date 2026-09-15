@@ -340,7 +340,7 @@ export type AnalysisStage =
 
 export const ANALYSIS_STAGE_LABELS: Record<AnalysisStage, string> = {
   'noise-floor': 'Estimating noise floor…',
-  'latency-detect': 'Detecting latency…',
+  'latency-detect': 'Applying latency calibration…',
   'coarse-onset': 'Detecting onsets…',
   'fine-onset': 'Refining onset timing…',
   'flam-analysis': 'Analyzing flams…',

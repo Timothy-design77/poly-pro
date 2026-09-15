@@ -198,9 +198,9 @@ export function verifyRawAudio(stream: MediaStream): {
   if (!track) return { echoCancellation: true, autoGainControl: true, noiseSuppression: true, isRaw: false };
 
   const settings = track.getSettings();
-  const ec = settings.echoCancellation ?? true;
-  const agc = settings.autoGainControl ?? true;
-  const ns = settings.noiseSuppression ?? true;
+  const ec = settings.echoCancellation !== false;
+  const agc = settings.autoGainControl !== false;
+  const ns = settings.noiseSuppression !== false;
 
   return {
     echoCancellation: ec,

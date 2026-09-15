@@ -39,6 +39,7 @@ export function SwipeNavigation({
     startX: number;
     startY: number;
     direction: 'h' | 'v' | null;
+    captured: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
 
@@ -59,12 +60,15 @@ export function SwipeNavigation({
 
   const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (!event.isPrimary) return;
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
+    // Do not capture an ordinary tap. Capturing on pointer-down retargets the
+    // eventual click to <nav> in Chromium and prevents the button onClick from
+    // firing. Capture only after a real horizontal drag is established.
     pointerRef.current = {
       id: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       direction: null,
+      captured: false,
     };
     setNavDragX(0);
   };
@@ -79,6 +83,12 @@ export function SwipeNavigation({
     if (pointer.direction === null) {
       if (Math.hypot(dx, dy) < DIRECTION_LOCK) return;
       pointer.direction = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+      if (pointer.direction === 'h') {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          pointer.captured = true;
+        } catch {}
+      }
     }
 
     if (pointer.direction === 'h') {
@@ -101,12 +111,15 @@ export function SwipeNavigation({
       setNavDragX(0);
     }
 
-    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
+    if (pointer.captured) {
+      try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
+    }
     pointerRef.current = null;
   };
 
   const cancelSwipe = (event?: React.PointerEvent<HTMLElement>) => {
-    if (event) {
+    const pointer = pointerRef.current;
+    if (event && pointer?.captured) {
       try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
     }
     pointerRef.current = null;

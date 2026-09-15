@@ -102,3 +102,15 @@ This is the source of truth for **what still requires real-device/user verificat
 
 - 2026-08-17 — Ledger created during the real-woodblock sound-quality pass. Existing outstanding device checks from the navigation, fluidity, large-control, full-width-ring, recording, project, and advanced-feature passes were consolidated here.
 - 2026-08-17 — Added explicit tight-gate woodblock checks for room-noise removal and gate-artifact quality.
+
+## I. Reliability hardening — 2026-09-15 remediation
+
+- TODO — Denying/revoking microphone permission while the metronome is already running leaves the existing metronome session undisturbed.
+- TODO — Interrupting/killing the PWA during a recording and reopening recovers completed durable audio chunks without deleting existing data.
+- TODO — A newly deployed PWA version waits to reload until active recording/analysis/calibration/data work is complete.
+- TODO — A 15–30 minute recording completes, saves, reopens, and plays on the Fold without browser termination or unacceptable thermal/memory behavior.
+- TODO — Timeline and immediate Review playback are clean at low/default/high volume with no new clipping or limiter pumping.
+- TODO — Manual hit correction followed by Save Corrections persists the corrected markers and updated score after closing/reopening Session Detail.
+- TODO — Full backup and data-only backup both restore expected metadata; full backup restores recording audio when within safe size limits.
+- TODO — Project deletion moves historical sessions to Quick Start rather than hiding/deleting them.
+- TODO — Offline launch still works after the upgraded Vite/PWA toolchain and service-worker lifecycle changes.

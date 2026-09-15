@@ -1,18 +1,9 @@
-/**
- * DataSettings — Phase 10
- *
- * Settings > Data section with:
- * - Storage usage bar + quota
- * - Export backup → .polypro download
- * - Import backup → file picker + preview + restore
- * - Per-project storage breakdown
- * - Delete all data (with confirmation)
- */
-
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSessionStore } from '../../store/session-store';
 import { useProjectStore } from '../../store/project-store';
 import { useInstrumentStore } from '../../store/instrument-store';
+import { useMetronomeStore } from '../../store/metronome-store';
+import { useSettingsStore } from '../../store/settings-store';
 import {
   exportBackup,
   downloadBackup,
@@ -24,529 +15,231 @@ import {
   type ImportPreview,
   type ExportProgress,
 } from '../../utils/backup';
+import { beginCriticalActivity } from '../../utils/critical-activity';
 import * as db from '../../store/db';
 import { HelpTip } from '../ui/HelpTip';
 
-type DataState = 'idle' | 'exporting' | 'importing' | 'preview' | 'deleting';
+type DataState = 'idle' | 'exporting-full' | 'exporting-data' | 'preview' | 'importing' | 'deleting';
 
 export function DataSettings() {
-  const sessions = useSessionStore((s) => s.sessions);
-  const projects = useProjectStore((s) => s.projects);
-  const loadSessions = useSessionStore((s) => s.loadFromDB);
-  const loadProjects = useProjectStore((s) => s.loadFromDB);
-  const loadInstruments = useInstrumentStore((s) => s.loadFromDB);
-
+  const sessions = useSessionStore((state) => state.sessions);
+  const projects = useProjectStore((state) => state.projects);
+  const loadSessions = useSessionStore((state) => state.loadFromDB);
+  const loadProjects = useProjectStore((state) => state.loadFromDB);
+  const loadInstruments = useInstrumentStore((state) => state.loadFromDB);
   const [state, setState] = useState<DataState>('idle');
   const [progress, setProgress] = useState<ExportProgress | null>(null);
-  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importResult, setImportResult] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
   const [isPersistent, setIsPersistent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showProjectBreakdown, setShowProjectBreakdown] = useState(false);
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
-
+  const [expandedProject, setExpandedProject] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load storage info on mount
-  useEffect(() => {
-    getStorageInfo().then(setStorageInfo);
-    navigator.storage?.persisted?.().then((p) => setIsPersistent(p));
+  const refreshStorage = useCallback(async () => {
+    setStorageInfo(await getStorageInfo());
   }, []);
 
-  // ─── Export ───
+  useEffect(() => {
+    void refreshStorage();
+    navigator.storage?.persisted?.().then(setIsPersistent).catch(() => {});
+  }, [refreshStorage]);
 
-  const handleExport = useCallback(async () => {
-    setState('exporting');
-    setError(null);
+  const runExport = useCallback(async (includeRecordings: boolean) => {
+    setState(includeRecordings ? 'exporting-full' : 'exporting-data');
     setProgress(null);
-
+    setError(null);
+    setMessage(null);
     try {
-      const blob = await exportBackup((p) => setProgress(p));
-      downloadBackup(blob);
-      setState('idle');
-
-      // Record backup timestamp
+      const blob = await exportBackup(setProgress, { includeRecordings });
+      downloadBackup(blob, includeRecordings ? 'full' : 'data-only');
       await db.setSetting('lastBackupAt', new Date().toISOString());
       await db.setSetting('sessionsSinceBackup', 0);
-    } catch (err) {
-      console.error('Export failed:', err);
-      setError(err instanceof Error ? err.message : 'Export failed');
+      setMessage(includeRecordings ? 'Full backup created.' : 'Data-only backup created. Recordings were not included.');
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : 'Backup failed');
+    } finally {
       setState('idle');
+      setProgress(null);
     }
   }, []);
 
-  // ─── Import ───
-
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
-
     setState('preview');
     setError(null);
-
+    setMessage(null);
     try {
-      const preview = await previewBackup(file);
-      setImportPreview(preview);
+      setImportPreview(await previewBackup(file));
       setImportFile(file);
-    } catch (err) {
-      console.error('Preview failed:', err);
-      setError(err instanceof Error ? err.message : 'Invalid backup file');
+    } catch (previewError) {
       setState('idle');
+      setError(previewError instanceof Error ? previewError.message : 'Invalid backup');
     }
-
-    // Reset input so same file can be re-selected
-    e.target.value = '';
   }, []);
 
-  const handleImportConfirm = useCallback(async () => {
+  const handleImport = useCallback(async () => {
     if (!importFile) return;
-
     setState('importing');
-    setError(null);
     setProgress(null);
-
+    setError(null);
     try {
-      const result = await importBackup(importFile, (p) => setProgress(p));
-      setImportResult(
-        `Imported ${result.imported.projects} projects, ${result.imported.sessions} sessions. ` +
-        `${result.skipped} duplicates skipped.`,
-      );
-
-      // Reload stores
-      await loadSessions();
-      await loadProjects();
-      await loadInstruments();
-
-      // Refresh storage info
-      const info = await getStorageInfo();
-      setStorageInfo(info);
-
-      setState('idle');
-      setImportPreview(null);
+      const result = await importBackup(importFile, setProgress);
+      await Promise.all([loadSessions(), loadProjects(), loadInstruments()]);
+      await refreshStorage();
+      setMessage(`Imported ${result.imported.projects} projects and ${result.imported.sessions} sessions; skipped ${result.skipped} duplicates.`);
       setImportFile(null);
-    } catch (err) {
-      console.error('Import failed:', err);
-      setError(err instanceof Error ? err.message : 'Import failed');
+      setImportPreview(null);
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Import failed');
+    } finally {
       setState('idle');
+      setProgress(null);
     }
-  }, [importFile, loadSessions, loadProjects, loadInstruments]);
-
-  const handleCancelImport = useCallback(() => {
-    setState('idle');
-    setImportPreview(null);
-    setImportFile(null);
-  }, []);
-
-  // ─── Delete All ───
+  }, [importFile, loadSessions, loadProjects, loadInstruments, refreshStorage]);
 
   const handleDeleteAll = useCallback(async () => {
+    const release = beginCriticalActivity('data');
     setState('deleting');
+    setError(null);
     try {
-      // Delete all data from IDB
-      const allSessions = await db.getAllSessions();
-      for (const s of allSessions) {
-        await db.deleteSession(s.id);
-        await db.deleteRecording(s.id);
-        await db.deleteHitEvents(s.id);
-        // Legacy compressed playback blob from the MediaRecorder era
-        await db.deleteRecording(s.id + '-playback');
-      }
-      const allProjects = await db.getAllProjects();
-      for (const p of allProjects) {
-        await db.deleteProject(p.id);
-      }
-      const allPresets = await db.getAllPresets();
-      for (const p of allPresets) {
-        await db.deletePreset(p.id);
-      }
-      await db.clearAllInstrumentProfiles();
-
-      // Reload stores
-      await loadSessions();
-      await loadProjects();
-      await loadInstruments();
-
-      const info = await getStorageInfo();
-      setStorageInfo(info);
-
-      setState('idle');
+      await db.clearAllData();
+      useMetronomeStore.getState().resetToDefaults();
+      useSettingsStore.getState().resetToDefaults();
+      await Promise.all([loadSessions(), loadProjects(), loadInstruments()]);
+      await refreshStorage();
       setShowDeleteConfirm(false);
-    } catch (err) {
-      console.error('Delete failed:', err);
-      setError(err instanceof Error ? err.message : 'Delete failed');
+      setMessage('All Poly Pro local data was deleted.');
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Delete failed');
+    } finally {
+      release();
       setState('idle');
     }
-  }, [loadSessions, loadProjects, loadInstruments]);
+  }, [loadSessions, loadProjects, loadInstruments, refreshStorage]);
 
-  // ─── Persistent Storage ───
-
-  const handlePersist = useCallback(async () => {
-    const granted = await requestPersistentStorage();
-    setIsPersistent(granted);
-  }, []);
-
-  // ─── Delete audio only ───
-
-  const handleDeleteAudioOnly = useCallback(async (sessionId: string) => {
+  const handleDeleteAudio = useCallback(async (sessionId: string) => {
+    const release = beginCriticalActivity('data');
     try {
       await db.deleteRecording(sessionId);
-      // Update session record to reflect no recording
-      const session = sessions.find((s) => s.id === sessionId);
-      if (session) {
-        await db.putSession({ ...session, hasRecording: false });
-      }
+      const session = sessions.find((item) => item.id === sessionId);
+      if (session) await db.putSession({ ...session, hasRecording: false });
       await loadSessions();
-      const info = await getStorageInfo();
-      setStorageInfo(info);
-    } catch (err) {
-      console.error('Delete audio failed:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete audio');
+      await refreshStorage();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete recording audio');
+    } finally {
+      release();
     }
-  }, [sessions, loadSessions]);
+  }, [sessions, loadSessions, refreshStorage]);
 
-  // ─── Project storage breakdown ───
+  const progressLabel = progress ? ({
+    settings: 'Settings…', projects: 'Projects…', sessions: 'Sessions…',
+    hitevents: `Hit data ${progress.current}/${progress.total}`,
+    recordings: `Recordings ${progress.current}/${progress.total}`,
+    profiles: 'Instrument profiles…', zipping: 'Compressing…', done: 'Done',
+  } as const)[progress.stage] : '';
 
-  const projectBreakdown = projects.map((p) => {
-    const projectSessions = sessions
-      .filter((s) => s.projectId === p.id)
-      .sort((a, b) => {
-        // Sort: sessions with recordings first, then by duration (proxy for size)
-        if (a.hasRecording !== b.hasRecording) return a.hasRecording ? -1 : 1;
-        return b.durationMs - a.durationMs;
-      });
-    return {
-      id: p.id,
-      name: p.name,
-      icon: p.icon,
-      sessions: projectSessions,
-      recordingCount: projectSessions.filter((s) => s.hasRecording).length,
-    };
-  });
-
-  const orphanSessions = sessions
-    .filter((s) => !s.projectId)
-    .sort((a, b) => {
-      if (a.hasRecording !== b.hasRecording) return a.hasRecording ? -1 : 1;
-      return b.durationMs - a.durationMs;
-    });
-
-  // ─── Progress label ───
-
-  const progressLabel = progress
-    ? {
-        settings: 'Packaging settings…',
-        projects: 'Packaging projects…',
-        sessions: 'Packaging sessions…',
-        hitevents: `Packaging onset data (${progress.current}/${progress.total})…`,
-        recordings: `Packaging recordings (${progress.current}/${progress.total})…`,
-        profiles: 'Packaging instrument profiles…',
-        zipping: 'Compressing…',
-        done: 'Done',
-      }[progress.stage]
-    : '';
+  const sessionGroups = [
+    ...projects.map((project) => ({ id: project.id, label: `${project.icon} ${project.name}`, sessions: sessions.filter((session) => session.projectId === project.id) })),
+    { id: '__quick', label: 'Quick Start', sessions: sessions.filter((session) => session.projectId === null) },
+  ].filter((group) => group.sessions.length > 0);
 
   return (
-    <div className="space-y-4">
-      {/* Storage bar */}
+    <div className="space-y-4 pt-3">
       {storageInfo && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-text-secondary flex items-center gap-1">
-              Storage
-              <HelpTip text="How much device storage the app is using. Recordings are the largest data. You can free space by deleting audio-only from old sessions." />
-            </span>
-            <span className="text-xs font-mono text-text-muted">
-              {storageInfo.usedLabel} / {storageInfo.quotaLabel}
-            </span>
+            <span className="text-xs text-text-secondary flex items-center gap-1">Storage <HelpTip text="Recordings use most local storage. Poly Pro requests persistent browser storage but still recommends regular backups." /></span>
+            <span className="text-xs font-mono text-text-muted">{storageInfo.usedLabel} / {storageInfo.quotaLabel}</span>
           </div>
-          <div className="w-full h-2 bg-bg-input rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{
-                width: `${Math.min(100, storageInfo.usedPct)}%`,
-                backgroundColor:
-                  storageInfo.usedPct >= 90 ? '#F87171' :
-                  storageInfo.usedPct >= 80 ? '#FBBF24' :
-                  '#4ADE80',
-              }}
-            />
+          <div className="h-2 rounded-full bg-bg-raised overflow-hidden" role="progressbar" aria-label="Storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(storageInfo.usedPct)}>
+            <div className="h-full bg-accent" style={{ width: `${Math.min(100, storageInfo.usedPct)}%` }} />
           </div>
-          {storageInfo.usedPct >= 80 && (
-            <p className={`text-xs mt-1 ${storageInfo.usedPct >= 90 ? 'text-danger' : 'text-warning'}`}>
-              {storageInfo.usedPct >= 90
-                ? 'Storage critically low — delete old recordings to free space'
-                : 'Storage getting full — consider exporting and cleaning up'}
-            </p>
-          )}
         </div>
       )}
 
-      {/* Persistent storage toggle */}
       {!isPersistent && (
-        <button
-          onClick={handlePersist}
-          className="w-full text-left text-xs text-text-muted py-1"
-        >
-          Enable persistent storage (prevents browser from clearing data) →
+        <button type="button" className="w-full min-h-[40px] text-left text-xs text-text-muted" onClick={async () => setIsPersistent(await requestPersistentStorage())}>
+          Enable persistent storage →
         </button>
       )}
 
-      {/* Stats */}
-      <div className="flex items-center gap-4 text-xs text-text-muted">
-        <span>{sessions.length} sessions</span>
-        <span>{projects.length} projects</span>
-        <span>{sessions.filter((s) => s.hasRecording).length} recordings</span>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <Stat label="Projects" value={projects.length} />
+        <Stat label="Sessions" value={sessions.length} />
+        <Stat label="Recordings" value={sessions.filter((session) => session.hasRecording).length} />
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="bg-danger-dim border border-danger/30 rounded-md p-2">
-          <p className="text-danger text-xs">{error}</p>
-        </div>
-      )}
+      {error && <div role="alert" className="rounded-lg border border-danger/30 bg-danger-dim p-2 text-xs text-danger">{error}</div>}
+      {message && <div role="status" className="rounded-lg border border-success/30 bg-success-dim p-2 text-xs text-success">{message}</div>}
+      {state !== 'idle' && state !== 'preview' && <p className="text-xs text-text-muted" role="status">{progressLabel || 'Working…'}</p>}
 
-      {/* Import result */}
-      {importResult && (
-        <div className="bg-success-dim border border-success/30 rounded-md p-2">
-          <p className="text-success text-xs">{importResult}</p>
-          <button onClick={() => setImportResult(null)} className="text-success/60 text-[10px] mt-1">
-            Dismiss
-          </button>
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" disabled={state !== 'idle'} onClick={() => void runExport(true)} className="min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Full Backup</button>
+        <button type="button" disabled={state !== 'idle'} onClick={() => void runExport(false)} className="min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Data-only Backup</button>
+      </div>
+      <p className="text-[10px] text-text-muted">Data-only backup includes projects, sessions, settings, hit data, instrument profiles, and custom samples, but omits large recording audio.</p>
 
-      {/* Export button */}
-      <button
-        onClick={handleExport}
-        disabled={state !== 'idle'}
-        className={`w-full py-2.5 rounded-md text-sm min-h-[44px] transition-colors ${
-          state !== 'idle'
-            ? 'bg-bg-raised text-text-muted cursor-not-allowed'
-            : 'bg-bg-raised border border-border-subtle text-text-primary hover:bg-border-subtle'
-        }`}
-      >
-        {state === 'exporting' ? progressLabel : 'Export Backup'}
-      </button>
+      <button type="button" disabled={state !== 'idle'} onClick={() => fileInputRef.current?.click()} className="w-full min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Import Backup</button>
+      <input ref={fileInputRef} type="file" accept=".polypro" className="hidden" onChange={handleFileSelect} />
 
-      {/* Import button */}
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        disabled={state !== 'idle'}
-        className={`w-full py-2.5 rounded-md text-sm min-h-[44px] transition-colors ${
-          state !== 'idle'
-            ? 'bg-bg-raised text-text-muted cursor-not-allowed'
-            : 'bg-bg-raised border border-border-subtle text-text-primary hover:bg-border-subtle'
-        }`}
-      >
-        Import Backup
-      </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".polypro"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
-
-      {/* Import preview */}
       {state === 'preview' && importPreview && (
-        <div className="bg-bg-surface border border-border-subtle rounded-md p-3 space-y-2">
-          <p className="text-xs text-text-primary font-medium">Import Preview</p>
-          <p className="text-xs text-text-secondary">
-            Backup from {new Date(importPreview.manifest.createdAt).toLocaleDateString()}
-          </p>
-          <div className="text-xs text-text-muted space-y-0.5">
-            <p>New projects: {importPreview.newProjects}</p>
-            <p>New sessions: {importPreview.newSessions}</p>
-            {importPreview.duplicateProjects + importPreview.duplicateSessions > 0 && (
-              <p className="text-text-muted">
-                {importPreview.duplicateProjects + importPreview.duplicateSessions} duplicates will be skipped
-              </p>
-            )}
-          </div>
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={handleCancelImport}
-              className="flex-1 py-2 border border-border-subtle text-text-secondary rounded-md text-xs min-h-[44px]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleImportConfirm}
-              className="flex-1 py-2 bg-accent text-bg-primary rounded-md text-xs font-medium min-h-[44px]"
-            >
-              Import
-            </button>
+        <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 space-y-2">
+          <p className="text-xs font-semibold text-text-primary">Import preview</p>
+          <p className="text-[11px] text-text-secondary">{importPreview.newProjects} new projects · {importPreview.newSessions} new sessions</p>
+          <p className="text-[10px] text-text-muted">{importPreview.duplicateProjects + importPreview.duplicateSessions} duplicates will be skipped. Existing IDs are never overwritten.</p>
+          <div className="flex gap-2">
+            <button type="button" className="flex-1 min-h-[42px] rounded-lg border border-border-subtle text-xs text-text-secondary" onClick={() => { setState('idle'); setImportPreview(null); setImportFile(null); }}>Cancel</button>
+            <button type="button" className="flex-1 min-h-[42px] rounded-lg bg-accent text-xs font-semibold text-bg-primary" onClick={() => void handleImport()}>Import</button>
           </div>
         </div>
       )}
 
-      {/* Import progress */}
-      {state === 'importing' && (
-        <div className="flex items-center gap-2 py-2">
-          <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-          <span className="text-xs text-text-secondary">{progressLabel}</span>
-        </div>
-      )}
-
-      {/* Project breakdown */}
-      <button
-        onClick={() => setShowProjectBreakdown(!showProjectBreakdown)}
-        className="text-xs text-text-muted underline"
-      >
-        {showProjectBreakdown ? 'Hide breakdown' : 'Storage by project'}
-      </button>
-
-      {showProjectBreakdown && (
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Recording storage</p>
         <div className="space-y-1">
-          {projectBreakdown.map((p) => (
-            <div key={p.id}>
-              <button
-                onClick={() => setExpandedProjectId(expandedProjectId === p.id ? null : p.id)}
-                className="w-full flex items-center justify-between py-2 px-2 bg-bg-surface rounded-sm hover:bg-bg-raised transition-colors min-h-[40px]"
-              >
-                <span className="text-xs text-text-primary">
-                  {p.icon} {p.name}
-                </span>
-                <span className="text-xs text-text-muted font-mono">
-                  {p.sessions.length} sessions{p.recordingCount > 0 ? ` · ${p.recordingCount} audio` : ''}
-                </span>
+          {sessionGroups.map((group) => (
+            <div key={group.id} className="rounded-lg border border-border-subtle bg-bg-surface">
+              <button type="button" aria-expanded={expandedProject === group.id} onClick={() => setExpandedProject(expandedProject === group.id ? null : group.id)} className="w-full min-h-[42px] px-3 flex items-center justify-between text-xs text-text-secondary">
+                <span>{group.label}</span><span>{group.sessions.filter((session) => session.hasRecording).length} audio</span>
               </button>
-              {expandedProjectId === p.id && p.sessions.length > 0 && (
-                <div className="ml-4 space-y-0.5 my-1">
-                  {p.sessions.map((s) => (
-                    <SessionDrillRow
-                      key={s.id}
-                      session={s}
-                      onDeleteAudio={() => handleDeleteAudioOnly(s.id)}
-                    />
+              {expandedProject === group.id && (
+                <div className="border-t border-border-subtle px-2 py-1 space-y-1">
+                  {group.sessions.map((session) => (
+                    <div key={session.id} className="flex items-center gap-2 min-h-[36px] text-[10px] text-text-muted">
+                      <span className="flex-1 truncate">{new Date(session.date).toLocaleDateString()} · {session.bpm} BPM</span>
+                      {session.hasRecording ? <button type="button" onClick={() => void handleDeleteAudio(session.id)} className="min-h-[32px] px-2 text-warning">Delete audio</button> : <span>No audio</span>}
+                    </div>
                   ))}
                 </div>
               )}
             </div>
           ))}
-          {orphanSessions.length > 0 && (
-            <div>
-              <button
-                onClick={() => setExpandedProjectId(expandedProjectId === '__orphan' ? null : '__orphan')}
-                className="w-full flex items-center justify-between py-2 px-2 bg-bg-surface rounded-sm hover:bg-bg-raised transition-colors min-h-[40px]"
-              >
-                <span className="text-xs text-text-muted">No project</span>
-                <span className="text-xs text-text-muted font-mono">
-                  {orphanSessions.length} sessions
-                </span>
-              </button>
-              {expandedProjectId === '__orphan' && (
-                <div className="ml-4 space-y-0.5 my-1">
-                  {orphanSessions.map((s) => (
-                    <SessionDrillRow
-                      key={s.id}
-                      session={s}
-                      onDeleteAudio={() => handleDeleteAudioOnly(s.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
-      )}
+      </div>
 
-      {/* Delete all */}
       {showDeleteConfirm ? (
-        <div className="bg-danger-dim border border-danger/30 rounded-md p-3 space-y-2">
-          <p className="text-danger text-xs font-medium">
-            Delete all sessions, projects, presets, and instrument profiles?
-          </p>
-          <p className="text-danger/70 text-[10px]">
-            This cannot be undone. Export a backup first if needed.
-          </p>
+        <div role="alertdialog" aria-label="Delete all Poly Pro data" className="rounded-lg border border-danger/30 bg-danger-dim p-3 space-y-2">
+          <p className="text-xs font-semibold text-danger">Delete all local Poly Pro data?</p>
+          <p className="text-[10px] text-danger/80">This clears settings, projects, sessions, recording chunks, hit data, presets, custom samples, profiles, and cloud-consent/cache records. It cannot be undone.</p>
           <div className="flex gap-2">
-            <button
-              onClick={() => setShowDeleteConfirm(false)}
-              className="flex-1 py-2 border border-border-subtle text-text-secondary rounded-md text-xs min-h-[44px]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDeleteAll}
-              disabled={state === 'deleting'}
-              className="flex-1 py-2 bg-danger text-white rounded-md text-xs font-medium min-h-[44px]"
-            >
-              {state === 'deleting' ? 'Deleting…' : 'Delete Everything'}
-            </button>
+            <button type="button" className="flex-1 min-h-[42px] rounded-lg border border-border-subtle text-xs text-text-secondary" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
+            <button type="button" disabled={state === 'deleting'} className="flex-1 min-h-[42px] rounded-lg bg-danger text-xs font-semibold text-white" onClick={() => void handleDeleteAll()}>{state === 'deleting' ? 'Deleting…' : 'Delete Everything'}</button>
           </div>
         </div>
       ) : (
-        <button
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={state !== 'idle'}
-          className="w-full py-2 text-danger text-xs min-h-[44px]"
-        >
-          Delete All Data
-        </button>
+        <button type="button" disabled={state !== 'idle'} onClick={() => setShowDeleteConfirm(true)} className="w-full min-h-[44px] text-xs text-danger disabled:opacity-40">Delete All Data</button>
       )}
     </div>
   );
 }
 
-// ─── Sub-components ───
-
-function SessionDrillRow({
-  session,
-  onDeleteAudio,
-}: {
-  session: { id: string; date: string; bpm: number; durationMs: number; hasRecording: boolean; score?: number };
-  onDeleteAudio: () => void;
-}) {
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  const dateStr = new Date(session.date).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-  const durSec = Math.round(session.durationMs / 1000);
-  const durLabel = durSec >= 60 ? `${Math.floor(durSec / 60)}m ${durSec % 60}s` : `${durSec}s`;
-
-  return (
-    <div className="flex items-center gap-2 py-1 px-1 text-[10px]">
-      <span className="text-text-muted w-24 flex-shrink-0 truncate">{dateStr}</span>
-      <span className="text-text-secondary font-mono">{session.bpm} BPM</span>
-      <span className="text-text-muted font-mono">{durLabel}</span>
-      {session.score !== undefined && (
-        <span className="text-text-secondary font-mono">{Math.round(session.score)}%</span>
-      )}
-      <span className="ml-auto flex items-center gap-1">
-        {session.hasRecording && !showConfirm && (
-          <button
-            onClick={() => setShowConfirm(true)}
-            className="text-warning text-[9px] min-h-[32px] px-1"
-          >
-            Delete audio
-          </button>
-        )}
-        {showConfirm && (
-          <>
-            <button
-              onClick={() => setShowConfirm(false)}
-              className="text-text-muted text-[9px] min-h-[32px] px-1"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => { onDeleteAudio(); setShowConfirm(false); }}
-              className="text-danger text-[9px] min-h-[32px] px-1"
-            >
-              Confirm
-            </button>
-          </>
-        )}
-        {!session.hasRecording && (
-          <span className="text-text-muted text-[9px]">No audio</span>
-        )}
-      </span>
-    </div>
-  );
+function Stat({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-lg border border-border-subtle bg-bg-surface p-2"><p className="text-[9px] text-text-muted">{label}</p><p className="font-mono text-sm text-text-primary">{value}</p></div>;
 }

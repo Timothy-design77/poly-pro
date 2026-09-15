@@ -1,560 +1,340 @@
-/**
- * ReviewScreen — Post-recording review before committing.
- *
- * Shown after analysis completes. Full-screen portal overlay.
- *
- * Flow:
- *   Record → Analyze → ReviewScreen → Save/Delete → View Details or Record Again
- *
- * Features:
- *   - Score hero + key metrics
- *   - Playback with/without click overlay (using your sound settings)
- *   - Save format picker (what to keep + what to download)
- *   - Delete / discard
- *   - Post-save routing
- */
-
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionAnalysis } from '../../analysis/types';
+import type { SessionRecord } from '../../store/db';
 import { useSettingsStore } from '../../store/settings-store';
 import { useMetronomeStore } from '../../store/metronome-store';
-import { MASTER_GAIN_MULTIPLIER } from '../../utils/constants';
 import { useSessionStore } from '../../store/session-store';
-import { VolumeState, VOLUME_GAINS } from '../../audio/types';
+import { VOLUME_GAINS } from '../../audio/types';
+import { createPlaybackLimiter, recordingPlaybackGain } from '../../audio/recording-playback';
+import { forEachClickBeat } from './timeline/timeline-shared';
 import * as db from '../../store/db';
-
-/** Same perceptual curve as engine.ts */
-function perceptualGain(vol: number): number {
-  return vol * vol * MASTER_GAIN_MULTIPLIER;
-}
-const MIC_BOOST = 4.0;
 
 interface Props {
   visible: boolean;
   sessionId: string;
   analysis: SessionAnalysis;
-  /** Called when user chooses to view session detail */
   onViewDetails: () => void;
-  /** Called when user chooses to record again */
   onRecordAgain: () => void;
-  /** Called when user deletes the session */
   onDelete: () => void;
 }
 
-type SaveStep = 'review' | 'saving' | 'done';
-type StorageChoice = 'raw' | 'compressed' | 'delete';
+type SaveStep = 'review' | 'saving' | 'done' | 'error';
+type StorageChoice = 'raw' | 'delete';
 type DownloadChoice = 'none' | 'raw' | 'with-click' | 'both';
 
-export function ReviewScreen({
-  visible,
-  sessionId,
-  analysis,
-  onViewDetails,
-  onRecordAgain,
-  onDelete,
-}: Props) {
+export function ReviewScreen({ visible, sessionId, analysis, onViewDetails, onRecordAgain, onDelete }: Props) {
   const [step, setStep] = useState<SaveStep>('review');
-  const [storageChoice, setStorageChoice] = useState<StorageChoice>('compressed');
+  const [storageChoice, setStorageChoice] = useState<StorageChoice>('raw');
   const [downloadChoice, setDownloadChoice] = useState<DownloadChoice>('none');
-
-  // Playback
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [clickOn, setClickOn] = useState(true);
   const [clickVol, setClickVol] = useState(0.5);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [audioReady, setAudioReady] = useState(false);
+
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const clickNodesRef = useRef<AudioBufferSourceNode[]>([]);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const clickGainRef = useRef<GainNode | null>(null);
   const recGainRef = useRef<GainNode | null>(null);
+  const limiterRef = useRef<DynamicsCompressorNode | null>(null);
   const volUnsubRef = useRef<(() => void) | null>(null);
   const savedClickVolRef = useRef(0.5);
 
-  // Settings
-  const clickSoundId = useSettingsStore((s) => s.clickSound);
-  const accentSoundId = useSettingsStore((s) => s.accentSound);
-  const accentThreshold = useSettingsStore((s) => s.accentSoundThreshold);
-
-  // Reset state when shown
-  useEffect(() => {
-    if (visible) {
-      setStep('review');
-      setStorageChoice('compressed');
-      setDownloadChoice('none');
-      setIsPlaying(false);
-      audioBufferRef.current = null;
-    }
-  }, [visible, sessionId]);
-
-  // Load audio buffer
-  useEffect(() => {
-    if (!visible || !sessionId) return;
-    db.getRecording(sessionId).then(async (blob) => {
-      if (!blob) return;
-      try {
-        const { audioEngine } = await import('../../audio');
-        const ctx = await audioEngine.initContext();
-        const pcm = new Float32Array(await blob.arrayBuffer());
-        const buf = ctx.createBuffer(1, pcm.length, 48000);
-        buf.getChannelData(0).set(pcm);
-        audioBufferRef.current = buf;
-      } catch { /* */ }
-    });
-  }, [visible, sessionId]);
-
-  // Cleanup on unmount / hide
-  useEffect(() => {
-    if (!visible) stopPlayback();
-  }, [visible]);
-
-  // ─── Playback ───
+  const session = useSessionStore((state) => state.sessions.find((item) => item.id === sessionId) ?? null);
+  const clickSoundId = useSettingsStore((state) => state.clickSound);
+  const accentSoundId = useSettingsStore((state) => state.accentSound);
+  const accentThreshold = useSettingsStore((state) => state.accentSoundThreshold);
+  const latencyOffsetMs = useSettingsStore((state) => state.calibratedOffset + state.manualAdjustment);
 
   const stopPlayback = useCallback(() => {
     if (sourceRef.current) {
       try { sourceRef.current.stop(); } catch {}
+      try { sourceRef.current.disconnect(); } catch {}
       sourceRef.current = null;
     }
-    for (const n of clickNodesRef.current) {
-      try { n.stop(); } catch {}
+    for (const node of clickNodesRef.current) {
+      try { node.stop(); } catch {}
+      try { node.disconnect(); } catch {}
     }
     clickNodesRef.current = [];
-    if (clickGainRef.current) {
-      try { clickGainRef.current.disconnect(); } catch {}
-      clickGainRef.current = null;
-    }
-    if (recGainRef.current) {
-      try { recGainRef.current.disconnect(); } catch {}
-      recGainRef.current = null;
-    }
+    if (clickGainRef.current) { try { clickGainRef.current.disconnect(); } catch {} clickGainRef.current = null; }
+    if (recGainRef.current) { try { recGainRef.current.disconnect(); } catch {} recGainRef.current = null; }
+    if (limiterRef.current) { try { limiterRef.current.disconnect(); } catch {} limiterRef.current = null; }
     volUnsubRef.current?.();
     volUnsubRef.current = null;
     setIsPlaying(false);
   }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      stopPlayback();
+      return;
+    }
+    setStep('review');
+    setStorageChoice('raw');
+    setDownloadChoice('none');
+    setSaveError(null);
+    setShowDeleteConfirm(false);
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = requestAnimationFrame(() => dialogRef.current?.focus());
+    return () => {
+      cancelAnimationFrame(frame);
+      stopPlayback();
+      previousFocusRef.current?.focus();
+    };
+  }, [visible, sessionId, stopPlayback]);
+
+  useEffect(() => {
+    if (!visible || !session) return;
+    let cancelled = false;
+    setAudioReady(false);
+    audioBufferRef.current = null;
+    (async () => {
+      try {
+        const blob = await db.getRecording(sessionId);
+        if (!blob || cancelled) return;
+        const { audioEngine } = await import('../../audio');
+        const ctx = await audioEngine.initContext();
+        const arrayBuffer = await blob.arrayBuffer();
+        let buffer: AudioBuffer;
+        if (blob.type.startsWith('audio/')) {
+          buffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+        } else {
+          const pcm = new Float32Array(arrayBuffer);
+          const sampleRate = session.recordingSampleRate ?? 48000;
+          buffer = ctx.createBuffer(1, pcm.length, sampleRate);
+          buffer.getChannelData(0).set(pcm);
+        }
+        if (!cancelled) {
+          audioBufferRef.current = buffer;
+          setAudioReady(true);
+        }
+      } catch (error) {
+        console.error('Review audio load failed:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [visible, sessionId, session]);
+
+  useEffect(() => {
+    if (clickGainRef.current) clickGainRef.current.gain.value = clickOn ? savedClickVolRef.current : 0;
+  }, [clickOn]);
+
+  useEffect(() => {
+    savedClickVolRef.current = clickVol;
+    if (clickGainRef.current && clickOn) clickGainRef.current.gain.value = clickVol;
+  }, [clickVol, clickOn]);
 
   const togglePlayback = useCallback(async () => {
     if (isPlaying) {
       stopPlayback();
       return;
     }
-
-    if (!audioBufferRef.current) return;
+    if (!audioBufferRef.current || !session) return;
 
     const { audioEngine } = await import('../../audio');
     const { getBuffer } = await import('../../audio/sounds');
     const ctx = await audioEngine.initContext();
-
-    // Play recording
     const source = ctx.createBufferSource();
     source.buffer = audioBufferRef.current;
     const gain = ctx.createGain();
-    const vol = useMetronomeStore.getState().volume;
-    gain.gain.value = MIC_BOOST * perceptualGain(vol);
+    const limiter = createPlaybackLimiter(ctx);
+    const volume = useMetronomeStore.getState().volume;
+    gain.gain.value = recordingPlaybackGain(volume);
     source.connect(gain);
-    gain.connect(ctx.destination);
-    source.start();
+    gain.connect(limiter);
+    limiter.connect(ctx.destination);
     sourceRef.current = source;
     recGainRef.current = gain;
-    setIsPlaying(true);
+    limiterRef.current = limiter;
 
-    // Subscribe to volume changes during playback
-    volUnsubRef.current?.();
-    let prevVol = vol;
-    volUnsubRef.current = useMetronomeStore.subscribe((state) => {
-      if (state.volume !== prevVol) {
-        prevVol = state.volume;
-        if (recGainRef.current) {
-          recGainRef.current.gain.value = MIC_BOOST * perceptualGain(state.volume);
-        }
-      }
-    });
-
-    source.onended = () => {
-      setIsPlaying(false);
-      sourceRef.current = null;
-      for (const n of clickNodesRef.current) { try { n.stop(); } catch {} }
-      clickNodesRef.current = [];
-    };
-
-    // Click overlay
     if (clickOn) {
-      const durationS = analysis.durationMs / 1000;
-      const bpm = analysis.bpm;
-      const ioi = 60 / bpm;
-
-      const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
-      const accentBuf = getBuffer(accentSoundId) || clickBuf;
-
-      if (clickBuf) {
+      const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
+      const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
+      if (clickBuffer) {
         const clickGain = ctx.createGain();
-        clickGain.gain.value = clickOn ? clickVol : 0;
+        clickGain.gain.value = clickVol;
         savedClickVolRef.current = clickVol;
-        clickGain.connect(ctx.destination);
+        clickGain.connect(limiter);
         clickGainRef.current = clickGain;
-
         const scheduled: AudioBufferSourceNode[] = [];
-        let beatTime = 0;
-        let beatIdx = 0;
-        const meterNum = 4; // default
-
-        while (beatTime < durationS) {
-          const when = ctx.currentTime + beatTime;
-          const isDownbeat = beatIdx % meterNum === 0;
-
-          const volState = isDownbeat ? VolumeState.ACCENT : VolumeState.LOUD;
-          const useAccent = volState >= accentThreshold;
-          const buf = useAccent ? (accentBuf || clickBuf) : clickBuf;
-
-          const cs = ctx.createBufferSource();
-          cs.buffer = buf;
-          const cg = ctx.createGain();
-          cg.gain.value = VOLUME_GAINS[volState];
-          cs.connect(cg);
-          cg.connect(clickGain);
-          cs.start(when);
-          scheduled.push(cs);
-
-          beatTime += ioi;
-          beatIdx++;
-        }
+        forEachClickBeat(session, latencyOffsetMs / 1000, ({ adjustedBeatTime, volState }) => {
+          if (adjustedBeatTime < 0 || adjustedBeatTime >= audioBufferRef.current!.duration) return;
+          const buffer = volState >= accentThreshold ? (accentBuffer || clickBuffer) : clickBuffer;
+          const clickSource = ctx.createBufferSource();
+          clickSource.buffer = buffer;
+          const clickNodeGain = ctx.createGain();
+          clickNodeGain.gain.value = VOLUME_GAINS[volState];
+          clickSource.connect(clickNodeGain);
+          clickNodeGain.connect(clickGain);
+          clickSource.start(ctx.currentTime + adjustedBeatTime);
+          scheduled.push(clickSource);
+        }, analysis.gridBeats);
         clickNodesRef.current = scheduled;
       }
     }
-  }, [isPlaying, stopPlayback, analysis, clickVol, clickSoundId, accentSoundId, accentThreshold]);
 
-  // Mid-playback click toggle: mute/unmute gain node
-  useEffect(() => {
-    if (clickGainRef.current) {
-      clickGainRef.current.gain.value = clickOn ? savedClickVolRef.current : 0;
-    }
-  }, [clickOn]);
+    source.onended = () => stopPlayback();
+    source.start();
+    setIsPlaying(true);
 
-  // Click volume slider: update gain in real-time
-  useEffect(() => {
-    savedClickVolRef.current = clickVol;
-    if (clickGainRef.current && clickOn) {
-      clickGainRef.current.gain.value = clickVol;
-    }
-  }, [clickVol, clickOn]);
-
-  // ─── Save ───
+    volUnsubRef.current?.();
+    let previousVolume = volume;
+    volUnsubRef.current = useMetronomeStore.subscribe((state) => {
+      if (state.volume === previousVolume) return;
+      previousVolume = state.volume;
+      if (recGainRef.current) recGainRef.current.gain.value = recordingPlaybackGain(state.volume);
+    });
+  }, [isPlaying, stopPlayback, session, clickOn, clickVol, clickSoundId, accentSoundId, accentThreshold, latencyOffsetMs, analysis.gridBeats]);
 
   const handleSave = useCallback(async () => {
+    if (!session) return;
     setStep('saving');
+    setSaveError(null);
     stopPlayback();
-
     try {
-      const { getBuffer } = await import('../../audio/sounds');
-
-      // Handle downloads FIRST — before compression modifies the stored blob
       if (downloadChoice !== 'none') {
-        const blob = await db.getRecording(sessionId);
-        if (blob) {
-          const pcm = new Float32Array(await blob.arrayBuffer());
-          // Downloads always use the original 48kHz data
-          if (downloadChoice === 'raw' || downloadChoice === 'both') {
-            downloadWav(pcm, 48000, analysis, false, getBuffer);
-          }
-          if (downloadChoice === 'with-click' || downloadChoice === 'both') {
-            await downloadWithClick(pcm, analysis, clickSoundId, accentSoundId, accentThreshold, clickVol, getBuffer);
-          }
+        if (!audioBufferRef.current) throw new Error('Recording audio is not ready for export.');
+        if (downloadChoice === 'raw' || downloadChoice === 'both') {
+          downloadAudioBuffer(audioBufferRef.current, session, false);
+        }
+        if (downloadChoice === 'with-click' || downloadChoice === 'both') {
+          const rendered = await renderWithClick(
+            audioBufferRef.current,
+            session,
+            analysis,
+            clickSoundId,
+            accentSoundId,
+            accentThreshold,
+            clickVol,
+            latencyOffsetMs,
+          );
+          downloadAudioBuffer(rendered, session, true);
         }
       }
 
-      // Handle storage choice (may modify or delete the recording blob)
-      if (storageChoice === 'compressed') {
-        // Resample to 22kHz and re-save as raw Float32 (same format, fewer samples)
-        const blob = await db.getRecording(sessionId);
-        if (blob) {
-          const pcm = new Float32Array(await blob.arrayBuffer());
-          const ratio = 48000 / 22050;
-          const outLen = Math.round(pcm.length / ratio);
-          const resampled = new Float32Array(outLen);
-          for (let i = 0; i < outLen; i++) {
-            const srcIdx = i * ratio;
-            const lo = Math.floor(srcIdx);
-            const hi = Math.min(lo + 1, pcm.length - 1);
-            const frac = srcIdx - lo;
-            resampled[i] = pcm[lo] * (1 - frac) + pcm[hi] * frac;
-          }
-          // Store as raw Float32 blob — same format as original, just downsampled
-          const rawBlob = new Blob([resampled.buffer], { type: 'application/octet-stream' });
-          await db.putRecording(sessionId, rawBlob);
-          // Record the new sample rate on the session
-          const sessions = await db.getAllSessions();
-          const s = sessions.find((s) => s.id === sessionId);
-          if (s) await db.putSession({ ...s, recordingSampleRate: 22050 });
-        }
-      } else if (storageChoice === 'delete') {
+      if (storageChoice === 'delete') {
         await db.deleteRecording(sessionId);
-        // Update session record
-        const sessions = await db.getAllSessions();
-        const s = sessions.find((s) => s.id === sessionId);
-        if (s) await db.putSession({ ...s, hasRecording: false });
+        await useSessionStore.getState().updateSession(sessionId, { hasRecording: false });
       }
-      // 'raw' = keep as-is
-
-      // Verify recording state and sync session record
-      // (guards against stale store data or IDB upgrade edge cases)
-      if (storageChoice !== 'delete') {
-        const verifyBlob = await db.getRecording(sessionId);
-        const recordingExists = !!verifyBlob && verifyBlob.size > 0;
-        const sessions = await db.getAllSessions();
-        const s = sessions.find((s) => s.id === sessionId);
-        if (s && s.hasRecording !== recordingExists) {
-          await db.putSession({ ...s, hasRecording: recordingExists });
-        }
-      }
-
-      // Reload session store so View Details gets fresh data
       await useSessionStore.getState().loadFromDB();
-
       setStep('done');
-    } catch (err) {
-      console.error('Save failed:', err);
-      setStep('done'); // Still show done so user isn't stuck
+    } catch (error) {
+      console.error('Review save failed:', error);
+      setSaveError(error instanceof Error ? error.message : 'Saving failed');
+      setStep('error');
     }
-  }, [sessionId, storageChoice, downloadChoice, analysis, clickSoundId, accentSoundId, accentThreshold, clickVol, stopPlayback]);
-
-  // ─── Delete ───
-
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  }, [session, sessionId, storageChoice, downloadChoice, analysis, clickSoundId, accentSoundId, accentThreshold, clickVol, latencyOffsetMs, stopPlayback]);
 
   const handleDelete = useCallback(async () => {
     stopPlayback();
     try {
-      // Store handles record + recording + hit events + legacy blobs
       await useSessionStore.getState().deleteSession(sessionId);
       onDelete();
-    } catch (err) {
-      console.error('Delete failed:', err);
+    } catch (error) {
+      console.error('Delete failed:', error);
+      setSaveError(error instanceof Error ? error.message : 'Delete failed');
     }
   }, [sessionId, stopPlayback, onDelete]);
 
   if (!visible) return null;
 
-  const score = analysis.score;
-  const sigma = analysis.sigma;
-  const sigmaLevel = analysis.sigmaLevel;
-  const scoreColor = score >= 85 ? '#4ADE80' : score >= 70 ? '#FBBF24' : '#F87171';
+  const scoreColor = analysis.score >= 85 ? '#4ADE80' : analysis.score >= 70 ? '#FBBF24' : '#F87171';
   const durationSec = Math.round(analysis.durationMs / 1000);
-  const durationLabel = durationSec >= 60
-    ? `${Math.floor(durationSec / 60)}:${String(durationSec % 60).padStart(2, '0')}`
-    : `${durationSec}s`;
+  const durationLabel = durationSec >= 60 ? `${Math.floor(durationSec / 60)}:${String(durationSec % 60).padStart(2, '0')}` : `${durationSec}s`;
 
   return createPortal(
-    <div data-no-swipe className="fixed inset-0 z-[9998] bg-bg-primary flex flex-col animate-sheet-up" style={{ touchAction: 'none' }}>
-      {/* Header */}
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} data-no-swipe className="fixed inset-0 z-[9998] bg-bg-primary flex flex-col animate-sheet-up outline-none">
       <div className="px-4 py-3 text-center border-b border-border-subtle">
-        <p className="text-xs text-text-muted">Session Complete</p>
+        <p id={titleId} className="text-xs text-text-muted">Session Complete</p>
       </div>
-
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {step === 'review' && (
           <>
-            {/* Score hero */}
             <div className="flex flex-col items-center py-2">
-              <span className="text-5xl font-bold font-mono" style={{ color: scoreColor }}>
-                {Math.round(score)}%
-              </span>
-              <div className="mt-1.5 px-3 py-1 rounded-full flex items-center gap-1.5"
-                style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                <span className="text-xs font-mono text-text-secondary">σ {sigma.toFixed(1)}ms</span>
-                <span className="text-xs text-text-muted">{sigmaLevel}</span>
-              </div>
+              <span className="text-5xl font-bold font-mono" style={{ color: scoreColor }}>{Math.round(analysis.score)}%</span>
+              <div className="mt-1.5 px-3 py-1 rounded-full bg-bg-surface"><span className="text-xs font-mono text-text-secondary">σ {analysis.sigma.toFixed(1)}ms · {analysis.sigmaLevel}</span></div>
             </div>
 
-            {/* Key metrics row */}
-            <div className="flex items-center justify-center gap-5 text-center">
-              <div>
-                <p className="text-[10px] text-text-muted">BPM</p>
-                <p className="text-xs font-mono font-semibold text-text-primary">{analysis.bpm}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-text-muted">Hits</p>
-                <p className="text-xs font-mono font-semibold text-text-primary">{analysis.totalScored}/{analysis.totalExpected}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-text-muted">Duration</p>
-                <p className="text-xs font-mono font-semibold text-text-primary">{durationLabel}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-text-muted">Hit Rate</p>
-                <p className="text-xs font-mono font-semibold text-text-primary">{Math.round(analysis.hitRate * 100)}%</p>
-              </div>
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <Metric label="BPM" value={String(analysis.bpm)} />
+              <Metric label="Hits" value={`${analysis.totalScored}/${analysis.totalExpected}`} />
+              <Metric label="Duration" value={durationLabel} />
+              <Metric label="Hit Rate" value={`${Math.round(analysis.hitRate * 100)}%`} />
             </div>
 
-            {/* Headlines */}
-            {analysis.headlines.length > 0 && (
-              <div className="space-y-1">
-                {analysis.headlines.slice(0, 3).map((h, i) => (
-                  <p key={i} className="text-xs text-text-secondary bg-bg-surface rounded-lg px-3 py-2 border border-border-subtle">
-                    {h.text}
-                  </p>
-                ))}
-              </div>
-            )}
+            {analysis.headlines.slice(0, 3).map((headline, index) => (
+              <p key={index} className="text-xs text-text-secondary bg-bg-surface rounded-lg px-3 py-2 border border-border-subtle">{headline.text}</p>
+            ))}
 
-            {/* Playback */}
             <div className="bg-bg-surface rounded-xl border border-border-subtle p-3 space-y-2">
               <div className="flex items-center gap-3">
-                <button
-                  onClick={togglePlayback}
-                  disabled={!audioBufferRef.current}
-                  className={`w-[44px] h-[44px] rounded-lg flex items-center justify-center shrink-0 touch-manipulation
-                    ${isPlaying ? 'bg-[rgba(255,255,255,0.12)] text-text-primary' : 'bg-bg-raised text-text-secondary'}
-                    ${!audioBufferRef.current ? 'opacity-30' : ''}`}
-                >
-                  {isPlaying ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="5" y="4" width="5" height="16" rx="1" />
-                      <rect x="14" y="4" width="5" height="16" rx="1" />
-                    </svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="6 3 20 12 6 21" />
-                    </svg>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setClickOn(!clickOn)}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] touch-manipulation transition-colors flex items-center gap-1.5 ${
-                    clickOn ? 'bg-[rgba(255,255,255,0.12)] text-text-primary' : 'bg-bg-raised text-text-muted'
-                  }`}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    {clickOn && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />}
-                  </svg>
-                  Click
-                </button>
-
-                {clickOn && (
-                  <input
-                    type="range" min="0" max="100"
-                    value={Math.round(clickVol * 100)}
-                    onChange={(e) => setClickVol(Number(e.target.value) / 100)}
-                    className="flex-1 accent-white h-1 bg-bg-raised rounded-full appearance-none max-w-[100px]
-                      [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3
-                      [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full
-                      [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
-                  />
-                )}
+                <button type="button" aria-label={isPlaying ? 'Pause recording playback' : 'Play recording'} onClick={() => void togglePlayback()} disabled={!audioReady} className="w-[44px] h-[44px] rounded-lg bg-bg-raised text-text-primary disabled:opacity-30">{isPlaying ? 'Ⅱ' : '▶'}</button>
+                <button type="button" aria-pressed={clickOn} onClick={() => setClickOn(!clickOn)} className={`px-3 min-h-[38px] rounded-lg text-xs ${clickOn ? 'bg-accent-dim text-text-primary' : 'bg-bg-raised text-text-muted'}`}>Click overlay</button>
+                {clickOn && <input aria-label="Click overlay volume" type="range" min="0" max="100" value={Math.round(clickVol * 100)} onChange={(event) => setClickVol(Number(event.target.value) / 100)} className="flex-1 max-w-[120px]" />}
               </div>
+              <p className="text-[10px] text-text-muted">Playback uses the stored recording sample rate, persisted beat grid, and bounded limiter-protected gain.</p>
             </div>
 
-            {/* Save options */}
             <div className="space-y-3">
-              {/* Storage */}
               <div>
-                <label className="text-[10px] text-text-muted uppercase tracking-wider block mb-1.5">
-                  Keep in App
-                </label>
-                <div className="flex gap-1">
-                  {([
-                    { v: 'raw' as StorageChoice, label: 'Raw Audio', desc: 'Full quality' },
-                    { v: 'compressed' as StorageChoice, label: 'Compressed', desc: '~Half size' },
-                    { v: 'delete' as StorageChoice, label: 'Score Only', desc: 'No audio' },
-                  ]).map((opt) => (
-                    <button
-                      key={opt.v}
-                      onClick={() => setStorageChoice(opt.v)}
-                      className={`flex-1 py-2 rounded-md text-[10px] min-h-[42px] transition-colors ${
-                        storageChoice === opt.v
-                          ? 'bg-[rgba(255,255,255,0.12)] text-text-primary border border-[rgba(255,255,255,0.15)]'
-                          : 'bg-bg-raised text-text-muted border border-transparent'
-                      }`}
-                    >
-                      {opt.label}
-                      <span className="block text-[8px] text-text-muted mt-0.5">{opt.desc}</span>
-                    </button>
-                  ))}
+                <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5">Keep in App</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Choice selected={storageChoice === 'raw'} onClick={() => setStorageChoice('raw')} label="Raw Audio" description="Original durable recording" />
+                  <Choice selected={storageChoice === 'delete'} onClick={() => setStorageChoice('delete')} label="Score Only" description="Delete recording audio" />
                 </div>
               </div>
-
-              {/* Download */}
               <div>
-                <label className="text-[10px] text-text-muted uppercase tracking-wider block mb-1.5">
-                  Download WAV
-                </label>
-                <div className="flex gap-1">
-                  {([
-                    { v: 'none' as DownloadChoice, label: 'None' },
-                    { v: 'raw' as DownloadChoice, label: 'Raw' },
-                    { v: 'with-click' as DownloadChoice, label: 'With Click' },
-                    { v: 'both' as DownloadChoice, label: 'Both' },
-                  ]).map((opt) => (
-                    <button
-                      key={opt.v}
-                      onClick={() => setDownloadChoice(opt.v)}
-                      className={`flex-1 py-2 rounded-md text-[10px] min-h-[38px] transition-colors ${
-                        downloadChoice === opt.v
-                          ? 'bg-[rgba(255,255,255,0.12)] text-text-primary border border-[rgba(255,255,255,0.15)]'
-                          : 'bg-bg-raised text-text-muted border border-transparent'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
+                <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5">Download WAV</p>
+                <div className="grid grid-cols-4 gap-1">
+                  {(['none', 'raw', 'with-click', 'both'] as DownloadChoice[]).map((choice) => (
+                    <button type="button" key={choice} onClick={() => setDownloadChoice(choice)} className={`min-h-[38px] rounded-md text-[10px] border ${downloadChoice === choice ? 'bg-accent-dim border-accent/30 text-text-primary' : 'bg-bg-raised border-transparent text-text-muted'}`}>{choice === 'with-click' ? 'Click' : choice === 'both' ? 'Both' : choice[0].toUpperCase() + choice.slice(1)}</button>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* Action buttons */}
+            {saveError && <p role="alert" className="text-xs text-danger">{saveError}</p>}
             <div className="flex gap-2 pt-1">
               {showDeleteConfirm ? (
                 <>
-                  <button onClick={() => setShowDeleteConfirm(false)}
-                    className="flex-1 py-3 border border-border-subtle text-text-secondary rounded-md text-xs min-h-[48px]">
-                    Cancel
-                  </button>
-                  <button onClick={handleDelete}
-                    className="flex-1 py-3 bg-danger text-white rounded-md text-xs font-medium min-h-[48px]">
-                    Delete Session
-                  </button>
+                  <button type="button" onClick={() => setShowDeleteConfirm(false)} className="flex-1 min-h-[48px] border border-border-subtle text-text-secondary rounded-md text-xs">Cancel</button>
+                  <button type="button" onClick={() => void handleDelete()} className="flex-1 min-h-[48px] bg-danger text-white rounded-md text-xs font-medium">Delete Session</button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => setShowDeleteConfirm(true)}
-                    className="px-4 py-3 text-danger text-xs min-h-[48px]">
-                    Delete
-                  </button>
-                  <button onClick={handleSave}
-                    className="flex-1 py-3 bg-accent text-bg-primary rounded-md text-sm font-medium min-h-[48px]">
-                    Save Session
-                  </button>
+                  <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 min-h-[48px] text-danger text-xs">Delete</button>
+                  <button type="button" onClick={() => void handleSave()} className="flex-1 min-h-[48px] bg-accent text-bg-primary rounded-md text-sm font-medium">Continue</button>
                 </>
               )}
             </div>
           </>
         )}
 
-        {step === 'saving' && (
-          <div className="flex flex-col items-center justify-center h-64 gap-3">
-            <div className="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-            <p className="text-text-secondary text-sm">Saving…</p>
+        {step === 'saving' && <div className="flex flex-col items-center justify-center h-64 gap-3" role="status"><div className="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin" /><p className="text-text-secondary text-sm">Finalizing…</p></div>}
+
+        {step === 'error' && (
+          <div className="flex flex-col items-center justify-center h-64 gap-4 text-center">
+            <p className="text-danger text-sm font-semibold">Could not finish the requested save/export</p>
+            <p role="alert" className="text-text-secondary text-xs max-w-sm">{saveError}</p>
+            <button type="button" onClick={() => setStep('review')} className="min-h-[44px] px-5 rounded-lg border border-border-subtle text-sm text-text-primary">Back to Review</button>
           </div>
         )}
 
         {step === 'done' && (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="text-4xl">✓</div>
-            <p className="text-text-primary text-sm font-medium">Session Saved</p>
-            <p className="text-text-muted text-xs">
-              {storageChoice === 'delete' ? 'Score saved, audio discarded'
-                : storageChoice === 'compressed' ? 'Compressed audio saved'
-                : 'Full quality audio saved'}
-              {downloadChoice !== 'none' && ' · WAV downloaded'}
-            </p>
+            <div className="text-4xl" aria-hidden="true">✓</div>
+            <p className="text-text-primary text-sm font-medium">Session Ready</p>
+            <p className="text-text-muted text-xs">{storageChoice === 'delete' ? 'Score kept; recording audio deleted' : 'Original recording retained'}{downloadChoice !== 'none' && ' · WAV downloaded'}</p>
             <div className="flex gap-3 w-full max-w-xs pt-2">
-              <button onClick={onRecordAgain}
-                className="flex-1 py-3 border border-border-subtle text-text-secondary rounded-md text-xs min-h-[48px]">
-                Record Again
-              </button>
-              <button onClick={onViewDetails}
-                className="flex-1 py-3 bg-accent text-bg-primary rounded-md text-xs font-medium min-h-[48px]">
-                View Details
-              </button>
+              <button type="button" onClick={onRecordAgain} className="flex-1 min-h-[48px] border border-border-subtle text-text-secondary rounded-md text-xs">Record Again</button>
+              <button type="button" onClick={onViewDetails} className="flex-1 min-h-[48px] bg-accent text-bg-primary rounded-md text-xs font-medium">View Details</button>
             </div>
           </div>
         )}
@@ -564,123 +344,87 @@ export function ReviewScreen({
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div><p className="text-[10px] text-text-muted">{label}</p><p className="text-xs font-mono font-semibold text-text-primary">{value}</p></div>;
+}
+
+function Choice({ selected, onClick, label, description }: { selected: boolean; onClick: () => void; label: string; description: string }) {
+  return <button type="button" aria-pressed={selected} onClick={onClick} className={`min-h-[52px] rounded-lg border p-2 text-left ${selected ? 'bg-accent-dim border-accent/30' : 'bg-bg-raised border-transparent'}`}><span className="block text-xs font-semibold text-text-primary">{label}</span><span className="block text-[9px] text-text-muted mt-0.5">{description}</span></button>;
+}
 
 function encodeWav(pcm: Float32Array, sampleRate: number): Blob {
   const dataSize = pcm.length * 2;
-  const buf = new ArrayBuffer(44 + dataSize);
-  const v = new DataView(buf);
-  const w = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
-
-  w(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true); w(8, 'WAVE');
-  w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-  v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
-  v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-  w(36, 'data'); v.setUint32(40, dataSize, true);
-
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const write = (offset: number, text: string) => { for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i)); };
+  write(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); write(8, 'WAVE');
+  write(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  write(36, 'data'); view.setUint32(40, dataSize, true);
   let peak = 0;
-  for (let i = 0; i < pcm.length; i++) { const a = Math.abs(pcm[i]); if (a > peak) peak = a; }
-  const scale = peak > 0 ? 0.89 / peak : 1;
-
-  let off = 44;
+  for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
+  const scale = peak > 0.999 ? 0.999 / peak : 1;
+  let offset = 44;
   for (let i = 0; i < pcm.length; i++) {
-    const s = pcm[i] * scale;
-    v.setInt16(off, Math.max(-32768, Math.min(32767, s < 0 ? s * 0x8000 : s * 0x7FFF)), true);
-    off += 2;
+    const sample = pcm[i] * scale;
+    view.setInt16(offset, Math.max(-32768, Math.min(32767, sample < 0 ? sample * 0x8000 : sample * 0x7FFF)), true);
+    offset += 2;
   }
-  return new Blob([buf], { type: 'audio/wav' });
+  return new Blob([buffer], { type: 'audio/wav' });
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
   URL.revokeObjectURL(url);
 }
 
-function downloadWav(
-  pcm: Float32Array,
-  sampleRate: number,
-  analysis: SessionAnalysis,
-  _withClick: boolean,
-  _getBuffer: (id: string) => AudioBuffer | null,
-) {
-  // Boost same as playback
-  const boosted = new Float32Array(pcm.length);
-  for (let i = 0; i < pcm.length; i++) boosted[i] = pcm[i] * 4.0;
-
-  const blob = encodeWav(boosted, sampleRate);
-  const dateStr = new Date().toISOString().slice(0, 10);
-  triggerDownload(blob, `polypro-${analysis.bpm}bpm-${dateStr}-raw.wav`);
+function downloadAudioBuffer(buffer: AudioBuffer, session: SessionRecord, withClick: boolean): void {
+  const pcm = buffer.getChannelData(0);
+  const blob = encodeWav(pcm, buffer.sampleRate);
+  const date = new Date(session.date).toISOString().slice(0, 10);
+  triggerDownload(blob, `polypro-${session.bpm}bpm-${date}-${withClick ? 'with-click' : 'raw'}.wav`);
 }
 
-async function downloadWithClick(
-  pcm: Float32Array,
+async function renderWithClick(
+  sourceBuffer: AudioBuffer,
+  session: SessionRecord,
   analysis: SessionAnalysis,
   clickSoundId: string,
   accentSoundId: string,
   accentThreshold: number,
-  clickVol: number,
-  getBuffer: (id: string) => AudioBuffer | null,
-) {
-  const sampleRate = 48000;
-  const totalSamples = pcm.length;
-  const offline = new OfflineAudioContext(1, totalSamples, sampleRate);
+  clickVolume: number,
+  latencyOffsetMs: number,
+): Promise<AudioBuffer> {
+  const { getBuffer } = await import('../../audio/sounds');
+  const offline = new OfflineAudioContext(1, sourceBuffer.length, sourceBuffer.sampleRate);
+  const recording = offline.createBufferSource();
+  recording.buffer = sourceBuffer;
+  recording.connect(offline.destination);
+  recording.start();
 
-  // Recording
-  const recSource = offline.createBufferSource();
-  const recBuf = offline.createBuffer(1, pcm.length, sampleRate);
-  recBuf.getChannelData(0).set(pcm);
-  recSource.buffer = recBuf;
-  const recGain = offline.createGain();
-  recGain.gain.value = 4.0;
-  recSource.connect(recGain);
-  recGain.connect(offline.destination);
-  recSource.start(0);
-
-  // Clicks
-  const durationS = pcm.length / sampleRate;
-  const bpm = analysis.bpm;
-  const ioi = 60 / bpm;
-  const meterNum = 4;
-
-  const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
-  const accentBuf = getBuffer(accentSoundId) || clickBuf;
-
-  if (clickBuf) {
+  const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
+  const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
+  if (clickBuffer) {
     const clickGain = offline.createGain();
-    clickGain.gain.value = clickVol;
+    clickGain.gain.value = clickVolume;
     clickGain.connect(offline.destination);
-
-    let beatTime = 0;
-    let beatIdx = 0;
-    while (beatTime < durationS) {
-      const isDownbeat = beatIdx % meterNum === 0;
-      const volState = isDownbeat ? VolumeState.ACCENT : VolumeState.LOUD;
-      const useAccent = volState >= accentThreshold;
-      const buf = useAccent ? (accentBuf || clickBuf) : clickBuf;
-
-      const cs = offline.createBufferSource();
-      cs.buffer = buf;
-      const cg = offline.createGain();
-      cg.gain.value = VOLUME_GAINS[volState];
-      cs.connect(cg);
-      cg.connect(clickGain);
-      cs.start(beatTime);
-
-      beatTime += ioi;
-      beatIdx++;
-    }
+    forEachClickBeat(session, latencyOffsetMs / 1000, ({ adjustedBeatTime, volState }) => {
+      if (adjustedBeatTime < 0 || adjustedBeatTime >= sourceBuffer.duration) return;
+      const buffer = volState >= accentThreshold ? (accentBuffer || clickBuffer) : clickBuffer;
+      const source = offline.createBufferSource();
+      source.buffer = buffer;
+      const gain = offline.createGain();
+      gain.gain.value = VOLUME_GAINS[volState];
+      source.connect(gain);
+      gain.connect(clickGain);
+      source.start(adjustedBeatTime);
+    }, analysis.gridBeats);
   }
-
-  const rendered = await offline.startRendering();
-  const blob = encodeWav(rendered.getChannelData(0), sampleRate);
-  const dateStr = new Date().toISOString().slice(0, 10);
-  triggerDownload(blob, `polypro-${analysis.bpm}bpm-${dateStr}-with-click.wav`);
+  return offline.startRendering();
 }
