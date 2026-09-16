@@ -1,0 +1,76 @@
+name: Playback Sync Build
+
+on:
+  push:
+    branches: [agent/playback-sync-offset]
+    paths: [.github/workflows/playback-sync-build.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/playback-sync-offset
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Add direct metronome sync control
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/components/session/TimelineTab.tsx')
+          s = p.read_text()
+
+          target = "import { ZOOM_LEVELS, SPEED_OPTIONS, CANVAS_HEIGHT, formatTime } from './timeline/timeline-shared';\n"
+          replacement = target + "import { useSettingsStore } from '../../store/settings-store';\n"
+          if target not in s: raise SystemExit('Timeline import target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = "  const [panel, setPanel] = useState<PanelId>(null);\n"
+          replacement = target + "  const [syncSaved, setSyncSaved] = useState(false);\n  const calibratedOffset = useSettingsStore((state) => state.calibratedOffset);\n  const manualAdjustment = useSettingsStore((state) => state.manualAdjustment);\n  const setManualAdjustment = useSettingsStore((state) => state.setManualAdjustment);\n  const savedSyncOffset = calibratedOffset + manualAdjustment;\n"
+          if target not in s: raise SystemExit('Timeline state target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = "  const onsets = liveOnsets ?? editableHitEvents?.scoredOnsets ?? [];\n  const currentTimeMs = playback.playbackPos * session.durationMs;\n"
+          replacement = target + "\n  const setSyncOffset = useCallback((value: number) => {\n    setSyncSaved(false);\n    playback.setLatencyOffsetMs(Math.max(-300, Math.min(300, value)));\n  }, [playback.setLatencyOffsetMs]);\n\n  const nudgeSync = useCallback((deltaMs: number) => {\n    setSyncOffset(playback.latencyOffsetMs + deltaMs);\n  }, [playback.latencyOffsetMs, setSyncOffset]);\n\n  const saveSyncDefault = useCallback(() => {\n    setManualAdjustment(playback.latencyOffsetMs - calibratedOffset);\n    setSyncSaved(true);\n  }, [playback.latencyOffsetMs, calibratedOffset, setManualAdjustment]);\n"
+          if target not in s: raise SystemExit('Timeline sync callback target not found')
+          s = s.replace(target, replacement, 1)
+
+          target = '''      {playback.clickOverlay && (\n        <div className="grid grid-cols-[70px_1fr_42px] items-center gap-2 px-2">\n          <span className="text-[10px] font-semibold text-text-muted">Click level</span>\n          <input aria-label="Click level" type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(e) => playback.setClickVolume(Number(e.target.value) / 100)} />\n          <span className="text-[10px] text-text-muted font-mono text-right">{Math.round(playback.clickVolume * 100)}%</span>\n        </div>\n      )}\n'''
+          replacement = '''      {playback.clickOverlay && (\n        <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-3">\n          <div className="grid grid-cols-[70px_1fr_42px] items-center gap-2">\n            <span className="text-[10px] font-semibold text-text-muted">Click level</span>\n            <input aria-label="Click level" type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(e) => playback.setClickVolume(Number(e.target.value) / 100)} />\n            <span className="text-[10px] text-text-muted font-mono text-right">{Math.round(playback.clickVolume * 100)}%</span>\n          </div>\n\n          <div className="border-t border-border-subtle pt-3 space-y-2.5">\n            <div className="flex items-start justify-between gap-3">\n              <div>\n                <p className="text-xs font-bold text-text-primary">Metronome sync</p>\n                <p className="text-[10px] text-text-muted mt-0.5">Negative = click earlier · Positive = click later</p>\n              </div>\n              <div className="text-right shrink-0">\n                <p className="text-sm font-mono font-bold text-text-primary">{playback.latencyOffsetMs > 0 ? '+' : ''}{playback.latencyOffsetMs.toFixed(1)}ms</p>\n                <p className="text-[9px] text-text-muted">saved {savedSyncOffset > 0 ? '+' : ''}{savedSyncOffset.toFixed(1)}ms</p>\n              </div>\n            </div>\n\n            <div className="grid grid-cols-[46px_46px_1fr_46px_46px] gap-1.5 items-center">\n              <button type="button" aria-label="Move metronome 10 milliseconds earlier" onClick={() => nudgeSync(-10)} className="h-10 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">−10</button>\n              <button type="button" aria-label="Move metronome 1 millisecond earlier" onClick={() => nudgeSync(-1)} className="h-10 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">−1</button>\n              <input aria-label="Metronome sync offset" type="range" min="-300" max="300" step="0.5" value={playback.latencyOffsetMs} onChange={(e) => setSyncOffset(Number(e.target.value))} />\n              <button type="button" aria-label="Move metronome 1 millisecond later" onClick={() => nudgeSync(1)} className="h-10 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">+1</button>\n              <button type="button" aria-label="Move metronome 10 milliseconds later" onClick={() => nudgeSync(10)} className="h-10 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">+10</button>\n            </div>\n\n            <div className="grid grid-cols-2 gap-2">\n              <button type="button" onClick={() => setSyncOffset(savedSyncOffset)} disabled={Math.abs(playback.latencyOffsetMs - savedSyncOffset) < 0.01} className="min-h-[40px] rounded-lg border border-border-subtle text-[10px] font-semibold text-text-muted disabled:opacity-35">Reset to saved</button>\n              <button type="button" onClick={saveSyncDefault} className="min-h-[40px] rounded-lg bg-accent-dim text-accent text-[10px] font-bold">{syncSaved ? 'Saved as default' : 'Save as default'}</button>\n            </div>\n            <p className="text-[9px] leading-relaxed text-text-muted">This shifts the playback metronome and timing overlay against the recording. The audio file is not changed.</p>\n          </div>\n        </div>\n      )}\n'''
+          if target not in s: raise SystemExit('Click-level block target not found')
+          p.write_text(s.replace(target, replacement, 1))
+
+          p = Path('src/store/settings-store.ts')
+          s = p.read_text()
+          target = "  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-150, Math.min(150, adj)) }),"
+          replacement = "  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-300, Math.min(300, adj)) }),"
+          if target not in s: raise SystemExit('manual adjustment clamp target not found')
+          p.write_text(s.replace(target, replacement, 1))
+          PY
+
+      - name: Verify sync controls
+        run: |
+          npm ci
+          npm run typecheck
+          npm run test:run
+          npm run build
+          npm audit --audit-level=high
+
+      - name: Commit verified sync controls
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "Add direct metronome playback sync control"
+          git push origin HEAD:agent/playback-sync-offset
