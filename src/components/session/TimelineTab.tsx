@@ -26,6 +26,7 @@ import { useTimelinePlayback } from './timeline/useTimelinePlayback';
 import { renderTimeline } from './timeline/renderers';
 import { MiniMap } from './timeline/MiniMap';
 import { ZOOM_LEVELS, SPEED_OPTIONS, CANVAS_HEIGHT, formatTime } from './timeline/timeline-shared';
+import { useSettingsStore } from '../../store/settings-store';
 
 interface Props {
   session: SessionRecord;
@@ -58,6 +59,11 @@ export function TimelineTab({ session, hitEvents }: Props) {
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(1);
   const [panel, setPanel] = useState<PanelId>(null);
+  const [syncSaved, setSyncSaved] = useState(false);
+  const calibratedOffset = useSettingsStore((state) => state.calibratedOffset);
+  const manualAdjustment = useSettingsStore((state) => state.manualAdjustment);
+  const setManualAdjustment = useSettingsStore((state) => state.setManualAdjustment);
+  const savedSyncOffset = calibratedOffset + manualAdjustment;
 
   useEffect(() => {
     setEditableHitEvents(hitEvents);
@@ -77,6 +83,20 @@ export function TimelineTab({ session, hitEvents }: Props) {
 
   const onsets = liveOnsets ?? editableHitEvents?.scoredOnsets ?? [];
   const currentTimeMs = playback.playbackPos * session.durationMs;
+
+  const setSyncOffset = useCallback((value: number) => {
+    setSyncSaved(false);
+    playback.setLatencyOffsetMs(Math.max(-300, Math.min(300, value)));
+  }, [playback.setLatencyOffsetMs]);
+
+  const nudgeSync = useCallback((deltaMs: number) => {
+    setSyncOffset(playback.latencyOffsetMs + deltaMs);
+  }, [playback.latencyOffsetMs, setSyncOffset]);
+
+  const saveSyncDefault = useCallback(() => {
+    setManualAdjustment(playback.latencyOffsetMs - calibratedOffset);
+    setSyncSaved(true);
+  }, [playback.latencyOffsetMs, calibratedOffset, setManualAdjustment]);
 
   const handleCanvasTap = useCallback((clientX: number) => {
     const container = containerRef.current;
@@ -194,10 +214,39 @@ export function TimelineTab({ session, hitEvents }: Props) {
       </div>
 
       {playback.clickOverlay && (
-        <div className="grid grid-cols-[70px_1fr_42px] items-center gap-2 px-2">
-          <span className="text-[10px] font-semibold text-text-muted">Click level</span>
-          <input aria-label="Click level" type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(e) => playback.setClickVolume(Number(e.target.value) / 100)} />
-          <span className="text-[10px] text-text-muted font-mono text-right">{Math.round(playback.clickVolume * 100)}%</span>
+        <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-3">
+          <div className="grid grid-cols-[70px_1fr_42px] items-center gap-2">
+            <span className="text-[10px] font-semibold text-text-muted">Click level</span>
+            <input aria-label="Click level" type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(e) => playback.setClickVolume(Number(e.target.value) / 100)} />
+            <span className="text-[10px] text-text-muted font-mono text-right">{Math.round(playback.clickVolume * 100)}%</span>
+          </div>
+
+          <div className="border-t border-border-subtle pt-3 space-y-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-text-primary">Metronome sync</p>
+                <p className="text-[10px] text-text-muted mt-0.5">Negative = click earlier · Positive = click later</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-mono font-bold text-text-primary">{playback.latencyOffsetMs > 0 ? '+' : ''}{playback.latencyOffsetMs.toFixed(1)}ms</p>
+                <p className="text-[9px] text-text-muted">saved {savedSyncOffset > 0 ? '+' : ''}{savedSyncOffset.toFixed(1)}ms</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[46px_46px_1fr_46px_46px] gap-1.5 items-center">
+              <button type="button" aria-label="Move metronome 10 milliseconds earlier" onClick={() => nudgeSync(-10)} className="h-10 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">−10</button>
+              <button type="button" aria-label="Move metronome 1 millisecond earlier" onClick={() => nudgeSync(-1)} className="h-10 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">−1</button>
+              <input aria-label="Metronome sync offset" type="range" min="-300" max="300" step="0.5" value={playback.latencyOffsetMs} onChange={(e) => setSyncOffset(Number(e.target.value))} />
+              <button type="button" aria-label="Move metronome 1 millisecond later" onClick={() => nudgeSync(1)} className="h-10 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">+1</button>
+              <button type="button" aria-label="Move metronome 10 milliseconds later" onClick={() => nudgeSync(10)} className="h-10 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">+10</button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setSyncOffset(savedSyncOffset)} disabled={Math.abs(playback.latencyOffsetMs - savedSyncOffset) < 0.01} className="min-h-[40px] rounded-lg border border-border-subtle text-[10px] font-semibold text-text-muted disabled:opacity-35">Reset to saved</button>
+              <button type="button" onClick={saveSyncDefault} className="min-h-[40px] rounded-lg bg-accent-dim text-accent text-[10px] font-bold">{syncSaved ? 'Saved as default' : 'Save as default'}</button>
+            </div>
+            <p className="text-[9px] leading-relaxed text-text-muted">This shifts the playback metronome and timing overlay against the recording. The audio file is not changed.</p>
+          </div>
         </div>
       )}
 

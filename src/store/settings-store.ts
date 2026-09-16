@@ -50,7 +50,7 @@ export const useSettingsStore = create<SettingsState>()(subscribeWithSelector((s
   setVibrationIntensity: (intensity) =>
     set({ vibrationIntensity: Math.max(0, Math.min(1, intensity)) }),
   setCalibratedOffset: (offset) => set({ calibratedOffset: offset }),
-  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-150, Math.min(150, adj)) }),
+  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-300, Math.min(300, adj)) }),
   setLastCalibratedAt: (date) => set({ lastCalibratedAt: date }),
   setCalibrationConsistency: (value) => set({ calibrationConsistency: value }),
   setSensitivity: (value) => set({ sensitivity: Math.max(0, Math.min(1, value)) }),
