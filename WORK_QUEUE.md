@@ -51,3 +51,7 @@ All implemented flows pass type-check, unit/regression tests, production build a
 - Final review regression: re-scoring now retains an intentionally empty count-in grid. Apply waits for the current scoring preview; precision sliders have keyboard and accessible-value support. The Tune browser check changes calibration and verifies the resulting saved score/configuration.
 - Final evidence: **92 unit/regression tests across 15 files; 40 browser checks across two viewports; type-check and production build pass; zero dependency audit findings; clean diff formatting.** Project deletion also has a database regression proving audio and corrected events survive in Quick Start.
 - Handoff: Q1–Q10 software work is complete. [Readiness report](docs/PRODUCTION_READINESS.md) and [verification record](docs/release/verification.txt) contain the audit outcome, commands, limits and remaining physical acceptance. No production deployment was performed. Device acceptance is intentionally still open.
+
+## Delivery preference
+
+2026-10-15: The user clarified that “push” means commit/push the changes, merge into `main`, and deploy. Follow the release checks and verify the live build as part of that request. This release is authorized for deployment; physical-device acceptance remains tracked in the readiness report.
