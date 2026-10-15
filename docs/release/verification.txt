@@ -1,27 +1,56 @@
-Poly Pro 2.1 — verification completed 2026-10-13
-Branch: upgrade/production-readiness
-Baseline: c90e2d88e4672a94c4631aa8fd1a4d98e5961ecb
-Environment: Linux, Node.js v24.19.0, npm 11.9.0
-Browser: Playwright Chromium, 412x915 touch/mobile and 884x1104 viewports
+Poly Pro 2.2 — Practice and Review verification
+Date: 2026-10-15 UTC
+Baseline: e7676a2 (deployed 2.1)
+Branch: improve/practice-review-sync
 
-PASS npm run typecheck
-PASS npm run test:run — 92 tests, 15 files
-PASS npm run build — production PWA, 32 precached entries
-PASS npm audit --audit-level=moderate — 0 vulnerabilities (all severities)
-PASS npm run test:e2e — 40 checks (20 workflows at each viewport)
-PASS git diff --check
+npm run build
+PASS: TypeScript check and Vite production/PWA build.
+Main application JS approximately 327 kB / 102 kB gzip. Settings and Review remain lazy-loaded.
 
-The browser suite ran against the built production application with simulated
-microphone input and isolated IndexedDB test data. Training additionally used
-synthetic percussion routed through a real Web Audio MediaStream destination.
-Audio source rate and native loop properties were inspected directly.
+npm run test:run
+PASS: 95 tests in 16 files.
+Includes captured/empty grids, reversible flam merging, actual-grid canvas rendering,
+high-density canvas bounds, and rollback when the second analysis write throws synchronously.
 
-Known physical acceptance gap: no Galaxy Z Fold 7, real drum recording corpus,
-Bluetooth routes, thermal/long-session device measurements or live deployment
-were available. See ../PRODUCTION_READINESS.md for the acceptance checklist.
+PLAYWRIGHT_BROWSERS_PATH=/tmp/poly-pro-browsers npm run test:e2e
+PASS: 58 browser checks (29 workflows x 2 viewports), 1.4 minutes.
+Cover: 412x915 touch/mobile. Wide: 884x1104.
+Additional layout case resizes 320px -> 884px at deviceScaleFactor 3.
+Includes real Web Audio scheduling instrumentation and synthetic microphone input.
 
-Production build sizes:
-dist/assets/index-D2MYNPbN.css                    37.73 kB │ gzip:   7.72 kB
-dist/assets/SessionDetailPage-5PGX-zM6.js         81.22 kB │ gzip:  24.57 kB
-dist/assets/SettingsOverlay-NXkt1qW_.js          101.45 kB │ gzip:  28.12 kB
-dist/assets/index-CKbVOz3N.js                    327.82 kB │ gzip: 101.81 kB
+Final legacy-metric display adjustment:
+PLAYWRIGHT_BROWSERS_PATH=/tmp/poly-pro-browsers npx playwright test e2e/accessibility.spec.ts
+PASS: 6 checks, including the additional legacy-data assertions.
+Production build/type-check repeated and passed after this adjustment.
+CI repeats all checks on the final commit and the merge commit before deployment.
+
+npm audit --audit-level=moderate
+PASS: found 0 vulnerabilities.
+
+git diff --check
+PASS.
+
+Baseline failures reproduced before fixes:
+- Slider arrow keys moved the playback position unexpectedly.
+- Silent recording control was missing from Home.
+- A synchronous event-write failure allowed the new score to commit alone.
+
+Additional audit findings fixed and rechecked:
+- Captured beat grid missing from visual rendering.
+- Duplicate review/tuning paths and non-updating hit previews.
+- Unsaved edits lost on close; nested confirmation focus not restored.
+- Narrow overflow, nested interactive controls, missing volume labels and contrast.
+- Flam tuning destroyed editable source hits.
+
+Reviewed screenshots:
+home.png, review.png, timing.png, charts.png, review-320.png, review-wide.png,
+calibration.png. These use isolated synthetic test data, not user recordings.
+
+Deployment:
+Existing GitHub Pages workflow verifies main and deploys its tested artifact.
+Live verification checks the build ID, silent capture -> direct Review -> playback,
+and offline reload in an isolated browser profile.
+
+Limits:
+No physical Galaxy Z Fold 7, acoustic drum recognition, Bluetooth routing or sustained
+30-minute thermal/memory test was performed. See PRODUCTION_READINESS.md device checklist.

@@ -24,6 +24,6 @@ export async function seedSession(page: Page) {
   });
   await page.reload();
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.locator('div[role="button"]').filter({ hasText: '120 BPM' }).click();
+  await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
 }
 

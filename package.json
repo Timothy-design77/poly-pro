@@ -1,6 +1,6 @@
 {
   "name": "poly-pro",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "description": "Pro-grade metronome with recording and analytics",
@@ -22,6 +22,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^18.3.12",

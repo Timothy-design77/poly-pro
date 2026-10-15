@@ -216,15 +216,6 @@ export function ProgressPage() {
                     key={session.id}
                     className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5
                                touch-manipulation active:bg-bg-raised cursor-pointer"
-                    onClick={() => { stop(); setSelectedSession(session); }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
-                        event.preventDefault();
-                        stop(); setSelectedSession(session);
-                      }
-                    }}
                   >
                     <div className="flex items-center gap-3">
                       {session.hasRecording && (
@@ -251,6 +242,7 @@ export function ProgressPage() {
                         </button>
                       )}
 
+                      <button type="button" aria-label={`Review take ${formatDate(session.date)} ${session.bpm} BPM`} onClick={() => { stop(); setSelectedSession(session); }} className="flex-1 min-w-0 flex gap-3 items-center text-left min-h-[44px]">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-text-secondary">{formatDate(session.date)}</span>
@@ -284,6 +276,7 @@ export function ProgressPage() {
                           <span className="text-[9px] text-text-muted">{sigmaLabel}</span>
                         )}
                       </div>
+                      </button>
                     </div>
                     {headline && (
                       <p className="text-[10px] text-text-muted mt-1 ml-[52px] truncate">{headline}</p>

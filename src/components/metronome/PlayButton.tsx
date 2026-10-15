@@ -8,34 +8,38 @@ import { useMetronome } from '../../hooks/useMetronome';
  * Uses a true 4:1 width-to-height ratio and fires on pointer-down so the
  * transport responds at finger contact rather than release.
  */
-export function PlayButton() {
+export function PlayButton({ disabled = false }: { disabled?: boolean }) {
   const playing = useMetronomeStore((s) => s.playing);
   const { togglePlay } = useMetronome();
   const firedRef = useRef(false);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (disabled) return;
     e.preventDefault();
     firedRef.current = true;
     togglePlay();
-  }, [togglePlay]);
+  }, [togglePlay, disabled]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (firedRef.current) {
       e.preventDefault();
       firedRef.current = false;
+    } else if (!disabled) {
+      togglePlay();
     }
-  }, []);
+  }, [togglePlay, disabled]);
 
   return (
     <button
       type="button"
+      disabled={disabled}
       aria-label={playing ? 'Stop metronome' : 'Start metronome'}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
       className={`
         w-full aspect-[4/1] rounded-[20px] text-base font-extrabold tracking-[0.14em]
         flex items-center justify-center gap-3
-        touch-manipulation select-none border-[1.5px]
+        touch-manipulation select-none disabled:opacity-50 border-[1.5px]
         ${playing
           ? 'bg-bg-surface text-text-primary border-border-emphasis'
           : 'bg-accent text-bg-primary border-accent'

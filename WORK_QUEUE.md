@@ -55,3 +55,22 @@ All implemented flows pass type-check, unit/regression tests, production build a
 ## Delivery preference
 
 2026-10-15: The user clarified that “push” means commit/push the changes, merge into `main`, and deploy. Follow the release checks and verify the live build as part of that request. This release is authorized for deployment; physical-device acceptance remains tracked in the readiness report.
+
+## Practice and Review iteration — 2026-10-15
+
+Baseline: `e7676a2` (deployed 2.1). Branch: `improve/practice-review-sync`.
+
+- [x] R1 Silent recording: visible on Home, silences an already-running click, retains captured beat timing, restores normal metronome output after stop/failure.
+- [x] R2 One Review workspace: open immediately after capture; score, playback, corrections and tuning share one draft and one atomic save. Preserve unsaved work when switching views; confirm before discarding.
+- [x] R3 Synchronization: preview markers, score, playback clicks and exports use the same offset/grid. Slider keys do not seek. Playback stops on close/view change and excludes competing metronome audio.
+- [x] R4 User and frontend audit: focused regressions, accessibility, narrow/fold layouts, touch/keyboard controls, permissions/recovery, full release verification and evidence.
+
+Audit findings: post-analysis summary duplicates saved-take review; separate Tune tab and playback drawer maintain competing settings; hit edits do not immediately update visible markers; playback sync can differ from saved scoring; timeline playback is not registered as critical activity; metronome button ignores keyboard activation; recording setting only controls auto-start and does not silence a running metronome.
+
+- R1/R2 loop: two focused checks failed on the baseline (slider arrows sought audio; no silent control). Both pass after consolidation. Silent recording now suppresses output even when the metronome was already running, captures its actual grid, and restores sound afterward.
+- R3 loop: waveform rendering was regenerating a different grid than playback. Waveform, click scheduling, score preview and WAV export now use the same captured grid and offset. Browser instrumentation verifies a 125 ms captured phase plus 600 ms adjustment produces a 725 ms click in playback and exported WAV.
+- R3 storage audit: injected a synchronous failure in the second analysis write; the old code committed the changed score alone. Added explicit transaction abort and a regression that proves the original score and events survive. The browser also verifies the draft remains available for retry.
+- R4 frontend audit: fixed nested Help buttons, nested take-card controls, keyboard metronome activation, background focus isolation (including nested confirmation cleanup), missing volume labels, low-contrast text and narrow-screen overflow. Waveform measurement now follows mounting/resizing, mouse seeking works, and high-zoom canvas allocation is bounded.
+
+- R4 complete: 95 unit/regression tests in 16 files, 58 browser checks across both main viewports, build/type-check, and dependency audit pass. Final legacy-metric display adjustment passes the six accessibility/layout checks again. No browser tests were disabled. Physical acceptance stays open.
+- Visual review also corrected legacy takes showing an invented 0 ms scoring window or a default Beginner badge; missing windows are disclosed and available timing/hit data drives fallback metrics.

@@ -47,8 +47,8 @@ test('full backup restores audio, settings, and corrected take data after deleti
   const restored = await readTake(page);
   expect(restored).toMatchObject({ totalScored: 20, hasRecording: true, score: 100 });
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.locator('div[role=button]').filter({ hasText: '120 BPM' }).click();
-  await page.getByRole('tab', { name: 'Playback', exact: true }).click();
+  await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Start playback', exact: true })).toBeEnabled();
 });
 

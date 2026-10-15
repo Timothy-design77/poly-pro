@@ -103,6 +103,7 @@ export function usePlayback() {
     setError(null);
     if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
     const epoch = epochRef.current;
+    audioEngine.stop(); useMetronomeStore.getState().setPlaying(false);
     releaseRef.current = beginCriticalActivity('playback');
     try {
       const blob = await db.getRecording(sessionId) ?? await db.getRecording(sessionId + '-playback');

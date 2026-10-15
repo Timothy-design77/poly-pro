@@ -8,7 +8,7 @@
  * Stays within screen bounds horizontally.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { createPortal } from 'react-dom';
 
 interface Props {
@@ -17,6 +17,7 @@ interface Props {
 }
 
 export function HelpTip({ text, children }: Props) {
+  const tooltipId = useId();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -76,11 +77,13 @@ export function HelpTip({ text, children }: Props) {
       <button
         ref={buttonRef}
         onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen(!open); }}
-        className="w-[16px] h-[16px] rounded-full flex items-center justify-center
+        className="w-6 h-6 rounded-full flex items-center justify-center
                    text-[9px] font-bold touch-manipulation select-none shrink-0
                    bg-[rgba(21,23,26,0.06)] text-text-muted
                    active:bg-[rgba(21,23,26,0.12)]"
         aria-label="Help"
+        aria-expanded={open}
+        aria-describedby={open ? tooltipId : undefined}
         type="button"
       >
         ?
@@ -88,6 +91,8 @@ export function HelpTip({ text, children }: Props) {
       {open && createPortal(
         <div
           ref={tooltipRef}
+          id={tooltipId}
+          role="tooltip"
           className="fixed z-[60] w-56 bg-bg-raised border border-border-emphasis rounded-lg p-2.5 shadow-lg"
           style={{
             left: pos.x,

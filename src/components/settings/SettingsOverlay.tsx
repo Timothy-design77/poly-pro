@@ -45,10 +45,10 @@ function RecordingSettings() {
     <div className="space-y-4 pt-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs text-text-secondary">Auto-start Metronome</p>
-          <p className="text-[10px] text-text-muted mt-0.5">When RECORD is pressed from a stopped state, start the click only if this is enabled.</p>
+          <p className="text-xs text-text-secondary">Click while recording</p>
+          <p className="text-[10px] text-text-muted mt-0.5">Turn off for silent recording with visual beats and timing feedback. Also available beside Record on Home.</p>
         </div>
-        <button type="button" role="switch" aria-label="Auto-start metronome when recording" aria-checked={includeClick} onClick={() => setIncludeClick(!includeClick)} className={`w-11 h-7 rounded-full border shrink-0 ${includeClick ? 'bg-accent border-accent' : 'bg-bg-raised border-border-subtle'}`}>
+        <button type="button" role="switch" aria-label="Click while recording" aria-checked={includeClick} onClick={() => setIncludeClick(!includeClick)} className={`w-11 h-7 rounded-full border shrink-0 ${includeClick ? 'bg-accent border-accent' : 'bg-bg-raised border-border-subtle'}`}>
           <span className={`block w-5 h-5 rounded-full bg-white mx-1 transition-transform ${includeClick ? 'translate-x-4' : ''}`} />
         </button>
       </div>
@@ -62,7 +62,7 @@ function RecordingSettings() {
       </div>
 
       <button type="button" onClick={() => { setSensitivity(0.5); setIncludeClick(true); }} className="w-full min-h-[40px] rounded-lg border border-border-subtle bg-bg-surface text-text-secondary text-xs font-semibold">Reset Recording Settings</button>
-      <p className="text-[10px] text-text-muted leading-relaxed">Capture itself is always nondestructive raw PCM. Playback cleanup is applied only while listening in Session Timeline.</p>
+      <p className="text-[10px] text-text-muted leading-relaxed">Capture itself is always nondestructive raw PCM. Playback cleanup is applied only while listening in Review.</p>
     </div>
   );
 }
@@ -78,7 +78,7 @@ export function SettingsContent() {
       <CollapsibleSection title="Instruments" help="Train and manage local instrument-classification profiles." icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M12 1v4M12 19v4M1 12h4M19 12h4" /></svg>}><InstrumentSettings /></CollapsibleSection>
       <CollapsibleSection title="Data" help="Bounded backups, imports, storage cleanup, and destructive data controls." icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>}><DataSettings /></CollapsibleSection>
       <CollapsibleSection title="Cloud Enhancement" help="Cloud processing is disabled until a secure supported integration exists." icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" /></svg>}><CloudSettings /></CollapsibleSection>
-      <p className="text-center text-[10px] text-text-faint font-mono pt-3 pb-6 bg-bg-primary">build {__BUILD_ID__}</p>
+      <p className="text-center text-[10px] text-text-muted font-mono pt-3 pb-6 bg-bg-primary">build {__BUILD_ID__}</p>
     </div>
   );
 }
