@@ -7,6 +7,8 @@ import { ScoreTab } from '../components/session/ScoreTab';
 import { TimelineTab } from '../components/session/TimelineTab';
 import { ChartsTab } from '../components/session/ChartsTab';
 import { TuneTab } from '../components/session/TuneTab';
+import { useDialogFocus } from '../hooks/useDialogFocus';
+import { useAnalysis } from '../hooks/useAnalysis';
 import { HelpTip } from '../components/ui/HelpTip';
 
 type TabId = 'score' | 'timeline' | 'charts' | 'tune';
@@ -25,14 +27,19 @@ const TABS: { id: TabId; label: string; help: string }[] = [
   { id: 'tune', label: 'Tune', help: 'Re-score the stored hit set with scoring-only parameters.' },
 ];
 
-export function SessionDetailPage({ session, visible, onClose, onDelete }: Props) {
+export function SessionDetailPage({ session: selectedSession, visible, onClose, onDelete }: Props) {
+  const session = useSessionStore((state) => state.sessions.find((item) => item.id === selectedSession?.id)) ?? selectedSession;
+  const analysis = useAnalysis();
+  const [confirmRedetect, setConfirmRedetect] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('score');
   const [hitEvents, setHitEvents] = useState<HitEventsRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [openChart, setOpenChart] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loadedSessionRef = useRef<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  useDialogFocus(dialogRef, visible, onClose);
   const titleId = useId();
   const tabsId = useId();
 
@@ -49,40 +56,32 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
       onDelete?.(session.id);
       onClose();
     } catch (error) {
-      console.error('Delete failed:', error);
+      setError(error instanceof Error ? error.message : 'Could not delete this session.');
     }
   }, [session, onDelete, onClose]);
 
   useEffect(() => {
     if (!session || !visible) { setHitEvents(null); return; }
     let cancelled = false;
-    setLoading(true);
+    setLoading(loadedSessionRef.current !== session.id);
+    setError(null);
     db.getHitEvents(session.id).then((events) => {
-      if (!cancelled) setHitEvents(events ?? null);
+      if (!cancelled) { setHitEvents(events ?? null); loadedSessionRef.current = session.id; }
     }).catch((error) => {
       console.error('Failed to load hit events:', error);
-      if (!cancelled) setHitEvents(null);
+      if (!cancelled) { setHitEvents(null); setError('Could not load analysis. Close and reopen this session to retry.'); }
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [session?.id, visible]);
+  }, [session?.id, session?.analysisRevision, visible]);
 
   useEffect(() => {
     if (!visible) return;
     setActiveTab('score');
     setOpenChart(null);
     setShowDeleteConfirm(false);
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frame = requestAnimationFrame(() => dialogRef.current?.focus());
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); onClose(); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('keydown', handler);
-      previousFocusRef.current?.focus();
-    };
-  }, [session?.id, visible, onClose]);
+    setConfirmRedetect(false);
+
+  }, [session?.id, visible]);
 
   if (!visible || !session) return null;
 
@@ -149,7 +148,20 @@ export function SessionDetailPage({ session, visible, onClose, onDelete }: Props
       </div>
 
       <div id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-${activeTab}`} className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 overscroll-contain">
-        {loading ? <div className="flex items-center justify-center h-32"><span className="text-text-muted text-sm" role="status">Loading analysis…</span></div> : content}
+        {session.hasRecording && (!session.analyzed || activeTab === 'tune') && <div className="my-3 rounded-xl border border-border-subtle bg-bg-surface p-3 space-y-2">
+          <p className="text-sm text-text-secondary">{session.analyzed ? 'Re-detect hits from the saved audio using current detection settings. This replaces saved hit corrections.' : 'Analyze this saved take, including recovered recordings.'}</p>
+          {analysis.isAnalyzing ? <>
+            <p role="status" className="text-sm text-text-secondary">Analyzing… {Math.round((analysis.progress?.progress ?? 0) * 100)}%</p>
+            <button className="min-h-[44px] underline" onClick={analysis.abort}>Cancel analysis</button>
+          </> : confirmRedetect ? <div role="alertdialog" aria-label="Replace saved corrections" className="space-y-2">
+            <p className="text-sm text-danger">Replace this take’s saved analysis and corrections?</p>
+            <button className="min-h-[44px] px-3 bg-accent text-white rounded-lg" onClick={() => { setConfirmRedetect(false); void analysis.analyze(session.id, undefined, true); }}>Replace and re-detect</button>
+            <button className="min-h-[44px] px-3" onClick={() => setConfirmRedetect(false)}>Keep saved analysis</button>
+          </div> : <button className="min-h-[44px] px-3 bg-accent text-white rounded-lg" onClick={() => session.analyzed ? setConfirmRedetect(true) : void analysis.analyze(session.id)}>{session.analyzed ? 'Re-detect from audio' : 'Analyze saved recording'}</button>}
+          {analysis.error && <p role="alert" className="text-sm text-danger">{analysis.error}</p>}
+        </div>}
+        {error && <p role="alert" className="my-3 rounded-lg bg-danger-dim p-3 text-sm text-danger">{error}</p>}
+        {loading ? <div className="flex items-center justify-center h-32"><span className="text-text-muted text-sm" role="status">Loading analysis…</span></div> : analysis.isAnalyzing ? null : content}
       </div>
     </div>,
     document.body,

@@ -6,6 +6,7 @@ vi.mock('./db', () => ({
   getSetting: vi.fn(async () => undefined),
   setSetting: vi.fn(async () => {}),
   putProject: vi.fn(async () => {}),
+  patchProject: vi.fn(async (id, updates) => ({ ...useProjectStore.getState().projects.find((project) => project.id === id), ...updates })),
   deleteProject: vi.fn(async () => {}),
   putPreset: vi.fn(async () => {}),
   deletePreset: vi.fn(async () => {}),
@@ -13,6 +14,9 @@ vi.mock('./db', () => ({
 
 import { useProjectStore } from './project-store';
 import type { ProjectRecord } from './db';
+import { useMetronomeStore } from './metronome-store';
+import { useSettingsStore } from './settings-store';
+import * as db from './db';
 
 function makeProject(overrides: Partial<ProjectRecord> = {}): ProjectRecord {
   return {
@@ -46,7 +50,7 @@ describe('quick start project state', () => {
     expect(useProjectStore.getState().loaded).toBe(true);
   });
 
-  it('can leave a project and return to Quick Start', () => {
+  it('can leave a project and return to Quick Start', async () => {
     useProjectStore.setState({
       projects: [makeProject()],
       activeProjectId: 'p1',
@@ -54,13 +58,14 @@ describe('quick start project state', () => {
       loaded: true,
     });
 
-    useProjectStore.getState().setActiveProject(null);
+    await useProjectStore.getState().setActiveProject(null);
     expect(useProjectStore.getState().activeProjectId).toBeNull();
   });
 });
 
 describe('project auto-advance', () => {
   beforeEach(() => {
+    useMetronomeStore.getState().setBpm(100);
     useProjectStore.setState({
       projects: [makeProject()],
       activeProjectId: 'p1',
@@ -121,5 +126,24 @@ describe('project auto-advance', () => {
     const res = await record(95);
     expect(res.advanced).toBe(false);
     expect(project().consecutiveCount).toBe(0);
+  });
+
+  it('advances the active transport and keeps the new tempo across project switches', async () => {
+    useProjectStore.setState({ projects: [makeProject({ advanceAfterN: 1 })] });
+    await record(95);
+    expect(useMetronomeStore.getState().bpm).toBe(105);
+    await useProjectStore.getState().setActiveProject(null);
+    expect(project().currentBpm).toBe(105);
+    await useProjectStore.getState().setActiveProject('p1');
+    expect(useMetronomeStore.getState().bpm).toBe(105);
+    expect(project().snapshot?.bpm).toBe(105);
+    expect(db.patchProject).toHaveBeenCalledWith('p1', expect.objectContaining({ currentBpm: 105 }));
+  });
+
+  it('does not reset microphone, detection or calibration when selecting a new project', async () => {
+    useProjectStore.setState({ activeProjectId: null });
+    useSettingsStore.setState({ calibratedOffset: 87, noiseGate: 0.17, highPassHz: 240, includeClickInRecording: false });
+    await useProjectStore.getState().setActiveProject('p1');
+    expect(useSettingsStore.getState()).toMatchObject({ calibratedOffset: 87, noiseGate: 0.17, highPassHz: 240, includeClickInRecording: false });
   });
 });

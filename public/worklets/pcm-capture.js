@@ -97,6 +97,8 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
 
     if (!this._isCapturing) return true;
 
+    if (this._capturedSamples === 0) this.port.postMessage({ type: 'started', time: currentTime });
+
     for (let i = 0; i < channelData.length; i++) {
       this._buffer[this._writePos++] = channelData[i];
       this._capturedSamples++;

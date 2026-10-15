@@ -29,7 +29,7 @@ export function InstrumentSettings() {
       <div className="flex items-center justify-between">
         <span className="text-xs text-text-secondary flex items-center gap-1">
           Classifier Status
-          <HelpTip text="Train at least one instrument with 20+ hits to enable automatic instrument labeling. The classifier uses your kit's unique sound to identify drums in recordings." />
+          <HelpTip text="Train at least two instruments with 20+ hits each to enable automatic instrument labeling. The classifier uses your kit's unique sound to identify drums in recordings." />
         </span>
         <span className={`text-xs font-mono ${classifierReady ? 'text-success' : 'text-text-muted'}`}>
           {classifierReady
@@ -62,7 +62,7 @@ export function InstrumentSettings() {
                       accPct >= 80 ? 'text-success' : accPct >= 60 ? 'text-warning' : 'text-danger'
                     }`}
                   >
-                    {accPct}%
+                    {profiles.length < 2 || p.accuracy < 0 ? 'Not validated' : `${accPct}%`}
                   </span>
                 </div>
               </div>

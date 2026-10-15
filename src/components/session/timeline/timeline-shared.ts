@@ -37,7 +37,7 @@ export function forEachClickBeat(
   cb: (beat: ClickBeat) => void,
   gridBeats?: HitEventsRecord['gridBeats'],
 ): void {
-  if (gridBeats && gridBeats.length > 0) {
+  if (gridBeats) {
     for (const beat of gridBeats) {
       if (beat.trackId !== 'track-0') continue;
       const volState = beat.isDownbeat

@@ -4,7 +4,8 @@ import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { audioEngine } from './audio';
-import { isCriticalActivityActive, subscribeCriticalActivities } from './utils/critical-activity';
+import { isCriticalActivityActive } from './utils/critical-activity';
+import { useUpdateStore } from './store/update-store';
 import './styles/globals.css';
 
 // Service-worker updates are deliberately activation-gated. A new build may
@@ -15,10 +16,10 @@ let registration: ServiceWorkerRegistration | undefined;
 let updateSW: ((reloadPage?: boolean) => Promise<void>) | null = null;
 
 const activatePendingUpdate = () => {
-  if (!pendingRefresh || isCriticalActivityActive() || !updateSW) return;
+  if (!pendingRefresh || isCriticalActivityActive() || audioEngine.running || !updateSW) return;
   pendingRefresh = false;
-  window.dispatchEvent(new CustomEvent('polypro:update-activating'));
-  updateSW(true).catch((error) => console.warn('App update activation failed:', error));
+  useUpdateStore.setState({ updating: true, error: null });
+  updateSW(true).catch(() => { pendingRefresh = true; useUpdateStore.setState({ updating: false, error: 'Update failed. Try again when online.' }); });
 };
 
 updateSW = registerSW({
@@ -28,16 +29,14 @@ updateSW = registerSW({
   },
   onNeedRefresh() {
     pendingRefresh = true;
-    activatePendingUpdate();
+    useUpdateStore.setState({ available: true });
   },
   onRegisterError(error) {
     console.warn('Service worker registration failed:', error);
   },
 });
 
-subscribeCriticalActivities((active) => {
-  if (active.size === 0) activatePendingUpdate();
-});
+window.addEventListener('polypro:apply-update', activatePendingUpdate);
 
 const checkForUpdate = () => {
   registration?.update().catch(() => {});

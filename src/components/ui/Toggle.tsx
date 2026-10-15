@@ -13,7 +13,7 @@ export function Toggle({ enabled, onChange, disabled = false }: ToggleProps) {
       disabled={disabled}
       className={`
         relative w-[44px] h-[24px] rounded-full transition-colors duration-200
-        ${enabled ? 'bg-[rgba(255,255,255,0.3)]' : 'bg-bg-raised'}
+        ${enabled ? 'bg-accent' : 'bg-bg-raised'}
         ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
       `}
     >

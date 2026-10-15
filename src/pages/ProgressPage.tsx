@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react';
+import { lazy, Suspense, useState, useCallback } from 'react';
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
 import { usePlayback } from '../hooks/usePlayback';
-import { SessionDetailPage } from './SessionDetailPage';
+const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module) => ({ default: module.SessionDetailPage })));
 import type { SessionRecord } from '../store/db';
+import { TakeComparison } from '../components/progress/TakeComparison';
 import { HelpTip } from '../components/ui/HelpTip';
 
 function formatDuration(ms: number): string {
@@ -33,7 +34,7 @@ export function ProgressPage() {
   );
   const allSessions = useSessionStore((s) => s.sessions);
   const sessions = allSessions.filter((session) => session.projectId === activeProjectId);
-  const { playingSessionId, play } = usePlayback();
+  const { playingSessionId, play, stop, error: playbackError } = usePlayback();
   const loadSessions = useSessionStore((s) => s.loadFromDB);
 
   const handleDeleteSession = useCallback(async () => {
@@ -42,9 +43,8 @@ export function ProgressPage() {
   }, [loadSessions]);
 
   const totalTime = sessions.reduce((acc, session) => acc + session.durationMs, 0);
-  const bestPct = sessions.length > 0
-    ? Math.max(...sessions.map((session) => session.analyzed ? (session.score ?? session.perfectPct) : session.perfectPct))
-    : 0;
+  const scoredSessions = sessions.filter((session) => session.analyzed && (session.totalScored ?? session.totalHits) >= 8);
+  const bestPct = scoredSessions.reduce((best, session) => Math.max(best, session.score ?? 0), 0);
 
   const streak = (() => {
     if (sessions.length === 0) return 0;
@@ -100,15 +100,15 @@ export function ProgressPage() {
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-text-secondary">Score</span>
           </div>
-          {sessions.length > 0 ? (
+          {scoredSessions.length > 0 ? (
             <div className="h-32 flex items-end gap-[2px]" aria-label="Recent session scores">
-              {sessions.slice(0, 20).reverse().map((session) => {
+              {scoredSessions.slice(0, 20).reverse().map((session) => {
                 const score = session.analyzed ? (session.score ?? 0) : session.perfectPct;
                 return (
                   <div
                     key={session.id}
                     className="flex-1 rounded-t"
-                    title={`${Math.round(score)}%`}
+                    title={`${session.analyzed ? `${Math.round(score)}%` : 'Needs analysis'}`}
                     style={{
                       height: `${Math.max(4, score)}%`,
                       backgroundColor: score >= 85
@@ -189,6 +189,8 @@ export function ProgressPage() {
           </div>
         )}
 
+        {playbackError && <p role="alert" className="text-sm text-danger my-3">{playbackError}</p>}
+        <TakeComparison sessions={sessions} />
         <div>
           <h3 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">
             Sessions ({sessions.length})
@@ -214,13 +216,13 @@ export function ProgressPage() {
                     key={session.id}
                     className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5
                                touch-manipulation active:bg-bg-raised cursor-pointer"
-                    onClick={() => setSelectedSession(session)}
+                    onClick={() => { stop(); setSelectedSession(session); }}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
+                      if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
                         event.preventDefault();
-                        setSelectedSession(session);
+                        stop(); setSelectedSession(session);
                       }
                     }}
                   >
@@ -276,7 +278,7 @@ export function ProgressPage() {
                             : score >= 70 ? 'text-warning'
                             : 'text-danger'}`}
                         >
-                          {Math.round(score)}%
+                          {session.analyzed ? `${Math.round(score)}%` : 'Needs analysis'}
                         </span>
                         {sigmaLabel && (
                           <span className="text-[9px] text-text-muted">{sigmaLabel}</span>
@@ -306,12 +308,12 @@ export function ProgressPage() {
         <div className="h-6 shrink-0" />
       </div>
 
-      <SessionDetailPage
+      {selectedSession && <Suspense fallback={<p role="status">Loading take…</p>}><SessionDetailPage
         session={selectedSession}
         visible={selectedSession !== null}
         onClose={() => setSelectedSession(null)}
         onDelete={handleDeleteSession}
-      />
+      /></Suspense>}
     </div>
   );
 }

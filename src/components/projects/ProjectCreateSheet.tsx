@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { createPortal } from 'react-dom';
 
 const EMOJIS = ['🥁', '🎵', '🎸', '🎹', '🎷', '🎺', '🎻', '🪘', '🎤', '🔥', '⚡', '🎯', '💪', '🏆', '⭐', '🎶'];
@@ -17,7 +18,7 @@ interface ProjectFormData {
 interface ProjectCreateSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: ProjectFormData) => void;
+  onSubmit: (data: ProjectFormData) => void | Promise<void>;
   initial?: Partial<ProjectFormData>;
   isEdit?: boolean;
   onDelete?: () => void;
@@ -31,6 +32,15 @@ export function ProjectCreateSheet({
   isEdit = false,
   onDelete,
 }: ProjectCreateSheetProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, isOpen, onClose);
+  const initialRef = useRef(initial); initialRef.current = initial;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [autoAdvance, setAutoAdvance] = useState(initial?.autoAdvance ?? true);
+  const [accuracyTarget, setAccuracyTarget] = useState(initial?.accuracyTarget ?? 85);
+  const [advanceAfterN, setAdvanceAfterN] = useState(initial?.advanceAfterN ?? 3);
+  const [bpmStep, setBpmStep] = useState(initial?.bpmStep ?? 5);
   const [icon, setIcon] = useState(initial?.icon || '🥁');
   const [name, setName] = useState(initial?.name || '');
   const [startBpm, setStartBpm] = useState(initial?.startBpm || 80);
@@ -41,33 +51,30 @@ export function ProjectCreateSheet({
 
   useEffect(() => {
     if (isOpen) {
+      const initial = initialRef.current;
+      setError(null); setSaving(false);
+      setAutoAdvance(initial?.autoAdvance ?? true); setAccuracyTarget(initial?.accuracyTarget ?? 85); setAdvanceAfterN(initial?.advanceAfterN ?? 3); setBpmStep(initial?.bpmStep ?? 5);
       setIcon(initial?.icon || '🥁');
       setName(initial?.name || '');
       setStartBpm(initial?.startBpm || 80);
       setGoalBpm(initial?.goalBpm || 120);
       setShowEmojiGrid(false);
       openTimeRef.current = Date.now();
-      setTimeout(() => nameRef.current?.focus(), 300);
+      const timer = setTimeout(() => nameRef.current?.focus(), 300);
+      return () => clearTimeout(timer);
     }
-  }, [isOpen, initial]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const isValid = name.trim().length > 0 && goalBpm > startBpm && startBpm >= 20 && goalBpm <= 300;
+  const isValid = name.trim().length > 0 && goalBpm >= startBpm && startBpm >= 10 && goalBpm <= 400 && accuracyTarget >= 1 && accuracyTarget <= 100 && advanceAfterN >= 1 && advanceAfterN <= 100 && Number.isInteger(advanceAfterN) && bpmStep >= 0.5 && bpmStep <= 100;
 
-  const handleSubmit = () => {
-    if (!isValid) return;
-    onSubmit({
-      icon,
-      name: name.trim(),
-      startBpm,
-      goalBpm,
-      accuracyTarget: initial?.accuracyTarget ?? 85,
-      autoAdvance: initial?.autoAdvance ?? true,
-      advanceAfterN: initial?.advanceAfterN ?? 3,
-      bpmStep: initial?.bpmStep ?? 5,
-    });
-    onClose();
+  const handleSubmit = async () => {
+    if (!isValid || saving) return;
+    setSaving(true); setError(null);
+    try { await onSubmit({ icon, name: name.trim(), startBpm, goalBpm, accuracyTarget, autoAdvance, advanceAfterN, bpmStep }); onClose(); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Could not save this project.'); }
+    finally { setSaving(false); }
   };
 
   const handleBackdrop = () => {
@@ -80,6 +87,7 @@ export function ProjectCreateSheet({
       onClick={handleBackdrop}
     >
       <div
+        ref={dialogRef} role="dialog" aria-modal="true" aria-label={isEdit ? 'Edit Project' : 'New Project'} tabIndex={-1}
         className="w-full max-h-[85vh] bg-bg-surface rounded-t-2xl flex flex-col animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
@@ -97,7 +105,7 @@ export function ProjectCreateSheet({
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {/* Live preview card */}
           <div className={`rounded-xl border p-3 flex items-center gap-3
-            bg-bg-raised border-border-subtle border-l-[3px] border-l-[rgba(255,255,255,0.5)]`}>
+            bg-bg-raised border-border-subtle border-l-[3px] border-l-[rgba(21,23,26,0.5)]`}>
             <span className="text-xl">{icon}</span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-text-primary truncate">
@@ -127,7 +135,7 @@ export function ProjectCreateSheet({
                     onClick={() => { setIcon(e); setShowEmojiGrid(false); }}
                     className={`h-[40px] rounded-lg flex items-center justify-center text-lg
                       touch-manipulation active:bg-bg-raised
-                      ${e === icon ? 'bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.15)]' : ''}`}
+                      ${e === icon ? 'bg-[rgba(21,23,26,0.1)] border border-[rgba(21,23,26,0.15)]' : ''}`}
                   >
                     {e}
                   </button>
@@ -140,7 +148,7 @@ export function ProjectCreateSheet({
           <div>
             <label className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5 block">Name</label>
             <input
-              ref={nameRef}
+              aria-label="Project name" ref={nameRef}
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -158,8 +166,9 @@ export function ProjectCreateSheet({
               <label className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5 block">Start BPM</label>
               <input
                 type="number"
+                aria-label="Start BPM" min={10} max={400} step={0.5}
                 value={startBpm}
-                onChange={(e) => setStartBpm(Math.max(20, Math.min(300, Number(e.target.value))))}
+                onChange={(e) => setStartBpm(Number(e.target.value))}
                 className="w-full h-[48px] bg-bg-primary border border-border-subtle rounded-xl
                            px-3 font-mono text-base text-text-primary text-center outline-none
                            focus:border-border-emphasis"
@@ -175,8 +184,9 @@ export function ProjectCreateSheet({
               <label className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5 block">Goal BPM</label>
               <input
                 type="number"
+                aria-label="Goal BPM" min={10} max={400} step={0.5}
                 value={goalBpm}
-                onChange={(e) => setGoalBpm(Math.max(20, Math.min(300, Number(e.target.value))))}
+                onChange={(e) => setGoalBpm(Number(e.target.value))}
                 className="w-full h-[48px] bg-bg-primary border border-border-subtle rounded-xl
                            px-3 font-mono text-base text-text-primary text-center outline-none
                            focus:border-border-emphasis"
@@ -184,8 +194,15 @@ export function ProjectCreateSheet({
             </div>
           </div>
 
-          {!isValid && name.trim().length > 0 && goalBpm <= startBpm && (
-            <div className="text-xs text-warning">Goal BPM must be higher than Start BPM</div>
+          <label className="flex items-center gap-3 min-h-[44px] text-sm text-text-primary"><input type="checkbox" checked={autoAdvance} onChange={(event) => setAutoAdvance(event.target.checked)} />Advance tempo after successful takes</label>
+          {autoAdvance && <div className="grid grid-cols-3 gap-2 text-xs text-text-secondary">
+            <label>Target score %<input aria-label="Target score" type="number" min={1} max={100} value={accuracyTarget} onChange={(event) => setAccuracyTarget(Number(event.target.value))} className="w-full min-h-[44px] border border-border-subtle rounded-lg bg-bg-input p-2" /></label>
+            <label>Passing takes<input aria-label="Passing takes" type="number" min={1} max={100} value={advanceAfterN} onChange={(event) => setAdvanceAfterN(Number(event.target.value))} className="w-full min-h-[44px] border border-border-subtle rounded-lg bg-bg-input p-2" /></label>
+            <label>BPM step<input aria-label="BPM step" type="number" min={0.5} max={100} step={0.5} value={bpmStep} onChange={(event) => setBpmStep(Number(event.target.value))} className="w-full min-h-[44px] border border-border-subtle rounded-lg bg-bg-input p-2" /></label>
+          </div>}
+          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+          {!isValid && name.trim().length > 0 && goalBpm < startBpm && (
+            <div className="text-xs text-warning">Goal BPM must be at least Start BPM</div>
           )}
         </div>
 
@@ -193,18 +210,18 @@ export function ProjectCreateSheet({
         <div className="px-4 pb-4 pt-2 shrink-0 space-y-2">
           <button
             onClick={handleSubmit}
-            disabled={!isValid}
+            disabled={!isValid || saving}
             className={`w-full h-[50px] rounded-xl text-sm font-bold touch-manipulation
               ${isValid
-                ? 'bg-[rgba(255,255,255,0.85)] text-bg-primary active:bg-[rgba(255,255,255,0.95)]'
+                ? 'bg-[rgba(21,23,26,0.85)] text-bg-primary active:bg-[rgba(21,23,26,0.95)]'
                 : 'bg-bg-raised text-text-muted cursor-not-allowed'
               }`}
           >
-            {isEdit ? 'Save Changes' : 'Create Project'}
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Project'}
           </button>
           {isEdit && onDelete && (
             <button
-              onClick={() => { onClose(); setTimeout(onDelete, 300); }}
+              onClick={onDelete}
               className="w-full h-[44px] rounded-xl text-sm font-bold touch-manipulation
                          text-danger border border-danger/20 active:bg-danger-dim"
             >

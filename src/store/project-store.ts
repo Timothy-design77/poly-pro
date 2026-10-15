@@ -52,7 +52,7 @@ interface ProjectState {
   createProject: (project: Omit<ProjectRecord, 'id' | 'created' | 'lastOpened' | 'currentBpm' | 'consecutiveCount' | 'sessionIds' | 'snapshot'>) => Promise<string>;
   updateProject: (id: string, updates: Partial<ProjectRecord>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
-  setActiveProject: (id: string | null) => void;
+  setActiveProject: (id: string | null) => Promise<void>;
   getActiveProject: () => ProjectRecord | null;
   recordSessionResult: (projectId: string, score: number, sessionBpm: number) => Promise<{ advanced: boolean; newBpm: number | null }>;
   savePreset: (preset: Omit<PresetRecord, 'id' | 'created'>) => Promise<string>;
@@ -62,16 +62,6 @@ interface ProjectState {
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
-
-const writeTimers = new Map<string, ReturnType<typeof setTimeout>>();
-function debouncedWrite(key: string, fn: () => Promise<void>) {
-  const existing = writeTimers.get(key);
-  if (existing) clearTimeout(existing);
-  writeTimers.set(key, setTimeout(() => {
-    writeTimers.delete(key);
-    fn().catch(console.error);
-  }, 500));
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -104,44 +94,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     };
     await db.putProject(project);
     set((s) => ({ projects: [...s.projects, project] }));
-    get().setActiveProject(id);
+    await get().setActiveProject(id);
     return id;
   },
 
   updateProject: async (id, updates) => {
-    const updated = get().projects.map((p) => p.id === id ? { ...p, ...updates } : p);
-    set({ projects: updated });
-    const project = updated.find((p) => p.id === id);
-    if (project) debouncedWrite(`project:${id}`, () => db.putProject(project));
+    const updated = await db.patchProject(id, updates);
+    if (!updated) throw new Error('This project no longer exists. Reload Projects.');
+    set((state) => ({ projects: state.projects.map((project) => project.id === id ? updated : project) }));
   },
 
   deleteProject: async (id) => {
-    const { activeProjectId, presets } = get();
-    if (id === activeProjectId) return;
-
-    // Deleting a project must never strand or silently hide its practice
-    // history. Sessions are moved to Quick Start instead of being destroyed.
-    const sessions = await db.getSessionsByProject(id);
-    for (const session of sessions) {
-      await db.putSession({ ...session, projectId: null });
-    }
-
-    const projectPresets = presets.filter((preset) => preset.projectId === id);
-    await Promise.all(projectPresets.map((preset) => db.deletePreset(preset.id)));
-    await db.deleteProject(id);
-
-    set((state) => ({
-      projects: state.projects.filter((p) => p.id !== id),
-      presets: state.presets.filter((preset) => preset.projectId !== id),
-    }));
-
-    if (sessions.length > 0) {
-      const { useSessionStore } = await import('./session-store');
-      await useSessionStore.getState().loadFromDB();
-    }
+    if (id === get().activeProjectId) throw new Error('Switch to Quick Start before deleting the active project.');
+    await db.removeProjectData(id);
+    set((state) => ({ projects: state.projects.filter((project) => project.id !== id), presets: state.presets.filter((preset) => preset.projectId !== id) }));
+    const { useSessionStore } = await import('./session-store');
+    await useSessionStore.getState().loadFromDB();
   },
 
-  setActiveProject: (id) => {
+  setActiveProject: async (id) => {
     const { projects, activeProjectId } = get();
     if (id === activeProjectId) return;
     if (id !== null && !projects.some((project) => project.id === id)) return;
@@ -150,14 +121,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const snapshot = captureSnapshot();
       const oldProject = projects.find((project) => project.id === activeProjectId);
       if (oldProject) {
-        const updated = { ...oldProject, snapshot, currentBpm: snapshot.bpm };
-        set((state) => ({ projects: state.projects.map((project) => project.id === activeProjectId ? updated : project) }));
-        db.putProject(updated).catch(console.error);
+        await get().updateProject(oldProject.id, { snapshot, currentBpm: snapshot.bpm });
       }
     }
 
+    await db.setSetting('activeProjectId', id);
     set({ activeProjectId: id });
-    debouncedWrite('active-project-id', () => db.setSetting('activeProjectId', id));
     if (id === null) return;
 
     const newProject = projects.find((project) => project.id === id);
@@ -166,12 +135,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         restoreSnapshot(newProject.snapshot);
       } else {
         useMetronomeStore.getState().resetToDefaults();
-        useSettingsStore.getState().resetToDefaults();
         useMetronomeStore.getState().setBpm(newProject.currentBpm);
       }
-      const updated = { ...newProject, lastOpened: new Date().toISOString() };
-      set((state) => ({ projects: state.projects.map((project) => project.id === id ? updated : project) }));
-      debouncedWrite(`project:${id}`, () => db.putProject(updated));
+      await get().updateProject(newProject.id, { lastOpened: new Date().toISOString() });
     }
   },
 
@@ -192,7 +158,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const canAdvance = project.currentBpm < project.goalBpm;
     if (streak >= project.advanceAfterN && canAdvance) {
       const newBpm = Math.min(project.currentBpm + project.bpmStep, project.goalBpm);
-      await get().updateProject(projectId, { consecutiveCount: 0, currentBpm: newBpm });
+      const active = get().activeProjectId === projectId;
+      const snapshot = active ? captureSnapshot() : project.snapshot;
+      await get().updateProject(projectId, {
+        consecutiveCount: 0, currentBpm: newBpm,
+        snapshot: snapshot ? { ...snapshot, bpm: newBpm } : null,
+      });
+      if (active) useMetronomeStore.getState().setBpm(newBpm);
       return { advanced: true, newBpm };
     }
 

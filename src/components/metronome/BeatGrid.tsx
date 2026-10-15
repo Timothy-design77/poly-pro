@@ -8,14 +8,14 @@ const FILL_MAP: Record<number, number> = {
   [VolumeState.MED]: 55, [VolumeState.LOUD]: 78, [VolumeState.ACCENT]: 100,
 };
 const FILL_COLOR: Record<number, string> = {
-  [VolumeState.OFF]: 'transparent', [VolumeState.GHOST]: 'rgba(255,255,255,0.03)',
-  [VolumeState.SOFT]: 'rgba(255,255,255,0.06)', [VolumeState.MED]: 'rgba(255,255,255,0.10)',
-  [VolumeState.LOUD]: 'rgba(255,255,255,0.18)', [VolumeState.ACCENT]: 'rgba(255,255,255,0.28)',
+  [VolumeState.OFF]: 'transparent', [VolumeState.GHOST]: 'rgba(21,23,26,0.03)',
+  [VolumeState.SOFT]: 'rgba(21,23,26,0.06)', [VolumeState.MED]: 'rgba(21,23,26,0.10)',
+  [VolumeState.LOUD]: 'rgba(21,23,26,0.18)', [VolumeState.ACCENT]: 'rgba(21,23,26,0.28)',
 };
 const TEXT_COLOR: Record<number, string> = {
-  [VolumeState.OFF]: 'rgba(255,255,255,0.06)', [VolumeState.GHOST]: 'rgba(255,255,255,0.14)',
-  [VolumeState.SOFT]: 'rgba(255,255,255,0.25)', [VolumeState.MED]: 'rgba(255,255,255,0.40)',
-  [VolumeState.LOUD]: 'rgba(255,255,255,0.60)', [VolumeState.ACCENT]: 'rgba(255,255,255,0.90)',
+  [VolumeState.OFF]: 'rgba(21,23,26,0.06)', [VolumeState.GHOST]: 'rgba(21,23,26,0.14)',
+  [VolumeState.SOFT]: 'rgba(21,23,26,0.25)', [VolumeState.MED]: 'rgba(21,23,26,0.40)',
+  [VolumeState.LOUD]: 'rgba(21,23,26,0.60)', [VolumeState.ACCENT]: 'rgba(21,23,26,0.90)',
 };
 
 const LONG_PRESS_MS = 600;
@@ -58,7 +58,7 @@ function SubVolumeControl({ track, subdivision }: { track: { accents: VolumeStat
                 touch-manipulation select-none relative overflow-hidden
                 border transition-colors
                 ${isActive
-                  ? 'border-[rgba(255,255,255,0.15)] text-text-primary'
+                  ? 'border-[rgba(21,23,26,0.15)] text-text-primary'
                   : 'border-border-subtle text-text-muted active:bg-bg-raised'
                 }
               `}
@@ -164,7 +164,7 @@ export function BeatGrid() {
                   const vol = track.accents[beatIdx] ?? VolumeState.SOFT;
                   const fillPct = FILL_MAP[vol] ?? 0;
                   const fillCol = FILL_COLOR[vol] ?? 'transparent';
-                  const textCol = TEXT_COLOR[vol] ?? 'rgba(255,255,255,0.06)';
+                  const textCol = TEXT_COLOR[vol] ?? 'rgba(21,23,26,0.06)';
                   const beatNum = isMainTrack ? Math.floor(beatIdx / subdivision) + 1 : beatIdx + 1;
                   const isActive = playing && currentBeats[track.id] === beatIdx;
                   const hasOverride = track.soundOverrides[beatIdx] !== undefined;
@@ -179,9 +179,9 @@ export function BeatGrid() {
                       className={`
                         h-[34px] rounded-md flex items-center justify-center
                         overflow-hidden touch-manipulation select-none relative border
-                        ${isActive ? 'ring-1 ring-[rgba(255,255,255,0.3)]' : ''}
+                        ${isActive ? 'ring-1 ring-[rgba(21,23,26,0.3)]' : ''}
                         ${vol === VolumeState.OFF
-                          ? 'border-[rgba(255,255,255,0.03)] bg-bg-primary'
+                          ? 'border-[rgba(21,23,26,0.03)] bg-bg-primary'
                           : 'border-border-subtle bg-bg-surface'}
                       `}
                     >
@@ -233,9 +233,9 @@ export function BeatGrid() {
                         onPointerCancel={handlePointerLeave}
                         className={`
                           h-[10px] rounded-sm overflow-hidden touch-manipulation select-none relative
-                          ${isActive ? 'ring-1 ring-[rgba(255,255,255,0.2)]' : ''}
+                          ${isActive ? 'ring-1 ring-[rgba(21,23,26,0.2)]' : ''}
                           ${isBeat
-                            ? 'bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.06)]'
+                            ? 'bg-[rgba(21,23,26,0.04)] border border-[rgba(21,23,26,0.06)]'
                             : 'bg-bg-surface border border-border-subtle'}
                         `}
                       >

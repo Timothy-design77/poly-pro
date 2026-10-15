@@ -52,7 +52,7 @@ export const useInstrumentStore = create<InstrumentStoreState>((set, get) => ({
       const classifier = new KNNClassifier();
       classifier.loadProfiles(profiles);
 
-      set({ profiles, loaded: true, classifier });
+      set({ profiles: profiles.map((profile) => ({ ...profile, accuracy: classifier.crossValidate(profile.samples) })), loaded: true, classifier });
     } catch (err) {
       console.error('Failed to load instrument profiles:', err);
       set({ loaded: true });
@@ -60,7 +60,8 @@ export const useInstrumentStore = create<InstrumentStoreState>((set, get) => ({
   },
 
   addTrainingSamples: async (instrument, features) => {
-    const { profiles, classifier } = get();
+    const { profiles } = get();
+    const classifier = new KNNClassifier();
 
     // Find or create profile
     let profile = profiles.find((p) => p.name === instrument);
@@ -80,7 +81,7 @@ export const useInstrumentStore = create<InstrumentStoreState>((set, get) => ({
     }));
     profile = {
       ...profile,
-      samples: [...profile.samples, ...newSamples],
+      samples: [...profile.samples, ...newSamples].slice(-200),
       lastTrained: new Date().toISOString(),
     };
 
@@ -90,42 +91,27 @@ export const useInstrumentStore = create<InstrumentStoreState>((set, get) => ({
 
     // Reload classifier and compute accuracy
     classifier.loadProfiles(updatedProfiles);
-    const accuracy = classifier.crossValidate(profile.samples);
-    profile = { ...profile, accuracy };
-
-    // Persist to IDB
-    await db.putInstrumentProfile({
-      name: profile.name,
-      samples: profile.samples.map((s) => ({
-        features: s.features,
-        label: s.label,
-      })),
-      accuracy: profile.accuracy,
-      lastTrained: profile.lastTrained,
-    });
-
-    // Update final profiles list with accuracy
-    const finalProfiles = updatedProfiles.map((p) =>
-      p.name === instrument ? profile! : p,
-    );
+    const finalProfiles = updatedProfiles.map((item) => ({ ...item, accuracy: classifier.crossValidate(item.samples) }));
+    const accuracy = finalProfiles.find((item) => item.name === instrument)!.accuracy;
+    await db.replaceInstrumentProfiles(finalProfiles);
 
     set({ profiles: finalProfiles, classifier });
     return { accuracy };
   },
 
   deleteProfile: async (instrument) => {
-    const { profiles, classifier } = get();
+    const { profiles } = get();
+    const classifier = new KNNClassifier();
     const updated = profiles.filter((p) => p.name !== instrument);
     classifier.loadProfiles(updated);
-    await db.deleteInstrumentProfile(instrument);
-    set({ profiles: updated });
+    const validated = updated.map((profile) => ({ ...profile, accuracy: classifier.crossValidate(profile.samples) }));
+    await db.replaceInstrumentProfiles(validated);
+    set({ profiles: validated, classifier });
   },
 
   clearAllProfiles: async () => {
-    const { classifier } = get();
-    classifier.loadProfiles([]);
     await db.clearAllInstrumentProfiles();
-    set({ profiles: [] });
+    set({ profiles: [], classifier: new KNNClassifier() });
   },
 
   classifyOnsets: (features) => {

@@ -48,7 +48,7 @@ function RecordingSettings() {
           <p className="text-xs text-text-secondary">Auto-start Metronome</p>
           <p className="text-[10px] text-text-muted mt-0.5">When RECORD is pressed from a stopped state, start the click only if this is enabled.</p>
         </div>
-        <button type="button" role="switch" aria-checked={includeClick} onClick={() => setIncludeClick(!includeClick)} className={`w-11 h-7 rounded-full border shrink-0 ${includeClick ? 'bg-accent border-accent' : 'bg-bg-raised border-border-subtle'}`}>
+        <button type="button" role="switch" aria-label="Auto-start metronome when recording" aria-checked={includeClick} onClick={() => setIncludeClick(!includeClick)} className={`w-11 h-7 rounded-full border shrink-0 ${includeClick ? 'bg-accent border-accent' : 'bg-bg-raised border-border-subtle'}`}>
           <span className={`block w-5 h-5 rounded-full bg-white mx-1 transition-transform ${includeClick ? 'translate-x-4' : ''}`} />
         </button>
       </div>

@@ -48,7 +48,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
       const midY = pad.top + chartH / 2;
 
       // Grid
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.06)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(pad.left, midY);
@@ -56,7 +56,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
       ctx.stroke();
 
       // Draw line
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.7)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       for (let i = 0; i < points.length; i++) {

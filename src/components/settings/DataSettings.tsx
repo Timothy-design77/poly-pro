@@ -15,7 +15,8 @@ import {
   type ImportPreview,
   type ExportProgress,
 } from '../../utils/backup';
-import { beginCriticalActivity } from '../../utils/critical-activity';
+import { hydrateStores, flushPersistence, stopPersistence, startPersistence } from '../../store/persistence';
+import { beginCriticalActivity, isCriticalActivityActive } from '../../utils/critical-activity';
 import * as db from '../../store/db';
 import { HelpTip } from '../ui/HelpTip';
 
@@ -33,6 +34,7 @@ export function DataSettings() {
   const [isPersistent, setIsPersistent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [restoreSettings, setRestoreSettings] = useState(true);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -89,7 +91,11 @@ export function DataSettings() {
     setProgress(null);
     setError(null);
     try {
-      const result = await importBackup(importFile, setProgress);
+      if (isCriticalActivityActive()) throw new Error('Finish the current recording, analysis or data operation first.');
+      await flushPersistence();
+      stopPersistence();
+      const result = await importBackup(importFile, setProgress, { restoreSettings });
+      await hydrateStores();
       await Promise.all([loadSessions(), loadProjects(), loadInstruments()]);
       await refreshStorage();
       setMessage(`Imported ${result.imported.projects} projects and ${result.imported.sessions} sessions; skipped ${result.skipped} duplicates.`);
@@ -98,19 +104,21 @@ export function DataSettings() {
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Import failed');
     } finally {
+      startPersistence();
       setState('idle');
       setProgress(null);
     }
-  }, [importFile, loadSessions, loadProjects, loadInstruments, refreshStorage]);
+  }, [restoreSettings, importFile, loadSessions, loadProjects, loadInstruments, refreshStorage]);
 
   const handleDeleteAll = useCallback(async () => {
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
     const release = beginCriticalActivity('data');
     setState('deleting');
     setError(null);
     try {
       await db.clearAllData();
-      useMetronomeStore.getState().resetToDefaults();
-      useSettingsStore.getState().resetToDefaults();
+      useMetronomeStore.setState(useMetronomeStore.getInitialState(), true);
+      useSettingsStore.setState(useSettingsStore.getInitialState(), true);
       await Promise.all([loadSessions(), loadProjects(), loadInstruments()]);
       await refreshStorage();
       setShowDeleteConfirm(false);
@@ -124,11 +132,10 @@ export function DataSettings() {
   }, [loadSessions, loadProjects, loadInstruments, refreshStorage]);
 
   const handleDeleteAudio = useCallback(async (sessionId: string) => {
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
     const release = beginCriticalActivity('data');
     try {
-      await db.deleteRecording(sessionId);
-      const session = sessions.find((item) => item.id === sessionId);
-      if (session) await db.putSession({ ...session, hasRecording: false });
+      await db.removeSessionData(sessionId, true);
       await loadSessions();
       await refreshStorage();
     } catch (deleteError) {
@@ -194,6 +201,7 @@ export function DataSettings() {
           <p className="text-xs font-semibold text-text-primary">Import preview</p>
           <p className="text-[11px] text-text-secondary">{importPreview.newProjects} new projects · {importPreview.newSessions} new sessions</p>
           <p className="text-[10px] text-text-muted">{importPreview.duplicateProjects + importPreview.duplicateSessions} duplicates will be skipped. Existing IDs are never overwritten.</p>
+          <label className="flex items-center gap-2 min-h-[44px] text-xs text-text-primary"><input type="checkbox" checked={restoreSettings} onChange={(event) => setRestoreSettings(event.target.checked)} />Restore backed-up settings and active project</label>
           <div className="flex gap-2">
             <button type="button" className="flex-1 min-h-[42px] rounded-lg border border-border-subtle text-xs text-text-secondary" onClick={() => { setState('idle'); setImportPreview(null); setImportFile(null); }}>Cancel</button>
             <button type="button" className="flex-1 min-h-[42px] rounded-lg bg-accent text-xs font-semibold text-bg-primary" onClick={() => void handleImport()}>Import</button>

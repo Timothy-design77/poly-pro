@@ -65,7 +65,7 @@ export function PushPullChart({ hitEvents, width, height }: Props) {
 
     // Zero line
     const zeroY = padT + chartH / 2;
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = 'rgba(21,23,26,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(padL, zeroY);

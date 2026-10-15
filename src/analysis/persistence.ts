@@ -1,4 +1,4 @@
-import type { SessionAnalysis } from './types';
+import type { AnalysisConfig, SessionAnalysis } from './types';
 import type { HitEventsRecord, SessionRecord } from '../store/db';
 import * as db from '../store/db';
 import { useSessionStore } from '../store/session-store';
@@ -7,6 +7,9 @@ export function applyAnalysisToSession(session: SessionRecord, result: SessionAn
   return {
     ...session,
     analyzed: true,
+    analysisError: undefined,
+    analysisRevision: (session.analysisRevision ?? 0) + 1,
+    analysisVersion: 1,
     score: result.score,
     sigma: result.sigma,
     meanOffset: result.meanOffset,
@@ -43,10 +46,13 @@ export function analysisToHitEvents(
   result: SessionAnalysis,
   previous?: HitEventsRecord | null,
 ): HitEventsRecord {
+  const prior = [...(previous?.scoredOnsets ?? [])].sort((a, b) => a.time - b.time);
   return {
     sessionId,
     scoredOnsets: result.scoredOnsets.map((onset) => {
-      const old = previous?.scoredOnsets.find((candidate) => Math.abs(candidate.time - onset.time) < 0.002);
+      let low = 0, high = prior.length;
+      while (low < high) { const mid = (low + high) >>> 1; if (prior[mid].time <= onset.time - 0.002) low = mid + 1; else high = mid; }
+      const old = prior[low] && Math.abs(prior[low].time - onset.time) < 0.002 ? prior[low] : undefined;
       return {
         time: onset.time,
         delta: onset.delta,
@@ -76,10 +82,12 @@ export async function persistAnalysisResult(
   session: SessionRecord,
   result: SessionAnalysis,
   previous?: HitEventsRecord | null,
+  config?: AnalysisConfig,
 ): Promise<{ session: SessionRecord; hitEvents: HitEventsRecord }> {
-  const updatedSession = applyAnalysisToSession(session, result);
+  let updatedSession = applyAnalysisToSession(session, result);
+  if (config) updatedSession.analysisConfig = { ...config };
   const hitEvents = analysisToHitEvents(session.id, result, previous);
-  await db.putAnalysis(updatedSession, hitEvents);
+  updatedSession = await db.putAnalysis(updatedSession, hitEvents, session.analysisRevision ?? 0);
   useSessionStore.setState((state) => ({
     sessions: state.sessions.map((item) => item.id === session.id ? updatedSession : item),
   }));

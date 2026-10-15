@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { SwipeNavigation } from './components/ui/SwipeNavigation';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { HomePage } from './pages/HomePage';
 import { ProgressPage } from './pages/ProgressPage';
-import { SettingsContent } from './components/settings/SettingsOverlay';
+const SettingsContent = lazy(() => import('./components/settings/SettingsOverlay').then((module) => ({ default: module.SettingsContent })));
 import { UpdateBanner } from './components/ui/UpdateBanner';
 import { useProjectStore } from './store/project-store';
 import { useSessionStore } from './store/session-store';
@@ -74,7 +74,7 @@ export function App() {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4">
         <div className="flex items-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[rgba(255,255,255,0.85)] animate-splash-pulse" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[rgba(21,23,26,0.85)] animate-splash-pulse" />
           <span className="text-lg font-bold tracking-wide text-text-primary">Poly Pro</span>
         </div>
         <span className="text-[11px] text-text-muted tracking-wider uppercase">Loading your setup</span>
@@ -94,7 +94,7 @@ export function App() {
         pages={[<ProjectsPage />, <HomePage />, <ProgressPage />]}
         pageLabels={['Projects', 'Home', 'Progress']}
         initialPage={1}
-        settingsContent={<SettingsContent />}
+        settingsContent={<Suspense fallback={<p role="status" className="p-4 text-sm text-text-secondary">Loading settings…</p>}><SettingsContent /></Suspense>}
       />
     </div>
   );

@@ -185,6 +185,7 @@ export interface HeadlineItem {
 
 /** Sigma quality level */
 export type SigmaLevel =
+  | 'Insufficient hits'
   | 'Professional'   // σ ≤ 10ms
   | 'Advanced'       // σ ≤ 20ms
   | 'Intermediate'   // σ ≤ 35ms

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -13,6 +14,7 @@ export default defineConfig({
   base: '/poly-pro/',
   plugins: [
     react(),
+    tailwindcss(),
     VitePWA({
       // Updates are prompted programmatically from main.tsx and activated only
       // after critical local work finishes.

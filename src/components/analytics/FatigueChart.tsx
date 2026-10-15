@@ -51,7 +51,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
       const chartH = h - pad.top - pad.bottom;
 
       // Grid lines
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.06)';
       ctx.lineWidth = 1;
       for (let i = 0; i <= 4; i++) {
         const y = pad.top + (i / 4) * chartH;
@@ -62,7 +62,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
       }
 
       // Draw line
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.7)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       for (let i = 0; i < points.length; i++) {
@@ -106,12 +106,12 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
         ctx.stroke();
         ctx.setLineDash([]);
         // Circle marker
-        ctx.fillStyle = '#F87171';
+        ctx.fillStyle = '#B4232C';
         ctx.beginPath();
         ctx.arc(bx, by, 4, 0, Math.PI * 2);
         ctx.fill();
         // Label
-        ctx.fillStyle = '#F87171';
+        ctx.fillStyle = '#B4232C';
         ctx.font = '8px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('breakdown', bx, pad.top - 2);

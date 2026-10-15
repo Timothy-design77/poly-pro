@@ -147,7 +147,7 @@ export function SoundPickerSheet({
                           text-left px-3 py-3 rounded-lg text-sm flex items-center gap-2
                           touch-manipulation
                           ${isActive
-                            ? 'bg-[rgba(255,255,255,0.08)] text-text-primary border border-[rgba(255,255,255,0.1)]'
+                            ? 'bg-[rgba(21,23,26,0.08)] text-text-primary border border-[rgba(21,23,26,0.1)]'
                             : 'text-text-secondary active:bg-bg-raised'}
                         `}
                       >

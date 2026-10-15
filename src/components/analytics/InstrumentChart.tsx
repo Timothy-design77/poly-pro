@@ -116,14 +116,14 @@ export function InstrumentChart({ hitEvents, width, height }: Props) {
 
       // Legend
       const legendY = 8;
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillStyle = 'rgba(21,23,26,0.6)';
       ctx.fillRect(pad.left, legendY, 8, 8);
       ctx.fillStyle = '#8B8B94';
       ctx.font = '9px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('σ', pad.left + 12, legendY + 7);
 
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillStyle = 'rgba(21,23,26,0.3)';
       ctx.fillRect(pad.left + 28, legendY, 8, 8);
       ctx.fillStyle = '#8B8B94';
       ctx.fillText('|offset|', pad.left + 40, legendY + 7);

@@ -1,4 +1,4 @@
-export type CriticalActivity = 'recording' | 'analysis' | 'backup' | 'import' | 'calibration' | 'data';
+export type CriticalActivity = 'training' | 'playback' | 'recording' | 'analysis' | 'backup' | 'import' | 'calibration' | 'data';
 
 type Listener = (active: ReadonlySet<CriticalActivity>) => void;
 const counts = new Map<CriticalActivity, number>();

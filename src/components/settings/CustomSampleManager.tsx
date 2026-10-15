@@ -15,7 +15,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as db from '../../store/db';
 import type { CustomSampleRecord } from '../../store/db';
 import { audioEngine } from '../../audio';
-import { registerCustomBuffer } from '../../audio/sounds';
+import { registerCustomBuffer, forgetCustomBuffer } from '../../audio/sounds';
+import { ensurePcmCaptureWorklet } from '../../audio/worklets';
+import { getPreferredMicStream } from '../../utils/mic';
+import { beginCriticalActivity, isCriticalActivityActive } from '../../utils/critical-activity';
 import { HelpTip } from '../ui/HelpTip';
 
 interface Props {
@@ -37,6 +40,16 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
 
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const previewRef = useRef<AudioContext | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const generationRef = useRef(0);
+  const workletRef = useRef<AudioWorkletNode | null>(null);
+  const doneRef = useRef<Promise<void> | null>(null);
+  const stopRef = useRef<() => void>(() => {});
+  const releaseRef = useRef<(() => void) | null>(null);
+  const sampleRateRef = useRef(48000);
   // Recording refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -78,38 +91,49 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
   // ─── Recording ───
 
   const startRecording = useCallback(async () => {
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
+    const generation = ++generationRef.current;
+    releaseRef.current = beginCriticalActivity('recording');
+    setPreparing(true);
     setError(null);
     chunksRef.current = [];
     setRecordingDuration(0);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: { ideal: 48000 }, channelCount: 1 },
-      });
+      const { stream } = await getPreferredMicStream();
+      if (generation !== generationRef.current) { stream.getTracks().forEach((track) => track.stop()); return; }
       streamRef.current = stream;
-
-      const ctx = new AudioContext({ sampleRate: 48000 });
-      audioCtxRef.current = ctx;
-
+      const ctx = new AudioContext({ sampleRate: 48000 }); audioCtxRef.current = ctx;
+      await ctx.resume(); await ensurePcmCaptureWorklet(ctx);
+      if (generation !== generationRef.current) return;
+      sampleRateRef.current = ctx.sampleRate;
       const source = ctx.createMediaStreamSource(stream);
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      source.connect(processor);
-      processor.connect(ctx.destination);
-
-      processor.onaudioprocess = (e) => {
-        const input = e.inputBuffer.getChannelData(0);
-        const copy = new Float32Array(input.length);
-        copy.set(input);
-        chunksRef.current.push(copy);
+      const processor = new AudioWorkletNode(ctx, 'pcm-capture-processor'); workletRef.current = processor;
+      const silent = ctx.createGain(); silent.gain.value = 0;
+      source.connect(processor); processor.connect(silent); silent.connect(ctx.destination);
+      let resolveDone = () => {}; doneRef.current = new Promise<void>((resolve) => { resolveDone = resolve; });
+      let captured = 0;
+      processor.port.onmessage = ({ data }) => {
+        if (data.type === 'pcm') {
+          const remaining = Math.max(0, ctx.sampleRate * 4 - captured);
+          const chunk = (data.samples as Float32Array).subarray(0, remaining); captured += chunk.length;
+          if (chunk.length) chunksRef.current.push(chunk);
+        } else if (data.type === 'done') resolveDone();
       };
-
+      stream.getAudioTracks().forEach((track) => { track.onended = () => stopRef.current(); });
+      processor.onprocessorerror = () => stopRef.current();
+      processor.port.postMessage({ type: 'start' });
       const startTime = Date.now();
       timerRef.current = window.setInterval(() => {
-        setRecordingDuration(Date.now() - startTime);
+        const elapsed = Date.now() - startTime; setRecordingDuration(elapsed);
+        if (elapsed >= 4000) stopRef.current();
       }, 100);
 
-      setMode('recording');
+      setPreparing(false); setMode('recording');
     } catch (err) {
+      streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null;
+      void audioCtxRef.current?.close().catch(() => {}); audioCtxRef.current = null;
+      releaseRef.current?.(); releaseRef.current = null; setPreparing(false);
       if (err instanceof DOMException && err.name === 'NotAllowedError') {
         setError('Microphone access denied');
       } else {
@@ -118,8 +142,15 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
     }
   }, []);
 
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback(async () => {
+    if (!workletRef.current) return;
     clearInterval(timerRef.current);
+    const generation = generationRef.current;
+    const node = workletRef.current; workletRef.current = null;
+    node.port.postMessage({ type: 'stop' });
+    if (doneRef.current) await Promise.race([doneRef.current, new Promise<void>((resolve) => setTimeout(resolve, 1500))]);
+    node.port.onmessage = null; node.disconnect();
+    releaseRef.current?.(); releaseRef.current = null;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -128,6 +159,8 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
       audioCtxRef.current.close().catch(() => {});
       audioCtxRef.current = null;
     }
+
+    if (generation !== generationRef.current) return;
 
     // Merge chunks
     const totalLen = chunksRef.current.reduce((s, c) => s + c.length, 0);
@@ -143,8 +176,9 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
     chunksRef.current = [];
 
     // Auto-detect content region for initial trim handles
-    const { start, end } = detectContent(merged, 0.015);
-    setRawPcm(merged);
+    const pcm = resample(merged, sampleRateRef.current, 48000);
+    const { start, end } = detectContent(pcm, 0.015);
+    setRawPcm(pcm);
     setTrimStart(start);
     setTrimEnd(end);
     setQuality(22050);
@@ -152,7 +186,13 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
     setMode('editing');
   }, []);
 
+  stopRef.current = () => { void stopRecording(); };
+
   const cancelRecording = useCallback(() => {
+    generationRef.current++;
+    void previewRef.current?.close().catch(() => {}); previewRef.current = null;
+    if (workletRef.current) { workletRef.current.port.onmessage = null; workletRef.current.disconnect(); workletRef.current = null; }
+    releaseRef.current?.(); releaseRef.current = null; setPreparing(false);
     clearInterval(timerRef.current);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -166,19 +206,22 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
     setMode('list');
   }, []);
 
+  useEffect(() => cancelRecording, [cancelRecording]);
+
   // ─── Import ───
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { setError('Choose an audio file under 20 MB. Only the first 4 seconds are used.'); return; }
     e.target.value = '';
     setError(null);
 
     try {
       const arrayBuffer = await file.arrayBuffer();
       const ctx = new AudioContext({ sampleRate: 48000 });
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      await ctx.close();
+      let audioBuffer: AudioBuffer;
+      try { audioBuffer = await ctx.decodeAudioData(arrayBuffer); } finally { await ctx.close(); }
 
       const channel = audioBuffer.getChannelData(0);
       // Cap at 4 seconds for editing (user trims down)
@@ -204,21 +247,23 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
   const previewTrimmed = useCallback(() => {
     if (!trimmedPcm || trimmedPcm.length < 10) return;
     try {
-      const ctx = new AudioContext({ sampleRate: 48000 });
+      void previewRef.current?.close().catch(() => {});
+      const ctx = new AudioContext({ sampleRate: 48000 }); previewRef.current = ctx;
       const buffer = ctx.createBuffer(1, trimmedPcm.length, 48000);
       buffer.getChannelData(0).set(trimmedPcm);
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(ctx.destination);
       source.start();
-      source.onended = () => ctx.close().catch(() => {});
+      source.onended = () => { if (previewRef.current === ctx) previewRef.current = null; if (ctx.state !== 'closed') void ctx.close().catch(() => {}); };
     } catch { /* */ }
   }, [trimmedPcm]);
 
   // ─── Save ───
 
   const saveSample = useCallback(async () => {
-    if (!trimmedPcm || !sampleName.trim()) return;
+    if (!trimmedPcm || !sampleName.trim() || savingRef.current) return;
+    savingRef.current = true; setSaving(true);
 
     // Resample to target quality
     const resampled = resample(trimmedPcm, 48000, quality);
@@ -239,11 +284,9 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
       await db.putCustomSample(record);
 
       // Register at 48kHz for playback
-      const previewCtx = new AudioContext({ sampleRate: 48000 });
-      const buf = previewCtx.createBuffer(1, trimmedPcm.length, 48000);
+      const buf = new AudioBuffer({ numberOfChannels: 1, length: trimmedPcm.length, sampleRate: 48000 });
       buf.getChannelData(0).set(trimmedPcm);
       registerCustomBuffer(id, buf);
-      await previewCtx.close();
 
       setRawPcm(null);
       await loadSamples();
@@ -251,7 +294,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
       setMode('list');
     } catch {
       setError('Failed to save sample');
-    }
+    } finally { savingRef.current = false; setSaving(false); }
   }, [trimmedPcm, sampleName, quality, onSamplesChanged]);
 
   // ─── Delete ───
@@ -259,6 +302,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
   const deleteSample = useCallback(async (id: string) => {
     try {
       await db.deleteCustomSample(id);
+      forgetCustomBuffer(id);
       await loadSamples();
       onSamplesChanged();
     } catch { setError('Failed to delete'); }
@@ -276,13 +320,14 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
       </div>
 
       {error && (
-        <div className="bg-danger-dim border border-danger/30 rounded-md p-2">
+        <div role="alert" className="bg-danger-dim border border-danger/30 rounded-md p-2">
           <p className="text-danger text-xs">{error}</p>
         </div>
       )}
 
       {/* ─── List ─── */}
-      {mode === 'list' && (
+      {preparing && <p role="status" className="text-xs text-text-secondary">Preparing microphone…</p>}
+      {mode === 'list' && !preparing && (
         <>
           {samples.length > 0 && (
             <div className="space-y-1">
@@ -389,7 +434,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
                   onClick={() => setQuality(opt.rate)}
                   className={`flex-1 py-1.5 rounded-md text-[10px] min-h-[36px] transition-colors ${
                     quality === opt.rate
-                      ? 'bg-[rgba(255,255,255,0.12)] text-text-primary'
+                      ? 'bg-[rgba(21,23,26,0.12)] text-text-primary'
                       : 'bg-bg-raised text-text-muted'
                   }`}
                 >
@@ -405,6 +450,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
             <label className="text-[10px] text-text-muted block mb-1">Name</label>
             <input
               type="text"
+              aria-label="Sample name"
               value={sampleName}
               onChange={(e) => setSampleName(e.target.value.slice(0, 30))}
               placeholder="e.g. My Kick, Studio Snare"
@@ -423,14 +469,14 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
             </button>
             <button
               onClick={saveSample}
-              disabled={!sampleName.trim() || trimmedDurationMs < 5}
+              disabled={saving || !sampleName.trim() || trimmedDurationMs < 5}
               className={`flex-1 py-2 rounded-md text-xs font-medium min-h-[44px] ${
                 sampleName.trim() && trimmedDurationMs >= 5
                   ? 'bg-accent text-bg-primary'
                   : 'bg-bg-raised text-text-muted cursor-not-allowed'
               }`}
             >
-              Save ({formatBytes(estimatedBytes)})
+              {saving ? 'Saving…' : `Save (${formatBytes(estimatedBytes)})`}
             </button>
           </div>
         </div>
@@ -483,7 +529,7 @@ function WaveformTrimmer({
     ctx.scale(dpr, dpr);
 
     // Background
-    ctx.fillStyle = '#1A1A1E';
+    ctx.fillStyle = '#E7E9ED';
     ctx.fillRect(0, 0, width, HEIGHT);
 
     // Downsample waveform for display
@@ -501,7 +547,7 @@ function WaveformTrimmer({
       const frac = i / bins;
       const inTrim = frac >= trimStart && frac <= trimEnd;
 
-      ctx.fillStyle = inTrim ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.12)';
+      ctx.fillStyle = inTrim ? 'rgba(21,23,26,0.7)' : 'rgba(21,23,26,0.12)';
       ctx.fillRect(i, (HEIGHT - h) / 2, 1, Math.max(1, h));
     }
 
@@ -512,9 +558,9 @@ function WaveformTrimmer({
 
     // Trim handles
     const drawHandle = (x: number) => {
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillStyle = 'rgba(21,23,26,0.9)';
       ctx.fillRect(x - 1.5, 0, 3, HEIGHT);
-      ctx.fillStyle = '#0C0C0E';
+      ctx.fillStyle = '#FFFFFF';
       for (let y = HEIGHT * 0.3; y < HEIGHT * 0.7; y += 8) {
         ctx.fillRect(x - 0.5, y, 1, 3);
       }

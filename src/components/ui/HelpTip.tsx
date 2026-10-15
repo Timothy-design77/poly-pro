@@ -78,8 +78,8 @@ export function HelpTip({ text, children }: Props) {
         onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen(!open); }}
         className="w-[16px] h-[16px] rounded-full flex items-center justify-center
                    text-[9px] font-bold touch-manipulation select-none shrink-0
-                   bg-[rgba(255,255,255,0.06)] text-text-muted
-                   active:bg-[rgba(255,255,255,0.12)]"
+                   bg-[rgba(21,23,26,0.06)] text-text-muted
+                   active:bg-[rgba(21,23,26,0.12)]"
         aria-label="Help"
         type="button"
       >
