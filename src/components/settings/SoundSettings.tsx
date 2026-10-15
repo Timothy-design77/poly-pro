@@ -186,7 +186,7 @@ export function SoundSettings() {
           <label className="text-xs text-text-muted uppercase tracking-wider">Click Volume</label>
           <span className="font-mono text-xs text-text-secondary">{Math.round(clickVolume * 100)}%</span>
         </div>
-        <input
+        <input aria-label="Click volume"
           type="range"
           min="0"
           max="100"

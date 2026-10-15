@@ -61,3 +61,18 @@ it('deleting a project keeps its takes, audio and corrections in Quick Start', a
   expect((await db.getRecording(session.id))?.size).toBe(1920);
   expect(await db.getHitEvents(session.id)).toEqual(events);
 });
+
+it('rolls back the score when writing corrected hits fails synchronously', async () => {
+  await db.putSession({ ...session, score: 100 });
+  await db.putHitEvents(events);
+  const original = IDBObjectStore.prototype.put;
+  const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, ...args: Parameters<typeof original>) {
+    if (this.name === 'recordings') throw new DOMException('Quota exhausted', 'QuotaExceededError');
+    return original.apply(this, args);
+  });
+  try {
+    await expect(db.putAnalysis({ ...session, score: 25, analysisRevision: 1 }, events)).rejects.toThrow('Quota exhausted');
+  } finally { put.mockRestore(); }
+  expect((await db.getAllSessions())[0].score).toBe(100);
+  expect(await db.getHitEvents(session.id)).toEqual(events);
+});

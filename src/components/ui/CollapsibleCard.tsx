@@ -56,16 +56,16 @@ export function CollapsibleCard({
 
   return (
     <div className="border border-border-subtle rounded-xl overflow-hidden bg-bg-surface">
+      <div className="flex items-center">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={isOpen}
         aria-controls={contentId}
-        className="w-full min-h-[48px] flex items-center gap-3 px-4 py-3 active:bg-bg-raised transition-colors duration-75 text-left"
+        className="flex-1 min-w-0 min-h-[48px] flex items-center gap-3 px-4 py-3 active:bg-bg-raised transition-colors duration-75 text-left"
       >
         <span className="text-xs font-bold text-text-secondary uppercase tracking-wider flex-1 flex items-center gap-1.5 min-w-0">
           <span className="truncate">{title}</span>
-          {help && <HelpTip text={help} />}
         </span>
         {badge && (
           <span className="font-mono text-[11px] text-text-muted shrink-0">
@@ -80,6 +80,8 @@ export function CollapsibleCard({
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
+      {help && <div className="pr-4"><HelpTip text={help} /></div>}
+      </div>
 
       {isOpen && (
         <div id={contentId} className="border-t border-border-subtle bg-bg-primary">

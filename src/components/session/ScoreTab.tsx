@@ -7,6 +7,7 @@
 
 import { useState, useMemo } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
+import { getSigmaLevel } from '../../analysis/types';
 import { HelpTip } from '../ui/HelpTip';
 import { computeInstrumentMetrics, computeInterLimbCorrelation, INSTRUMENT_INFO } from '../../analysis/classification';
 import type { ClassificationResult, InstrumentMetrics } from '../../analysis/classification';
@@ -58,23 +59,23 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
   }
 
   const score = session.score ?? 0;
-  const sigma = session.sigma ?? 0;
-  const sigmaLevel = (session.totalScored ?? session.totalHits) < 8 ? 'Insufficient hits' : session.sigmaLevel ?? 'Beginner';
+  const sigma = session.sigma ?? session.stdDev;
+  const sigmaLevel = (session.totalScored ?? session.totalHits) < 8 ? 'Insufficient hits' : session.sigmaLevel ?? getSigmaLevel(sigma);
   const rawHeadlines = session.headlines ?? [];
   // Normalize headlines: handle both old string[] and new HeadlineItem[] format
   const headlines = rawHeadlines.map((h) =>
     typeof h === 'string' ? { text: h } : h
   );
-  const meanOffset = session.meanOffset ?? 0;
-  const hitRate = session.hitRate ?? 0;
+  const meanOffset = session.meanOffset ?? session.avgDelta;
   const perfectPct = session.perfectPct ?? 0;
   const goodPct = session.goodPct ?? 0;
   const fatigueRatio = session.fatigueRatio ?? 1;
   const maxDrift = session.maxDrift ?? 0;
   const totalScored = session.totalScored ?? session.totalHits;
-  const totalExpected = session.totalExpected ?? 0;
-  const scoringWindowMs = session.scoringWindowMs ?? 0;
-  const flamMergeMs = session.flamMergeMs ?? 0;
+  const totalExpected = session.totalExpected ?? hitEvents?.gridBeats?.length ?? 0;
+  const hitRate = session.hitRate ?? (totalExpected ? totalScored / totalExpected : 0);
+  const scoringWindowMs = session.scoringWindowMs;
+  const flamMergeMs = session.flamMergeMs;
 
   // Phase 9: Groove
   const swingRatio = session.swingRatio;
@@ -93,7 +94,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
 
   return (
     <div className="space-y-4">
-      {(session.totalScored ?? session.totalHits) < 8 && <p role="status" className="rounded-lg bg-warning-dim p-3 text-sm text-text-primary">Fewer than 8 matched hits. Timing consistency and the score are not reliable yet. Check detection in Playback or record a longer take.</p>}
+      {(session.totalScored ?? session.totalHits) < 8 && <p role="status" className="rounded-lg bg-warning-dim p-3 text-sm text-text-primary">Fewer than 8 matched hits. Timing consistency and the score are not reliable yet. Check detection in Review or record a longer take.</p>}
       {/* Score hero */}
       <div className="flex flex-col items-center py-4">
         <div className="flex items-center gap-2">
@@ -157,10 +158,10 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
           <StatRow label="Hit Rate" value={`${Math.round(hitRate * 100)}%`}
             help="Percentage of expected beats where a hit was detected within the scoring window." />
           <StatRow label="Perfect" value={`${Math.round(perfectPct)}%`}
-            sub={`within ±${scoringWindowMs.toFixed(0)}ms`}
+            sub={scoringWindowMs == null ? 'window unavailable' : `within ±${scoringWindowMs.toFixed(0)}ms`}
             help="Percentage of your scored hits that landed within the scoring window." />
           <StatRow label="Good" value={`${Math.round(goodPct)}%`}
-            sub={`within ±${(scoringWindowMs * 1.5).toFixed(0)}ms`}
+            sub={scoringWindowMs == null ? 'window unavailable' : `within ±${(scoringWindowMs * 1.5).toFixed(0)}ms`}
             help="Percentage of scored hits within 1.5× the scoring window." />
           <StatRow label="Fatigue" value={fatigueRatio.toFixed(2) + '×'}
             sub={fatigueRatio > 1.4 ? 'timing degraded' : fatigueRatio < 0.8 ? 'improved' : 'stable'}
@@ -303,8 +304,8 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
           </p>
           <hr className="border-border-subtle" />
           <p className="text-text-muted leading-relaxed">
-            Scoring window: ±{scoringWindowMs.toFixed(1)}ms (tempo-scaled).
-            Flam merge: {flamMergeMs.toFixed(1)}ms.
+            Scoring window: {scoringWindowMs == null ? 'not saved' : `±${scoringWindowMs.toFixed(1)}ms`} (tempo-scaled).
+            Flam merge: {flamMergeMs == null ? 'not saved' : `${flamMergeMs.toFixed(1)}ms`}.
             σ (standard deviation) measures timing consistency — being
             consistently early or late doesn&apos;t hurt your σ.
           </p>
@@ -325,7 +326,7 @@ function MetaItem({ label, value }: { label: string; value: string }) {
 
 function StatRow({ label, value, sub, help }: { label: string; value: string; sub?: string; help?: string }) {
   return (
-    <div className="px-2 py-1.5">
+    <div role="group" aria-label={label} className="px-2 py-1.5">
       <p className="text-[10px] text-text-muted flex items-center gap-1">
         {label}
         {help && <HelpTip text={help} />}

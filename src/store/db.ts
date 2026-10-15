@@ -532,12 +532,18 @@ export async function putAnalysis(session: SessionRecord, hitEvents: HitEventsRe
     throw new Error('This session changed in another view. Reopen it before saving so your latest work is preserved.');
   }
   const saved = { ...session, projectId: current.projectId, hasRecording: current.hasRecording };
-  await Promise.all([
-    tx.objectStore('sessions').put(saved),
-    tx.objectStore('recordings').put(JSON.stringify(hitEvents), `hitevents:${hitEvents.sessionId}`),
-  ]);
-  await tx.done;
-  return saved;
+  try {
+    await tx.objectStore('sessions').put(saved);
+    await tx.objectStore('recordings').put(JSON.stringify(hitEvents), `hitevents:${hitEvents.sessionId}`);
+    await tx.done;
+    return saved;
+  } catch (error) {
+    // put() may throw before returning a request (e.g. quota or serialization).
+    // Explicitly abort so an already-enqueued score cannot commit on its own.
+    try { tx.abort(); } catch { /* The transaction may already have aborted. */ }
+    await tx.done.catch(() => {});
+    throw error;
+  }
 }
 
 export interface InstrumentProfileRecord {

@@ -77,6 +77,7 @@ export function useRecording() {
   const donePromiseRef = useRef<Promise<void> | null>(null);
   const doneResolveRef = useRef<(() => void) | null>(null);
   const releaseCriticalRef = useRef<(() => void) | null>(null);
+  const restoreOutputRef = useRef<(() => void) | null>(null);
   const metronomeWasRunningRef = useRef(false);
   const recordingConfigRef = useRef({ bpm: 120, meterNumerator: 4, meterDenominator: 4, subdivision: 1, countInBars: 0 });
 
@@ -91,6 +92,8 @@ export function useRecording() {
   const releaseCritical = useCallback(() => {
     releaseCriticalRef.current?.();
     releaseCriticalRef.current = null;
+    restoreOutputRef.current?.();
+    restoreOutputRef.current = null;
   }, []);
 
   const cleanupRecording = useCallback(() => {
@@ -117,6 +120,9 @@ export function useRecording() {
 
   useEffect(() => () => {
     generationRef.current++;
+    if (isRecordingRef.current || ['recording', 'stopping', 'saving'].includes(phaseRef.current)) {
+      audioEngine.stop(); useMetronomeStore.getState().setPlaying(false);
+    }
     cleanupRecording();
     releaseCritical();
   }, [cleanupRecording, releaseCritical]);
@@ -172,7 +178,7 @@ export function useRecording() {
         subdivision: metronome.subdivision,
         countInBars: metronome.countInBars,
       };
-      const autoStartMetronome = !audioEngine.running && useSettingsStore.getState().includeClickInRecording;
+      const silentRecording = !useSettingsStore.getState().includeClickInRecording;
 
       await db.beginChunkedRecording(sessionId, ctx.sampleRate, {
         projectId: activeProjectId,
@@ -232,12 +238,13 @@ export function useRecording() {
       micResult.stream.getAudioTracks().forEach((track) => {
         track.onended = () => stopOnFailureRef.current('The microphone was disconnected.');
       });
+      if (silentRecording) restoreOutputRef.current = audioEngine.suppressOutput();
       workletNode.port.postMessage({ type: 'start' });
       recordingStartCtxTimeRef.current = ctx.currentTime;
       startTimeRef.current = Date.now();
       isRecordingRef.current = true;
 
-      if (autoStartMetronome) {
+      if (!audioEngine.running) {
         const started = audioEngine.startSync();
         if (!started) await audioEngine.start();
         useMetronomeStore.getState().setPlaying(true);

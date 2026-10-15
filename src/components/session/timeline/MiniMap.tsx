@@ -59,7 +59,6 @@ export function MiniMap({
     <div
       className="rounded-md overflow-hidden border border-border-subtle cursor-pointer"
       onClick={handleTap}
-      onTouchStart={handleTap}
     >
       <canvas
         ref={canvasRef}

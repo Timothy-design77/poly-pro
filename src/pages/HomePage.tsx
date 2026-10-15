@@ -23,10 +23,9 @@ import { PracticeModes, usePracticeBadge } from '../components/metronome/Practic
 import { BackupBanner } from '../components/ui/BackupBanner';
 import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
-import { ReviewScreen } from '../components/session/ReviewScreen';
+import { useSettingsStore } from '../store/settings-store';
 const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module) => ({ default: module.SessionDetailPage })));
 import { useSessionStore } from '../store/session-store';
-import type { SessionAnalysis } from '../analysis/types';
 import type { SessionRecord } from '../store/db';
 
 export function HomePage() {
@@ -48,8 +47,9 @@ export function HomePage() {
   const loadSessions = useSessionStore((s) => s.loadFromDB);
 
   const [failedSessionId, setFailedSessionId] = useState<string | null>(null);
-  const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
-  const [reviewAnalysis, setReviewAnalysis] = useState<SessionAnalysis | null>(null);
+  const includeClick = useSettingsStore((state) => state.includeClickInRecording);
+  const setIncludeClick = useSettingsStore((state) => state.setIncludeClickInRecording);
+  const captureBusy = ['preparing', 'recording', 'stopping', 'saving'].includes(recording.phase);
   const [detailSession, setDetailSession] = useState<SessionRecord | null>(null);
 
   const processRecordingResult = useCallback(async (result: RecordingResult) => {
@@ -60,8 +60,7 @@ export function HomePage() {
       recordingEndTime: result.recordingEndTime,
     });
     if (analysisResult) {
-      setReviewSessionId(result.sessionId);
-      setReviewAnalysis(analysisResult);
+      setDetailSession(useSessionStore.getState().sessions.find((session) => session.id === result.sessionId) ?? null);
     } else {
       setFailedSessionId(result.sessionId);
     }
@@ -76,27 +75,6 @@ export function HomePage() {
     recording.setOnAutoStop(processRecordingResult);
     return () => recording.setOnAutoStop(null);
   }, [recording.setOnAutoStop, processRecordingResult]);
-
-  const handleReviewViewDetails = useCallback(async () => {
-    if (!reviewSessionId) return;
-    await loadSessions();
-    const current = sessions.find((session) => session.id === reviewSessionId) || null;
-    const fresh = useSessionStore.getState().sessions.find((session) => session.id === reviewSessionId) || current;
-    setReviewSessionId(null);
-    setReviewAnalysis(null);
-    setDetailSession(fresh);
-  }, [reviewSessionId, sessions, loadSessions]);
-
-  const handleReviewRecordAgain = useCallback(() => {
-    setReviewSessionId(null);
-    setReviewAnalysis(null);
-  }, []);
-
-  const handleReviewDelete = useCallback(async () => {
-    await loadSessions();
-    setReviewSessionId(null);
-    setReviewAnalysis(null);
-  }, [loadSessions]);
 
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -227,8 +205,16 @@ export function HomePage() {
 
         {/* Primary practice stack: large, full-width, low-cognitive-load controls. */}
         <div className="space-y-3">
+          <fieldset disabled={captureBusy || analysis.isAnalyzing} className="space-y-2 disabled:opacity-60">
+            <legend className="text-xs font-semibold text-text-secondary mb-2">Recording sound</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" aria-pressed={includeClick} aria-label="Record with click" onClick={() => setIncludeClick(true)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>With click</button>
+              <button type="button" aria-pressed={!includeClick} aria-label="Record without click" onClick={() => setIncludeClick(false)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${!includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>Silent</button>
+            </div>
+            <p className="text-xs text-text-muted">{includeClick ? 'Use headphones to keep clicks out of your recording.' : 'No audible click. Follow the visual beat; timing feedback stays available.'}</p>
+          </fieldset>
           <RecordButton phase={recording.phase} disabled={analysis.isAnalyzing || ['preparing', 'stopping', 'saving'].includes(recording.phase)} isRecording={recording.isRecording} onToggle={handleRecordToggle} />
-          <PlayButton />
+          <PlayButton disabled={captureBusy} />
           <TapTempo />
         </div>
 
@@ -341,17 +327,6 @@ export function HomePage() {
       />
 
       <AnalyzingOverlay visible={analysis.isAnalyzing} progress={analysis.progress} />
-
-      {reviewSessionId && reviewAnalysis && (
-        <ReviewScreen
-          visible={true}
-          sessionId={reviewSessionId}
-          analysis={reviewAnalysis}
-          onViewDetails={handleReviewViewDetails}
-          onRecordAgain={handleReviewRecordAgain}
-          onDelete={handleReviewDelete}
-        />
-      )}
 
       {detailSession && <Suspense fallback={<p role="status">Loading take…</p>}><SessionDetailPage
         session={detailSession}

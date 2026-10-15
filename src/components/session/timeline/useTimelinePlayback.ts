@@ -1,11 +1,12 @@
 /** Timeline playback transport with safe gain staging and exact stored click grid. */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../../store/db';
-import * as db from '../../../store/db';
 import { useSettingsStore } from '../../../store/settings-store';
 import { VOLUME_GAINS } from '../../../audio/types';
 import { createPlaybackLimiter, recordingPlaybackGain } from '../../../audio/recording-playback';
 import { audioEngine } from '../../../audio';
+import { useMetronomeStore } from '../../../store/metronome-store';
+import { beginCriticalActivity, isCriticalActivityActive } from '../../../utils/critical-activity';
 import { getBuffer } from '../../../audio/sounds';
 import { mediaPosition, eventsInWindow, type PlaybackLoop } from '../../../audio/playback-clock';
 import { forEachClickBeat } from './timeline-shared';
@@ -34,7 +35,6 @@ export interface TimelinePlayback {
   setPresenceBoostDb: (value: number) => void;
   isSaving: boolean;
   latencyOffsetMs: number;
-  setLatencyOffsetMs: (ms: number) => void;
   togglePlayback: () => Promise<void>;
   skip: (deltaS: number) => Promise<void>;
   seekToFraction: (fraction: number) => void;
@@ -43,6 +43,9 @@ export interface TimelinePlayback {
 
 interface Options {
   session: SessionRecord;
+  active: boolean;
+  gridBeats: HitEventsRecord['gridBeats'];
+  latencyOffsetMs: number;
   audioBufferRef: React.MutableRefObject<AudioBuffer | null>;
   zoom: number;
   loopEnabled: boolean;
@@ -52,21 +55,20 @@ interface Options {
   setScrollX: React.Dispatch<React.SetStateAction<number>>;
 }
 
-export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX, loopEnabled, loopStart, loopEnd }: Options): TimelinePlayback {
+export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX, loopEnabled, loopStart, loopEnd, active, gridBeats, latencyOffsetMs }: Options): TimelinePlayback {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackPos, setPlaybackPos] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [playbackVolume, setPlaybackVolumeState] = useState(0.72);
   const [followPlayhead, setFollowPlayhead] = useState(true);
-  const [clickOverlay, setClickOverlay] = useState(true);
+  const [clickOverlay, setClickOverlay] = useState(false);
   const [clickVolume, setClickVolume] = useState(0.5);
   const [cleanupEnabled, setCleanupEnabled] = useState(false);
   const [highPassHz, setHighPassHz] = useState(90);
   const [lowPassHz, setLowPassHz] = useState(12000);
   const [presenceBoostDb, setPresenceBoostDb] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
-  const [latencyOffsetMs, setLatencyOffsetMs] = useState(() => session.analysisConfig?.latencyOffsetMs ?? useSettingsStore.getState().calibratedOffset + useSettingsStore.getState().manualAdjustment);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const clickGainRef = useRef<GainNode | null>(null);
@@ -78,7 +80,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
   const clockRef = useRef({ time: 0, offset: 0, speed: 1, duration: 1, loop: undefined as PlaybackLoop | undefined });
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const frameRef = useRef(0);
-  const gridBeatsRef = useRef<HitEventsRecord['gridBeats']>(undefined);
+  const releaseRef = useRef<(() => void) | null>(null);
   const visualRef = useRef({ zoom, followPlayhead });
   visualRef.current = { zoom, followPlayhead };
   const clickSoundId = useSettingsStore((state) => state.clickSound);
@@ -92,6 +94,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
 
   const stopPlayback = useCallback(() => {
     ++epochRef.current; pendingRef.current = false;
+    releaseRef.current?.(); releaseRef.current = null;
     if (sourceNodeRef.current) {
       offsetRef.current = position();
       sourceNodeRef.current.onended = null;
@@ -109,12 +112,15 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
   const startPlayback = useCallback(async () => {
     const buffer = audioBufferRef.current;
     if (!buffer) { setError('This recording is not ready for playback.'); return; }
+    if (!active) return;
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
+    audioEngine.stop(); useMetronomeStore.getState().setPlaying(false);
+    releaseRef.current = beginCriticalActivity('playback');
     const epoch = ++epochRef.current; pendingRef.current = true; setError(null);
     try {
-      const [ctx, events] = await Promise.all([audioEngine.initContext(), db.getHitEvents(session.id)]);
+      const ctx = await audioEngine.initContext();
       if (ctx.state === 'suspended') await ctx.resume();
       if (epoch !== epochRef.current) return;
-      gridBeatsRef.current = events?.gridBeats;
       const duration = buffer.duration;
       const loop = loopEnabled && loopEnd > loopStart ? { start: loopStart * duration, end: loopEnd * duration } : undefined;
       if (offsetRef.current >= duration) offsetRef.current = 0;
@@ -136,7 +142,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
       const beats: Array<{ time: number; volState: keyof typeof VOLUME_GAINS }> = [];
       forEachClickBeat(session, latencyOffsetMs / 1000, ({ adjustedBeatTime, volState }) => {
         if (adjustedBeatTime >= 0 && adjustedBeatTime < duration) beats.push({ time: adjustedBeatTime, volState });
-      }, gridBeatsRef.current);
+      }, gridBeats);
       const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
       const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
       const startTime = ctx.currentTime + 0.025;
@@ -171,7 +177,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
       };
       frameRef.current = requestAnimationFrame(animate);
     } catch (failure) { if (epoch === epochRef.current) { stopPlayback(); setError(failure instanceof Error ? failure.message : 'Playback failed.'); } }
-  }, [audioBufferRef, session, playbackSpeed, playbackVolume, loopEnabled, loopStart, loopEnd, cleanupEnabled, highPassHz, lowPassHz, presenceBoostDb, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold, latencyOffsetMs, stopPlayback, position, containerRef, setScrollX]);
+  }, [active, gridBeats, audioBufferRef, session, playbackSpeed, playbackVolume, loopEnabled, loopStart, loopEnd, cleanupEnabled, highPassHz, lowPassHz, presenceBoostDb, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold, latencyOffsetMs, stopPlayback, position, containerRef, setScrollX]);
 
   const togglePlayback = useCallback(async () => {
     if (sourceNodeRef.current || pendingRef.current) stopPlayback(); else await startPlayback();
@@ -200,6 +206,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
     const next = Math.max(0, Math.min(1, value)); setPlaybackVolumeState(next);
     if (gainNodeRef.current) gainNodeRef.current.gain.value = recordingPlaybackGain(next);
   }, []);
+  useEffect(() => { if (!active) stopPlayback(); }, [active, stopPlayback]);
   useEffect(() => () => stopPlayback(), [stopPlayback]);
   const saveAudio = useCallback(async (withClick: boolean) => {
     if (!audioBufferRef.current) return;
@@ -216,7 +223,6 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
       recordingSource.start(0);
 
       if (withClick) {
-        if (!gridBeatsRef.current) gridBeatsRef.current = (await db.getHitEvents(session.id).catch(() => undefined))?.gridBeats;
         const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
         const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
         if (clickBuffer) {
@@ -233,7 +239,7 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
             clickSource.connect(clickGain);
             clickGain.connect(clickMaster);
             clickSource.start(adjustedBeatTime);
-          }, gridBeatsRef.current);
+          }, gridBeats);
         }
       }
 
@@ -272,10 +278,10 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
     } finally {
       setIsSaving(false);
     }
-  }, [audioBufferRef, session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs]);
+  }, [gridBeats, audioBufferRef, session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs]);
 
   return { error, isPlaying, playbackPos, playbackSpeed, setPlaybackSpeed, playbackVolume, setPlaybackVolume, followPlayhead, setFollowPlayhead,
     clickOverlay, setClickOverlay, clickVolume, setClickVolume, cleanupEnabled, setCleanupEnabled, highPassHz, setHighPassHz,
-    lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb, isSaving, latencyOffsetMs, setLatencyOffsetMs,
+    lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb, isSaving, latencyOffsetMs,
     togglePlayback, skip, seekToFraction, saveAudio };
 }

@@ -36,7 +36,7 @@ export function CalibrationSettings() {
           <HelpTip text="Total latency compensation applied during analysis: calibrated base plus fine-tune adjustment." />
         </span>
         <span className="text-sm font-mono font-bold text-text-primary">
-          {calibratedOffset === 0 && !lastCalibratedAt ? 'Not calibrated' : `${effectiveOffset.toFixed(1)}ms`}
+          {`${effectiveOffset.toFixed(1)}ms`}
         </span>
       </div>
 
@@ -72,7 +72,7 @@ export function CalibrationSettings() {
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs text-text-secondary flex items-center gap-1">
             Fine-Tune
-            <HelpTip text="Adjust up to ±150ms on top of the calibrated value. Tap the value for exact entry." />
+            <HelpTip text="Adjust up to ±300ms on top of the calibrated value. Tap the value for exact entry." />
           </span>
           {manualAdjustment !== 0 && (
             <button
@@ -85,8 +85,9 @@ export function CalibrationSettings() {
           )}
         </div>
         <PrecisionSlider
-          min={-150}
-          max={150}
+          ariaLabel="Calibration fine-tune"
+          min={Math.min(-300, manualAdjustment)}
+          max={Math.max(300, manualAdjustment)}
           step={0.5}
           value={manualAdjustment}
           onChange={setManualAdjustment}
@@ -95,9 +96,9 @@ export function CalibrationSettings() {
           unit="ms"
         />
         <div className="flex justify-between mt-0.5">
-          <span className="text-[9px] text-text-muted">-150ms</span>
+          <span className="text-[9px] text-text-muted">-300ms</span>
           <span className="text-[9px] text-text-muted">0</span>
-          <span className="text-[9px] text-text-muted">+150ms</span>
+          <span className="text-[9px] text-text-muted">+300ms</span>
         </div>
       </div>
 

@@ -49,7 +49,7 @@ export function rescoreSession(
     : gridFromParams(bpm, meterNumerator, subdivision, durationS);
 
   // Re-score
-  return computeSessionAnalysis(
+  const result = computeSessionAnalysis(
     mergedOnsets,
     grid,
     config,
@@ -57,4 +57,6 @@ export function rescoreSession(
     subdivision,
     durationMs,
   );
+  // Keep the editable source hits: widening flam merge must be reversible.
+  return { ...result, rawOnsets };
 }

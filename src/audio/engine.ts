@@ -57,6 +57,20 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private outputGain: GainNode | null = null;
+  private scheduledSources = new Set<AudioBufferSourceNode>();
+  private outputSuppressions = new Set<symbol>();
+
+  /** Keep the transport and captured grid running without audible or haptic clicks. */
+  suppressOutput(): () => void {
+    const token = Symbol();
+    this.outputSuppressions.add(token);
+    this.refreshOutputGain();
+    return () => { this.outputSuppressions.delete(token); this.refreshOutputGain(); };
+  }
+
+  private refreshOutputGain(): void {
+    if (this.masterGain) this.masterGain.gain.value = this.outputSuppressions.size ? 0 : perceptualGain(this.host.getMetronome().volume);
+  }
 
   private schedulerTimer: ReturnType<typeof setTimeout> | null = null;
   private nextNoteTime: Record<string, number> = {};
@@ -133,8 +147,7 @@ export class AudioEngine {
     this.outputGain.gain.value = OUTPUT_GAIN;
 
     this.masterGain = this.audioCtx.createGain();
-    const vol = this.host.getMetronome().volume;
-    this.masterGain.gain.value = perceptualGain(vol);
+    this.refreshOutputGain();
 
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.outputGain);
@@ -192,7 +205,7 @@ export class AudioEngine {
     }
 
     if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(this.host.getMetronome().volume);
+      this.refreshOutputGain();
     }
 
     this.schedule();
@@ -220,6 +233,8 @@ export class AudioEngine {
   stop(): void {
     if (!this.isRunning) return;
     this.isRunning = false;
+    for (const source of this.scheduledSources) { try { source.stop(); } catch {} }
+    this.scheduledSources.clear();
 
     if (this.schedulerTimer !== null) {
       clearTimeout(this.schedulerTimer);
@@ -252,7 +267,7 @@ export class AudioEngine {
     const settings = this.host.getSettings();
 
     if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(state.volume);
+      this.refreshOutputGain();
     }
 
     const now = ctx.currentTime;
@@ -323,7 +338,7 @@ export class AudioEngine {
         }
 
         // Play the sound
-        if (volumeState !== VolumeState.OFF && !muted) {
+        if (volumeState !== VolumeState.OFF && !muted && !this.outputSuppressions.size) {
           if (countInSound) {
             // Count-in: play the specific count-N voice sample
             this.playBuffer(countInSound, volumeState, beatTime);
@@ -333,7 +348,7 @@ export class AudioEngine {
         }
 
         // Haptic
-        if (settings.hapticEnabled && volumeState >= VolumeState.LOUD && !muted) {
+        if (!this.outputSuppressions.size && settings.hapticEnabled && volumeState >= VolumeState.LOUD && !muted) {
           this.triggerVibration(beatTime - now, volumeState, settings.vibrationIntensity);
         }
 
@@ -457,6 +472,8 @@ export class AudioEngine {
     gainNode.gain.value = VOLUME_GAINS[volumeState];
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
+    this.scheduledSources.add(source);
+    source.onended = () => { this.scheduledSources.delete(source); source.disconnect(); gainNode.disconnect(); };
     source.start(beatTime);
   }
 
@@ -498,6 +515,8 @@ export class AudioEngine {
 
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
+    this.scheduledSources.add(source);
+    source.onended = () => { this.scheduledSources.delete(source); source.disconnect(); gainNode.disconnect(); };
     source.start(beatTime);
   }
 

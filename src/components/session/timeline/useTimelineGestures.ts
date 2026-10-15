@@ -26,6 +26,7 @@ export interface TimelineGestures {
 export function useTimelineGestures(
   /** Called with clientX when a touch qualifies as a tap (tap-to-seek). */
   onTap: (clientX: number) => void,
+  ready = true,
 ): TimelineGestures {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -52,13 +53,13 @@ export function useTimelineGestures(
   // ─── Measure container ───
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
-    const measure = () => setContainerWidth(el.clientWidth);
+    if (!el || !ready) return;
+    const measure = () => { if (el.clientWidth > 0) setContainerWidth(el.clientWidth); };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [ready]);
 
   const cancelMomentum = useCallback(() => {
     if (momentumFrameRef.current) {

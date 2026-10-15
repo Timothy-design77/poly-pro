@@ -3,31 +3,31 @@ import { seedSession } from './helpers';
 
 test('saved corrections refresh every tab and survive reopening', async ({ page }) => {
   await seedSession(page);
-  await page.getByRole('tab', { name: 'Playback', exact: true }).click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await page.getByRole('button', { name: 'Hit correction tools' }).click();
   await page.getByRole('button', { name: 'Remove', exact: true }).click();
   await page.getByRole('button', { name: 'Remove', exact: true }).click();
-  await page.getByRole('button', { name: 'Save Corrections' }).click();
-  await expect(page.getByText('Saved & rescored', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Score', exact: true }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Changes saved', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Charts', exact: true }).click();
   await expect(page.getByRole('tabpanel').getByText('92%', { exact: true })).toBeVisible();
   await expect(page.getByRole('tabpanel').getByText('18/20', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Playback', exact: true }).click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(page.getByText('18 detected hits', { exact: true })).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.locator('div[role="button"]').filter({ hasText: '120 BPM' }).click();
+  await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
   await expect(page.getByRole('tabpanel').getByText('92%', { exact: true })).toBeVisible();
 });
 
 
 test('tuning applies durably to the saved take', async ({ page }) => {
   await seedSession(page);
-  await page.getByRole('tab', { name: 'Tune', exact: true }).click();
+  await page.getByRole('button', { name: 'Tune scoring', exact: true }).click();
   await page.getByRole('slider', { name: 'Latency Offset' }).focus();
   await page.keyboard.press('End');
-  await page.getByRole('button', { name: 'Apply to this session', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Applied to this session' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByText('Changes saved', { exact: true })).toBeVisible();
   const saved = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve) => { const req = indexedDB.open('polypro'); req.onsuccess = () => resolve(req.result); });
     return await new Promise<any>((resolve) => { const req = db.transaction('sessions').objectStore('sessions').get('practice-take'); req.onsuccess = () => { resolve(req.result); db.close(); }; });
@@ -55,11 +55,11 @@ test('analyzes saved audio after an interrupted analysis', async ({ page }) => {
   });
   await page.reload();
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.locator('div[role="button"]').filter({ hasText: '120 BPM' }).click();
+  await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
   await page.getByRole('button', { name: 'Analyze saved recording' }).click();
   await expect(page.getByText('Fewer than 8 matched hits.', { exact: false })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole('tabpanel').getByText('Insufficient hits', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Playback', exact: true }).click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(page.getByText(/detected hits/)).toBeVisible();
 });
 
@@ -74,7 +74,7 @@ test('playback changes the real audio rate, loops natively, and exports WAV', as
     };
   });
   await seedSession(page);
-  await page.getByRole('tab', { name: 'Playback', exact: true }).click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await page.getByRole('button', { name: 'Start playback', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Pause playback' })).toBeVisible();
   await page.getByRole('button', { name: 'Playback speed 1×', exact: true }).click();

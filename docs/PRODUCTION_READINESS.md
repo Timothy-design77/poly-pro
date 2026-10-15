@@ -1,10 +1,12 @@
-# Poly Pro 2.1 release readiness
+# Poly Pro 2.2 release readiness
 
-Updated 2026-10-13. Upgrade branch: `upgrade/production-readiness`. Baseline: `c90e2d8`.
+Updated 2026-10-15. Current iteration: `improve/practice-review-sync`, based on deployed `e7676a2`. The original 2.1 audit below started at `c90e2d8`.
 
 ## Release decision
 
-The core local-first upgrade passes all automated release checks: 92 unit/regression tests, 40 browser checks, type-checking, production build and a zero-finding dependency audit. Target-device acceptance remains open below. No production deployment has been performed during this upgrade. Physical Galaxy Z Fold 7 acceptance is required before calling the release fully production-validated.
+The core local-first upgrade passes all automated release checks: 95 unit/regression tests, 58 browser checks, type-checking, production build and a zero-finding dependency audit. Target-device acceptance remains open below. Physical Galaxy Z Fold 7 acceptance is required before calling the release fully production-validated.
+
+The 2.2 [Practice and Review audit](PRACTICE_REVIEW_AUDIT.md) records the latest findings: silent capture, one review draft/save, captured-grid rendering, reversible flam tuning, and synchronous storage-failure rollback. Review has two views: Review for listening/editing/timing and Charts for detailed metrics.
 
 The product is a percussion practice companion: start a dependable metronome, record a take, understand and correct its timing, then practice toward a project tempo goal. Android Chrome is the primary browser. The light interface, existing metronome engine, local storage and account-free operation are preserved. Cloud enhancement is deferred; this build does not upload recordings.
 
@@ -17,7 +19,7 @@ The product is a percussion practice companion: start a dependable metronome, re
 | Failed/cancelled analysis had no recovery UI or durable original timing | Chunk-level capture timing, saved-audio retry, cancellable workers and explicit re-detection confirmation |
 | Recording silently continued after storage/device failure | Visible lifecycle states, prompt stop on microphone/worklet/storage failure, recoverable saved chunks |
 | Playback speed changed its label without changing active audio | Shared media clock, actual source-rate changes, native A/B loops, bounded click scheduling and visible export errors |
-| Tune only previewed scores and changed global defaults | Apply to this session, separate Save defaults, original analysis configuration retained |
+| Tune only previewed scores and changed global defaults | One Review draft and Save changes action; separate scoring defaults; original analysis configuration retained |
 | Calibration, editing and charts retained unreadable dark-theme styles | Consistent light surfaces, readable canvas annotations, accessible recording activation and dialog focus handling |
 | Training used a separate capture/detection path and misleading confidence | Shared AudioWorklet/worker detector, useful-hit minimums, 60-second bound, 200-sample cap and validation across multiple instruments |
 | No dedicated take comparison | Side-by-side metrics recalculated with one scoring window, while preserving each take's calibration and saved results |
@@ -34,7 +36,7 @@ Final command results are recorded in [release/verification.txt](release/verific
 Coverage includes:
 
 - Keyboard recording → chunk storage → analysis with matching sample timing/configuration.
-- Correct hits → save → visit sibling tabs → reopen/reload; Tune apply, re-detection consent/cancel and retry saved audio.
+- Correct hits and adjust timing → preview across Review/Charts → Save changes → reopen/reload; unsaved-edit protection, re-detection confirmation and saved-audio retry.
 - Actual audio-source playback rate, native loop bounds, pause/resume and WAV download.
 - Project creation/editing/switching/deletion, plus progression/transport regression tests.
 - Backup including a project snapshot, audio, settings and hit data; delete → import → playback; invalid archive rejection and transaction rollback.
@@ -43,7 +45,7 @@ Coverage includes:
 - Take comparison without changing saved scores, dialog focus, narrow layout and offline service-worker reload.
 - Deterministic synthetic transients, including all 359 hits in a three-minute recording within 20 ms of their known locations. This is a synthetic-signal regression, not an acoustic accuracy claim.
 
-Screenshots of [Home](release/home.png), [Playback](release/playback.png), [Tune](release/tune.png) and [Calibration](release/calibration.png) were reviewed at the narrow viewport. The initial application JavaScript chunk is approximately 328 kB (102 kB gzip); settings and Session Detail load separately. Waveform/spectrogram preparation runs in a worker, spectral display work is bounded and playback schedules only the next 150 ms of clicks.
+Screenshots of [Home](release/home.png), [Review](release/review.png), [Timing](release/timing.png), [Charts](release/charts.png), [320px Review](release/review-320.png) and [wide Review](release/review-wide.png) were reviewed. Automated WCAG A/AA checks cover the primary screens and Review controls at both main viewports; canvas bounds are also tested at 3× pixel density. The initial application JavaScript chunk is approximately 327 kB (102 kB gzip); settings and Session Detail load separately. Waveform/spectrogram preparation runs in a worker, spectral display work is bounded and playback schedules only the next 150 ms of clicks.
 
 ## Device acceptance still required
 
@@ -75,4 +77,4 @@ Mobile browsers can suspend microphone/audio work in the background. Keeping the
 
 Run the commands in the README. Pull requests must pass type-checks, unit tests, production build, dependency audit and browser workflows. A main-branch deployment invokes the same reusable workflow and publishes only its verified build artifact. Configure GitHub Pages to deploy through Actions.
 
-The database schema remains version 5; new analysis/timing fields are optional for existing data. Prefer rolling forward after a defect. Reverting to old application code may ignore new fields or reproduce the old stale-write bugs. A full backup plus a validated build is the recovery path. Deployment credentials, live Pages behavior and physical-device acceptance have not been exercised by this local verification run.
+The database schema remains version 5; new analysis/timing fields are optional for existing data. Prefer rolling forward after a defect. Reverting to old application code may ignore new fields or reproduce the old stale-write bugs. A full backup plus a validated build is the recovery path. Deployment uses the existing GitHub Pages workflow; verify the live build ID and recording/review/offline flow after merge. Physical-device acceptance remains separate from browser and CI evidence.
