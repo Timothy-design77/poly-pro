@@ -16,7 +16,7 @@ export function CloudSettings() {
         </span>
         <span className="rounded-full border border-border-subtle px-2 py-1 text-[10px] text-text-muted">Unavailable</span>
       </div>
-      <p className="text-[10px] text-text-muted leading-relaxed">A secure server-side integration is required before recordings can be sent to a third-party separation service. No audio is uploaded by this build.</p>
+      <p className="text-[10px] text-text-muted leading-relaxed">Cloud analysis is planned for a future release. Your recordings and analysis stay on this device.</p>
     </div>
   );
 }

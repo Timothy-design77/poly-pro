@@ -3,6 +3,7 @@ import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
 import { ProjectCreateSheet } from '../components/projects/ProjectCreateSheet';
 import { Modal } from '../components/ui/Modal';
+import { isCriticalActivityActive } from '../utils/critical-activity';
 import { HelpTip } from '../components/ui/HelpTip';
 
 function timeAgo(dateStr: string): string {
@@ -27,6 +28,15 @@ export function ProjectsPage() {
   const sessions = useSessionStore((s) => s.sessions);
   const getSessionsForProject = useSessionStore((s) => s.getSessionsForProject);
 
+  const [error, setError] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const selectProject = async (id: string | null) => {
+    if (switching) return;
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation before switching projects.'); return; }
+    setSwitching(true); setError(null);
+    try { await setActiveProject(id); } catch (error) { setError(error instanceof Error ? error.message : 'Could not save the project selection.'); }
+    finally { setSwitching(false); }
+  };
   const [showCreate, setShowCreate] = useState(false);
   const [editingProject, setEditingProject] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -44,10 +54,11 @@ export function ProjectsPage() {
         </h1>
         <p className="text-xs text-text-secondary mb-4">Tap a project to make it active. Use Edit for project settings.</p>
 
+        {error && <p role="alert" className="text-sm text-danger my-3">{error}</p>}
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            onClick={() => setActiveProject(null)}
+            disabled={switching} onClick={() => void selectProject(null)}
             aria-current={activeProjectId === null ? 'true' : undefined}
             className={`w-full rounded-xl border p-3.5 flex items-center gap-3 text-left
                         touch-manipulation select-none min-h-[72px] transition-colors
@@ -89,7 +100,7 @@ export function ProjectsPage() {
               >
                 <button
                   type="button"
-                  onClick={() => setActiveProject(project.id)}
+                  disabled={switching} onClick={() => void selectProject(project.id)}
                   className="flex flex-1 min-w-0 items-center gap-3 text-left touch-manipulation select-none"
                   aria-current={isActive ? 'true' : undefined}
                 >
@@ -194,14 +205,14 @@ export function ProjectsPage() {
           title={`Delete ${deleteTargetProject?.name || 'project'}?`}
           confirmLabel="Delete"
           confirmDanger
-          onConfirm={() => {
+          onConfirm={async () => {
             if (deleteTarget) {
-              deleteProject(deleteTarget);
+              await deleteProject(deleteTarget);
               setEditingProject(null);
             }
           }}
         >
-          This will permanently remove this project.
+          This removes the project. Its recordings and sessions move to Quick Start.
           {deleteTargetProject && ` (${getSessionsForProject(deleteTargetProject.id).length} sessions)`}
         </Modal>
       </div>

@@ -41,7 +41,7 @@ export function GroupingPicker() {
                 h-[40px] px-3 rounded-xl text-xs font-bold font-mono
                 transition-colors touch-manipulation select-none
                 ${isActive
-                  ? 'bg-[rgba(255,255,255,0.15)] text-text-primary border border-[rgba(255,255,255,0.15)]'
+                  ? 'bg-[rgba(21,23,26,0.15)] text-text-primary border border-[rgba(21,23,26,0.15)]'
                   : 'bg-bg-surface border border-border-subtle text-text-muted active:bg-bg-raised'
                 }
               `}

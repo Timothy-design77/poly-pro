@@ -52,14 +52,14 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
     return (
       <div className="flex flex-col items-center justify-center h-40 gap-2">
         <p className="text-text-muted text-sm">This session hasn't been analyzed</p>
-        <p className="text-text-muted text-xs">Record a new session to see detailed scores</p>
+        <p className="text-text-muted text-xs">Use Analyze saved recording above to get timing feedback.</p>
       </div>
     );
   }
 
   const score = session.score ?? 0;
   const sigma = session.sigma ?? 0;
-  const sigmaLevel = session.sigmaLevel ?? 'Beginner';
+  const sigmaLevel = (session.totalScored ?? session.totalHits) < 8 ? 'Insufficient hits' : session.sigmaLevel ?? 'Beginner';
   const rawHeadlines = session.headlines ?? [];
   // Normalize headlines: handle both old string[] and new HeadlineItem[] format
   const headlines = rawHeadlines.map((h) =>
@@ -86,13 +86,14 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
   const dynamicRange = session.dynamicRange;
   const velocityDecayLabel = session.velocityDecayLabel;
 
-  const scoreColor = score >= 85 ? '#4ADE80' : score >= 70 ? '#FBBF24' : '#F87171';
+  const scoreColor = score >= 85 ? '#187A3B' : score >= 70 ? '#A45108' : '#B4232C';
 
   const durationMin = Math.floor(session.durationMs / 60000);
   const durationSec = Math.floor((session.durationMs / 1000) % 60);
 
   return (
     <div className="space-y-4">
+      {(session.totalScored ?? session.totalHits) < 8 && <p role="status" className="rounded-lg bg-warning-dim p-3 text-sm text-text-primary">Fewer than 8 matched hits. Timing consistency and the score are not reliable yet. Check detection in Playback or record a longer take.</p>}
       {/* Score hero */}
       <div className="flex flex-col items-center py-4">
         <div className="flex items-center gap-2">
@@ -108,7 +109,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
         {/* σ badge */}
         <div
           className="mt-2 px-3 py-1 rounded-full flex items-center gap-1.5"
-          style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+          style={{ backgroundColor: 'rgba(21,23,26,0.06)' }}
         >
           <span className="text-xs font-mono text-text-secondary">
             σ {sigma.toFixed(1)}ms
@@ -251,7 +252,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
             {interLimbCorrelations.map((c, i) => {
               const infoA = INSTRUMENT_INFO[c.instrumentA as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
               const infoB = INSTRUMENT_INFO[c.instrumentB as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
-              const rColor = Math.abs(c.correlation) > 0.5 ? '#FBBF24' : '#4A4A52';
+              const rColor = Math.abs(c.correlation) > 0.5 ? '#A45108' : '#4A4A52';
               return (
                 <div key={i} className="flex items-center gap-2 py-1 px-1 text-[10px]">
                   <span>{infoA.icon} {c.instrumentA}</span>

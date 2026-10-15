@@ -66,7 +66,7 @@ export function DistributionChart({ hitEvents, width, height }: Props) {
 
       // Center line (0ms)
       const zeroX = pad.left + (range / (range * 2)) * chartW;
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.3)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();

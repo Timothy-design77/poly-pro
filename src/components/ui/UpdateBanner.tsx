@@ -1,19 +1,15 @@
 import { useEffect, useState } from 'react';
-
+import { useUpdateStore } from '../../store/update-store';
+import { useMetronomeStore } from '../../store/metronome-store';
+import { isCriticalActivityActive, subscribeCriticalActivities } from '../../utils/critical-activity';
 export function UpdateBanner() {
-  const [updating, setUpdating] = useState(false);
-
-  useEffect(() => {
-    const handle = () => setUpdating(true);
-    window.addEventListener('polypro:update-activating', handle);
-    return () => window.removeEventListener('polypro:update-activating', handle);
-  }, []);
-
-  if (!updating) return null;
-
-  return (
-    <div className="fixed top-0 left-0 right-0 z-[9999] bg-success/90 px-4 py-2 text-center" role="status" aria-live="polite">
-      <p className="text-bg-primary text-xs font-medium">Updating to new version…</p>
-    </div>
-  );
+  const { available, updating, error } = useUpdateStore();
+  const playing = useMetronomeStore((state) => state.playing);
+  const [busy, setBusy] = useState(isCriticalActivityActive);
+  useEffect(() => subscribeCriticalActivities((activities) => setBusy(activities.size > 0)), []);
+  if (!available && !updating && !error) return null;
+  return <div className="fixed top-0 left-0 right-0 z-40 bg-bg-surface border-b border-border-subtle p-2 flex items-center justify-center gap-3 text-xs text-text-primary" role="status">
+    <span>{error || (updating ? 'Updating Poly Pro…' : 'An update is ready.')}</span>
+    {available && !updating && <button disabled={busy || playing} className="min-h-[40px] rounded-lg bg-accent text-white px-3 disabled:opacity-50" onClick={() => window.dispatchEvent(new Event('polypro:apply-update'))}>{busy || playing ? 'Finish practice to update' : 'Update now'}</button>}
+  </div>;
 }

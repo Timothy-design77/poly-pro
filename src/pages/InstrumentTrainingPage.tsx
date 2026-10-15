@@ -12,14 +12,13 @@
  * Quick retrain: 5 hits to update existing model.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useInstrumentStore } from '../store/instrument-store';
 import type { InstrumentName, InstrumentProfile } from '../analysis/classification';
 import { INSTRUMENT_INFO } from '../analysis/classification';
-import { extractOnsetFeatures } from '../analysis/features';
-import type { SpectralFeatures } from '../analysis/types';
-import { getPreferredMicStream } from '../utils/mic';
+import { useDialogFocus } from '../hooks/useDialogFocus';
+import { useTrainingCapture } from '../hooks/useTrainingCapture';
 
 const ALL_INSTRUMENTS: InstrumentName[] = [
   'Kick', 'Snare', 'Hi-Hat', 'Tom Hi', 'Tom Lo', 'Ride', 'Crash', 'Other',
@@ -46,152 +45,52 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
   const [isQuickRetrain, setIsQuickRetrain] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Audio refs
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const pcmBufferRef = useRef<Float32Array[]>([]);
-  const featuresRef = useRef<SpectralFeatures[]>([]);
-
-  // Onset detection state for real-time feedback
-  const lastPeakRef = useRef(0);
-  const lastHitTimeRef = useRef(0);
-  const sampleCountRef = useRef(0);
-
+  const capture = useTrainingCapture();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, true, () => { capture.stop(); onClose(); });
+  const finishRef = useRef<() => void>(() => {});
   const minHits = isQuickRetrain ? MIN_HITS_QUICK : MIN_HITS_FULL;
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopRecording();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  const finishingRef = useRef(false);
   const startRecording = useCallback(async () => {
-    if (!selectedInstrument) return;
-
-    try {
-      setError(null);
-      setHitCount(0);
-      featuresRef.current = [];
-      pcmBufferRef.current = [];
-      sampleCountRef.current = 0;
-      lastPeakRef.current = 0;
-      lastHitTimeRef.current = 0;
-
-      // Get mic stream
-      const micResult = await getPreferredMicStream();
-      const stream = micResult.stream;
-      streamRef.current = stream;
-
-      // Create AudioContext
-      const ctx = new AudioContext({ sampleRate: 48000 });
-      audioCtxRef.current = ctx;
-
-      // Create a ScriptProcessor for simple onset detection during training
-      // (we don't need the full worklet pipeline here — just energy threshold)
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 2048;
-      source.connect(analyser);
-
-      // Use a script processor for simple real-time onset detection
-      const bufferSize = 2048;
-      const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
-      source.connect(processor);
-      processor.connect(ctx.destination);
-
-      const THRESHOLD = 0.08;
-      const MIN_INTERVAL_MS = 100; // Minimum time between hits
-
-      processor.onaudioprocess = (e) => {
-        const input = e.inputBuffer.getChannelData(0);
-
-        // Store PCM data for feature extraction
-        const copy = new Float32Array(input.length);
-        copy.set(input);
-        pcmBufferRef.current.push(copy);
-
-        // Simple energy-based onset detection
-        let maxAbs = 0;
-        for (let i = 0; i < input.length; i++) {
-          const abs = Math.abs(input[i]);
-          if (abs > maxAbs) maxAbs = abs;
-        }
-
-        const now = performance.now();
-        const timeSinceLastHit = now - lastHitTimeRef.current;
-
-        if (maxAbs > THRESHOLD && timeSinceLastHit > MIN_INTERVAL_MS) {
-          lastHitTimeRef.current = now;
-          lastPeakRef.current = maxAbs;
-
-          // Extract features from this buffer
-          const features = extractOnsetFeatures(input, 48000, 0);
-          featuresRef.current.push(features);
-          setHitCount((c) => c + 1);
-        }
-
-        sampleCountRef.current += input.length;
-      };
-
-      setTrainingState('recording');
-    } catch (err) {
-      console.error('Training recording error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start recording');
-    }
-  }, [selectedInstrument]);
-
-  const stopRecording = useCallback(() => {
-    // Stop mic stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    // Close audio context
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
-      audioCtxRef.current = null;
-    }
-  }, []);
+    if (!selectedInstrument || capture.preparing) return;
+    setError(null); setHitCount(0);
+    try { if (await capture.start(() => finishRef.current())) setTrainingState('recording'); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Microphone unavailable.'); }
+  }, [selectedInstrument, capture.start, capture.preparing]);
 
   const finishTraining = useCallback(async () => {
-    if (!selectedInstrument || featuresRef.current.length === 0) return;
-
-    stopRecording();
-    setTrainingState('processing');
-
+    if (!selectedInstrument || finishingRef.current) return;
+    finishingRef.current = true; setTrainingState('processing');
     try {
-      const result = await addTrainingSamples(selectedInstrument, featuresRef.current);
-      setAccuracy(result.accuracy);
-      setTrainingState('done');
-    } catch (err) {
-      console.error('Training save error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save training data');
-      setTrainingState('select');
-    }
-  }, [selectedInstrument, stopRecording, addTrainingSamples]);
+      const { features } = await capture.finish();
+      if (features.length < minHits) throw new Error(`Detected ${features.length} usable hits; ${minHits} are needed. Try spaced, consistent hits in a quiet room.`);
+      const result = await addTrainingSamples(selectedInstrument, features);
+      setHitCount(features.length); setAccuracy(result.accuracy); setTrainingState('done');
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not save training.'); setTrainingState('select'); }
+    finally { finishingRef.current = false; }
+  }, [selectedInstrument, capture.finish, minHits, addTrainingSamples]);
+  finishRef.current = () => { void finishTraining(); };
 
   const handleCancel = useCallback(() => {
-    stopRecording();
+    capture.stop();
     setTrainingState('select');
     setHitCount(0);
     setError(null);
-  }, [stopRecording]);
+  }, [capture.stop]);
 
   const handleDeleteProfile = useCallback(async (name: InstrumentName) => {
-    await deleteProfile(name);
+    try { await deleteProfile(name); } catch { setError('Could not delete this profile. Try again.'); }
   }, [deleteProfile]);
 
   const content = createPortal(
     <div
       className="fixed inset-0 z-[9999] bg-bg-primary flex flex-col"
-      style={{ touchAction: 'none' }}
+      ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Instrument Training" data-no-swipe
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
         <button
-          onClick={trainingState === 'recording' ? handleCancel : onClose}
+          onClick={() => { capture.stop(); if (trainingState === 'recording') handleCancel(); else onClose(); }}
           className="text-text-secondary text-sm min-w-[44px] min-h-[44px] flex items-center"
         >
           {trainingState === 'recording' ? 'Cancel' : '← Back'}
@@ -210,7 +109,8 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
           </div>
         )}
 
-        {trainingState === 'select' && (
+        {capture.preparing && <p role="status" className="text-sm text-text-secondary">Preparing microphone…</p>}
+        {trainingState === 'select' && !capture.preparing && (
           <InstrumentSelectView
             profiles={profiles}
             onSelect={(name, quick) => {
@@ -226,7 +126,7 @@ export function InstrumentTrainingPage({ onClose }: TrainingPageProps) {
         {trainingState === 'recording' && selectedInstrument && (
           <RecordingView
             instrument={selectedInstrument}
-            hitCount={hitCount}
+            hitCount={capture.hitCount}
             minHits={minHits}
             isQuickRetrain={isQuickRetrain}
             onFinish={finishTraining}
@@ -293,11 +193,11 @@ function InstrumentSelectView({
           const isSelected = selectedInstrument === name;
 
           return (
+            <div key={name} className="relative">
             <button
-              key={name}
               onClick={() => onSelect(name, !!profile)}
               className={`
-                flex flex-col items-start p-3 rounded-md border transition-colors text-left
+                w-full flex flex-col items-start p-3 rounded-md border transition-colors text-left
                 min-h-[72px]
                 ${isSelected
                   ? 'border-accent bg-accent-dim'
@@ -312,22 +212,16 @@ function InstrumentSelectView({
               {profile ? (
                 <div className="flex items-center justify-between w-full">
                   <span className="text-text-muted text-xs">
-                    {profile.samples.length} hits · {Math.round(profile.accuracy * 100)}%
+                    {profile.samples.length} hits · {profiles.length < 2 || profile.accuracy < 0 ? 'Train another instrument' : `${Math.round(profile.accuracy * 100)}% validation`}
                   </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(name);
-                    }}
-                    className="text-danger text-xs min-w-[44px] min-h-[44px] flex items-center justify-end"
-                  >
-                    Delete
-                  </button>
+
                 </div>
               ) : (
                 <span className="text-text-muted text-xs">Not trained</span>
               )}
             </button>
+            {profile && <button aria-label={`Delete ${name} profile`} onClick={() => onDelete(name)} className="min-h-[44px] px-3 text-danger text-xs">Delete profile</button>}
+            </div>
           );
         })}
       </div>
@@ -390,7 +284,7 @@ function RecordingView({
           <circle
             cx="64" cy="64" r="56"
             fill="none"
-            stroke={ready ? '#4ADE80' : 'rgba(255,255,255,0.85)'}
+            stroke={ready ? '#15803d' : '#15171A'}
             strokeWidth="6"
             strokeLinecap="round"
             strokeDasharray={`${progress * 351.86} 351.86`}
@@ -406,7 +300,7 @@ function RecordingView({
       {/* Recording indicator */}
       <div className="flex items-center gap-2">
         <div className="w-2.5 h-2.5 rounded-full bg-recording animate-pulse" />
-        <span className="text-text-secondary text-sm">Listening…</span>
+        <span className="text-text-secondary text-sm">Listening… auto-stops at 60 seconds. Count is approximate.</span>
       </div>
 
       {/* Finish / Cancel */}
@@ -461,20 +355,20 @@ function DoneView({
       </h2>
 
       <div className="bg-bg-surface border border-border-subtle rounded-md p-4 w-full max-w-xs text-center">
-        <div className="text-text-muted text-xs mb-1">Model Accuracy</div>
+        <div className="text-text-muted text-xs mb-1">Training validation</div>
         <div
           className={`text-3xl font-mono font-bold ${
             accPct >= 80 ? 'text-success' : accPct >= 60 ? 'text-warning' : 'text-danger'
           }`}
         >
-          {accPct}%
+          {accuracy !== null && accuracy >= 0 ? `${accPct}%` : 'Needs a second instrument'}
         </div>
         <div className="text-text-muted text-xs mt-2">
           {hitCount} training hits
         </div>
       </div>
 
-      {accPct < 60 && (
+      {accuracy !== null && accuracy >= 0 && accPct < 60 && (
         <p className="text-warning text-xs text-center max-w-xs">
           Low accuracy — try training with more consistent hits, or ensure
           each instrument sounds distinct.

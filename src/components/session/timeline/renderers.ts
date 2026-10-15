@@ -90,10 +90,10 @@ export function renderTimeline({
 
       // Grid line — much brighter now
       ctx.strokeStyle = isDownbeat
-        ? 'rgba(255,255,255,0.5)'
+        ? 'rgba(21,23,26,0.5)'
         : isMainBeat
-          ? 'rgba(255,255,255,0.25)'
-          : 'rgba(255,255,255,0.08)';
+          ? 'rgba(21,23,26,0.25)'
+          : 'rgba(21,23,26,0.08)';
       ctx.lineWidth = isDownbeat ? 2 : 1;
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -104,7 +104,7 @@ export function renderTimeline({
       if (zoom >= 4 && isMainBeat) {
         const measureNum = Math.floor(beatIdx / beatsPerMeasure) + 1;
         const beatInMeasure = Math.floor((beatIdx % beatsPerMeasure) / sub) + 1;
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillStyle = 'rgba(21,23,26,0.3)';
         ctx.font = '9px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
         ctx.fillText(`${measureNum}:${beatInMeasure}`, x, 12);
@@ -177,7 +177,7 @@ export function renderTimeline({
             ? 'rgba(251,191,36,0.7)'
             : 'rgba(248,113,113,0.7)';
       } else {
-        color = 'rgba(255,255,255,0.15)';
+        color = 'rgba(21,23,26,0.15)';
       }
 
       // Full-height vertical line
@@ -209,7 +209,7 @@ export function renderTimeline({
 
       // Deviation label at zoom ≥ 4×
       if (zoom >= 4 && onset.scored) {
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillStyle = 'rgba(21,23,26,0.5)';
         ctx.font = zoom >= 8 ? '10px "JetBrains Mono", monospace' : '8px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
         const label = `${onset.delta > 0 ? '+' : ''}${onset.delta.toFixed(1)}`;
@@ -285,7 +285,7 @@ export function renderMiniMap({
   const halfH = MINIMAP_HEIGHT * 0.45;
 
   // Draw waveform envelope
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillStyle = 'rgba(21,23,26,0.25)';
   for (let i = 0; i < env.length; i++) {
     const h = env[i] * halfH;
     ctx.fillRect(i * barW, midY - h, Math.max(1, barW), h * 2);
@@ -304,14 +304,14 @@ export function renderMiniMap({
     ctx.fillRect(x2, 0, width - x2, MINIMAP_HEIGHT);
 
     // Bright border on viewport
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.strokeStyle = 'rgba(21,23,26,0.6)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x1, 0, x2 - x1, MINIMAP_HEIGHT);
   }
 
   // Playhead on minimap
   const playX = playbackPos * width;
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = 'rgba(21,23,26,0.9)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(playX, 0);

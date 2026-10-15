@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
 import { createDefaultTrack } from '../store/types';
@@ -24,7 +24,7 @@ import { BackupBanner } from '../components/ui/BackupBanner';
 import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
 import { ReviewScreen } from '../components/session/ReviewScreen';
-import { SessionDetailPage } from './SessionDetailPage';
+const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module) => ({ default: module.SessionDetailPage })));
 import { useSessionStore } from '../store/session-store';
 import type { SessionAnalysis } from '../analysis/types';
 import type { SessionRecord } from '../store/db';
@@ -47,17 +47,14 @@ export function HomePage() {
   const sessions = useSessionStore((s) => s.sessions);
   const loadSessions = useSessionStore((s) => s.loadFromDB);
 
+  const [failedSessionId, setFailedSessionId] = useState<string | null>(null);
   const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
   const [reviewAnalysis, setReviewAnalysis] = useState<SessionAnalysis | null>(null);
   const [detailSession, setDetailSession] = useState<SessionRecord | null>(null);
 
   const processRecordingResult = useCallback(async (result: RecordingResult) => {
+    setFailedSessionId(null);
     const analysisResult = await analysis.analyze(result.sessionId, {
-      bpm: result.bpm,
-      meterNumerator: result.meterNumerator,
-      meterDenominator: result.meterDenominator,
-      subdivision: result.subdivision,
-      durationMs: result.durationMs,
       scheduledBeats: result.scheduledBeats,
       recordingStartTime: result.recordingStartTime,
       recordingEndTime: result.recordingEndTime,
@@ -66,7 +63,7 @@ export function HomePage() {
       setReviewSessionId(result.sessionId);
       setReviewAnalysis(analysisResult);
     } else {
-      console.warn('Analysis produced no result');
+      setFailedSessionId(result.sessionId);
     }
   }, [analysis.analyze]);
 
@@ -230,15 +227,19 @@ export function HomePage() {
 
         {/* Primary practice stack: large, full-width, low-cognitive-load controls. */}
         <div className="space-y-3">
-          <RecordButton isRecording={recording.isRecording} onToggle={handleRecordToggle} />
+          <RecordButton phase={recording.phase} disabled={analysis.isAnalyzing || ['preparing', 'stopping', 'saving'].includes(recording.phase)} isRecording={recording.isRecording} onToggle={handleRecordToggle} />
           <PlayButton />
           <TapTempo />
         </div>
 
         <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
 
+        {failedSessionId && <div role="alert" className="my-3 rounded-lg bg-warning-dim p-3 text-sm text-text-primary">
+          <p>{analysis.error || 'Analysis cancelled.'} Your recording is saved.</p>
+          <button className="min-h-[44px] underline font-semibold" onClick={() => setDetailSession(sessions.find((session) => session.id === failedSessionId) ?? null)}>Open saved take to retry</button>
+        </div>}
         {recording.error && (
-          <div className="bg-danger-dim border border-danger/30 rounded-md p-3 mt-2 text-center">
+          <div role="alert" className="bg-danger-dim border border-danger/30 rounded-md p-3 mt-2 text-center">
             <p className="text-danger text-xs">{recording.error}</p>
             <button
               type="button"
@@ -352,7 +353,7 @@ export function HomePage() {
         />
       )}
 
-      <SessionDetailPage
+      {detailSession && <Suspense fallback={<p role="status">Loading take…</p>}><SessionDetailPage
         session={detailSession}
         visible={detailSession !== null}
         onClose={() => setDetailSession(null)}
@@ -360,7 +361,7 @@ export function HomePage() {
           setDetailSession(null);
           await loadSessions();
         }}
-      />
+      /></Suspense>}
     </div>
   );
 }

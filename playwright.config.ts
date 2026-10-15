@@ -21,6 +21,10 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'fold-cover',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true, launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] } },
+    },
+    {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],

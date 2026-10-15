@@ -1,6 +1,9 @@
 /** Local backup/import utilities with explicit memory-safety limits. */
 import * as db from '../store/db';
-import { beginCriticalActivity } from './critical-activity';
+import { beginCriticalActivity, isCriticalActivityActive } from './critical-activity';
+
+import { validateSessions, validateProjects, validateSettings, validateEvents, validateProfiles, validatePresets, validateCustomMetadata } from './backup-validation';
+import { flushPersistence } from '../store/persistence';
 
 const MAX_FULL_BACKUP_ESTIMATED_BYTES = 512 * 1024 * 1024;
 const MAX_IMPORT_FILE_BYTES = 768 * 1024 * 1024;
@@ -13,6 +16,7 @@ async function getJSZip() {
 
 export interface BackupManifest {
   version: 3;
+  recordingTypes?: Record<string, string>;
   format: 'polypro-backup';
   createdAt: string;
   appVersion: string;
@@ -56,8 +60,10 @@ export async function exportBackup(
   onProgress?: (p: ExportProgress) => void,
   options: BackupOptions = {},
 ): Promise<Blob> {
+  if (isCriticalActivityActive()) throw new Error('Finish the current recording, analysis or data operation before making a backup.');
   const release = beginCriticalActivity('backup');
   try {
+    await flushPersistence();
     const includeRecordings = options.includeRecordings !== false;
     const JSZip = await getJSZip();
     const zip = new JSZip();
@@ -77,6 +83,7 @@ export async function exportBackup(
     onProgress?.({ stage: 'projects', current: 0, total: 1 });
     const projects = await db.getAllProjects();
     zip.file('projects.json', JSON.stringify(projects, null, 2));
+    zip.file('presets.json', JSON.stringify(await db.getAllPresets()));
 
     onProgress?.({ stage: 'sessions', current: 0, total: 1 });
     const sessions = await db.getAllSessions();
@@ -98,14 +105,16 @@ export async function exportBackup(
     }
 
     let recordingCount = 0;
+    const recordingTypes: Record<string, string> = {};
     if (includeRecordings) {
       const recordingsFolder = zip.folder('recordings')!;
       for (let i = 0; i < sessions.length; i++) {
         onProgress?.({ stage: 'recordings', current: i, total: sessions.length });
         if (!sessions[i].hasRecording) continue;
-        const blob = await db.getRecording(sessions[i].id);
+        const blob = await db.getRecording(sessions[i].id) ?? await db.getRecording(sessions[i].id + '-playback');
         if (!blob) continue;
         recordingsFolder.file(`${sessions[i].id}.pcm`, await blob.arrayBuffer());
+        recordingTypes[sessions[i].id] = blob.type || 'application/octet-stream';
         recordingCount++;
       }
     }
@@ -124,6 +133,7 @@ export async function exportBackup(
 
     const manifest: BackupManifest = {
       version: 3,
+      recordingTypes,
       format: 'polypro-backup',
       createdAt: new Date().toISOString(),
       appVersion: '2.0.0',
@@ -155,7 +165,7 @@ export function downloadBackup(blob: Blob, suffix = 'full'): void {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 async function loadValidatedZip(file: File) {
@@ -191,8 +201,8 @@ export async function previewBackup(file: File): Promise<ImportPreview> {
   const manifest = await readManifest(zip);
   const projectsFile = zip.file('projects.json');
   const sessionsFile = zip.file('sessions.json');
-  const backupProjects: db.ProjectRecord[] = projectsFile ? JSON.parse(await projectsFile.async('text')) : [];
-  const backupSessions: db.SessionRecord[] = sessionsFile ? JSON.parse(await sessionsFile.async('text')) : [];
+  const backupProjects = validateProjects(projectsFile ? JSON.parse(await projectsFile.async('text')) : []);
+  const backupSessions = validateSessions(sessionsFile ? JSON.parse(await sessionsFile.async('text')) : []);
   if (!Array.isArray(backupProjects) || !Array.isArray(backupSessions)) throw new Error('Backup metadata is malformed');
 
   const existingProjects = await db.getAllProjects();
@@ -214,111 +224,49 @@ export async function previewBackup(file: File): Promise<ImportPreview> {
 export async function importBackup(
   file: File,
   onProgress?: (p: ExportProgress) => void,
+  options: { restoreSettings?: boolean } = {},
 ): Promise<{ imported: { projects: number; sessions: number }; skipped: number }> {
+  if (isCriticalActivityActive()) throw new Error('Finish the current recording, analysis or data operation before importing.');
   const release = beginCriticalActivity('import');
   try {
     const zip = await loadValidatedZip(file);
-    await readManifest(zip);
-    let importedProjects = 0;
-    let importedSessions = 0;
-    let skipped = 0;
-
+    const manifest = await readManifest(zip);
+    const readJSON = async (name: string, fallback: unknown) => {
+      const entry = zip.file(name); return entry ? JSON.parse(await entry.async('text')) as unknown : fallback;
+    };
     onProgress?.({ stage: 'settings', current: 0, total: 1 });
-    const settingsFile = zip.file('settings.json');
-    if (settingsFile) {
-      const settings = JSON.parse(await settingsFile.async('text')) as Record<string, unknown>;
-      for (const [key, value] of Object.entries(settings)) {
-        if (await db.getSetting(key) === undefined) await db.setSetting(key, value);
+    const settings = validateSettings(await readJSON('settings.json', {}));
+    const projects = validateProjects(await readJSON('projects.json', []));
+    const sessions = validateSessions(await readJSON('sessions.json', []));
+    const profiles = validateProfiles(await readJSON('profiles.json', []));
+    const presets = validatePresets(await readJSON('presets.json', []));
+    const customMetadata = validateCustomMetadata(await readJSON('customsamples.json', []));
+    const events: db.HitEventsRecord[] = [];
+    const recordings: db.BackupData['recordings'] = [];
+    for (const session of sessions) {
+      const eventData = await readJSON(`hitevents/${session.id}.json`, null);
+      if (eventData) events.push(validateEvents(eventData, session.id));
+      const file = zip.file(`recordings/${session.id}.pcm`);
+      if (file) {
+        const type = manifest.recordingTypes?.[session.id] || 'application/octet-stream';
+        if (typeof type !== 'string' || !(type === 'application/octet-stream' || /^audio\/[a-z0-9.+;-]+$/i.test(type))) throw new Error('Invalid backup recording format.');
+        const bytes = await file.async('arraybuffer');
+        if (!bytes.byteLength || (type === 'application/octet-stream' && bytes.byteLength % 4)) throw new Error('Invalid backup audio data.');
+        recordings.push({ id: session.id, blob: new Blob([bytes], { type }) });
       }
+      onProgress?.({ stage: 'recordings', current: recordings.length, total: sessions.length });
     }
-
-    onProgress?.({ stage: 'projects', current: 0, total: 1 });
-    const projectsFile = zip.file('projects.json');
-    if (projectsFile) {
-      const projects: db.ProjectRecord[] = JSON.parse(await projectsFile.async('text'));
-      const existing = new Set((await db.getAllProjects()).map((project) => project.id));
-      for (const project of projects) {
-        if (existing.has(project.id)) skipped++;
-        else { await db.putProject(project); importedProjects++; }
-      }
+    const customSamples: db.CustomSampleRecord[] = [];
+    for (const meta of customMetadata) {
+      const file = zip.file(`customsamples/${meta.id.replace('custom:', '')}.wav`);
+      if (!file) throw new Error('Invalid backup: a custom sample is missing.');
+      customSamples.push({ ...meta, blob: new Blob([await file.async('arraybuffer')], { type: 'audio/wav' }) });
     }
-
-    const recordingsFolder = zip.folder('recordings');
-
-    const sessionsFile = zip.file('sessions.json');
-    const sessions: db.SessionRecord[] = sessionsFile ? JSON.parse(await sessionsFile.async('text')) : [];
-    const existingSessions = await db.getAllSessions();
-    const sessionMap = new Map(existingSessions.map((session) => [session.id, session]));
-    for (let i = 0; i < sessions.length; i++) {
-      onProgress?.({ stage: 'sessions', current: i, total: sessions.length });
-      const session = sessions[i];
-      if (sessionMap.has(session.id)) { skipped++; continue; }
-      // Audio is claimed only after its blob has been restored successfully below.
-      const imported = { ...session, hasRecording: false };
-      await db.putSession(imported);
-      sessionMap.set(session.id, imported);
-      importedSessions++;
-    }
-
-    const hiteventsFolder = zip.folder('hitevents');
-    if (hiteventsFolder) {
-      const files: Array<{ name: string; file: any }> = [];
-      hiteventsFolder.forEach((path, entry) => { if (path.endsWith('.json')) files.push({ name: path, file: entry }); });
-      for (let i = 0; i < files.length; i++) {
-        onProgress?.({ stage: 'hitevents', current: i, total: files.length });
-        const sessionId = files[i].name.replace('.json', '');
-        // Preserve any existing event set, but repair a partial prior import.
-        if (await db.getHitEvents(sessionId)) continue;
-        await db.putHitEvents(JSON.parse(await files[i].file.async('text')));
-      }
-    }
-
-    if (recordingsFolder) {
-      const files: Array<{ name: string; file: any }> = [];
-      recordingsFolder.forEach((path, entry) => { if (path.endsWith('.pcm')) files.push({ name: path, file: entry }); });
-      for (let i = 0; i < files.length; i++) {
-        onProgress?.({ stage: 'recordings', current: i, total: files.length });
-        const sessionId = files[i].name.replace('.pcm', '');
-        let recording = await db.getRecording(sessionId);
-        if (!recording) {
-          recording = new Blob([await files[i].file.async('arraybuffer')], { type: 'application/octet-stream' });
-          await db.putRecording(sessionId, recording);
-        }
-        const currentSession = sessionMap.get(sessionId);
-        if (currentSession && !currentSession.hasRecording) {
-          const reconciled = { ...currentSession, hasRecording: true };
-          await db.putSession(reconciled);
-          sessionMap.set(sessionId, reconciled);
-        }
-      }
-    }
-
-    onProgress?.({ stage: 'profiles', current: 0, total: 1 });
-    const profilesFile = zip.file('profiles.json');
-    if (profilesFile) {
-      const profiles: db.InstrumentProfileRecord[] = JSON.parse(await profilesFile.async('text'));
-      const names = new Set((await db.getAllInstrumentProfiles()).map((profile) => profile.name));
-      for (const profile of profiles) if (!names.has(profile.name)) await db.putInstrumentProfile(profile);
-    }
-
-    const customMetaFile = zip.file('customsamples.json');
-    if (customMetaFile) {
-      const customMeta: Array<{ id: string; name: string; durationMs: number; createdAt: string }> = JSON.parse(await customMetaFile.async('text'));
-      const ids = new Set((await db.getAllCustomSamples()).map((sample) => sample.id));
-      const folder = zip.folder('customsamples');
-      for (const meta of customMeta) {
-        if (ids.has(meta.id)) continue;
-        const wav = folder?.file(`${meta.id.replace('custom:', '')}.wav`);
-        if (!wav) continue;
-        await db.putCustomSample({ ...meta, blob: new Blob([await wav.async('arraybuffer')], { type: 'audio/wav' }) });
-      }
-    }
-
+    // Parsing failures and quota errors leave the existing database unchanged.
+    const result = await db.restoreBackup({ settings, projects, sessions, presets, profiles, events, recordings, customSamples }, options.restoreSettings !== false);
     onProgress?.({ stage: 'done', current: 1, total: 1 });
-    return { imported: { projects: importedProjects, sessions: importedSessions }, skipped };
-  } finally {
-    release();
-  }
+    return result;
+  } finally { release(); }
 }
 
 export interface StorageInfo {

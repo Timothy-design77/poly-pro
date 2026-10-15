@@ -64,17 +64,15 @@ export function alignToGrid(
     let bestGridIdx = -1;
     let bestDist = Infinity;
 
-    for (let g = 0; g < grid.length; g++) {
-      if (claimedBeats.has(g)) continue;
-
-      const dist = Math.abs(correctedTime - grid[g].time);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestGridIdx = g;
-      }
-
-      // Early exit: if distances are increasing, we've passed the best
-      if (dist > bestDist + scoringWindowS * 2) break;
+    let low = 0, high = grid.length;
+    while (low < high) { const mid = (low + high) >>> 1; if (grid[mid].time < correctedTime) low = mid + 1; else high = mid; }
+    let left = low - 1, right = low;
+    while (left >= 0 && claimedBeats.has(left)) left--;
+    while (right < grid.length && claimedBeats.has(right)) right++;
+    for (const index of [left, right]) {
+      if (index < 0 || index >= grid.length) continue;
+      const distance = Math.abs(correctedTime - grid[index].time);
+      if (distance < bestDist) { bestDist = distance; bestGridIdx = index; }
     }
 
     const withinWindow = bestDist <= scoringWindowS;
@@ -458,7 +456,7 @@ export function computeSessionAnalysis(
   const noiseFloor = 0; // Already computed upstream, passed through
   const autoLatencyMs = 0; // From onset detection
 
-  const partialAnalysis = {
+  const partialAnalysis: SessionAnalysis = {
     score,
     sigma,
     meanOffset,
@@ -477,7 +475,7 @@ export function computeSessionAnalysis(
     autoLatencyMs,
     scoredOnsets,
     rawOnsets,
-    sigmaLevel: getSigmaLevel(sigma),
+    sigmaLevel: scoredOnsets.filter((onset) => onset.scored).length < 8 ? 'Insufficient hits' : getSigmaLevel(sigma),
     fatigueRatio,
     maxDrift,
     headlines: [] as HeadlineItem[],

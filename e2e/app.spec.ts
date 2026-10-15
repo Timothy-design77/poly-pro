@@ -39,7 +39,8 @@ test('primary navigation and BPM keypad are usable and accessible', async ({ pag
 test('fake microphone recording reaches durable IndexedDB storage', async ({ page }) => {
   await page.goto('./');
   const start = page.getByRole('button', { name: 'Start recording' });
-  await start.click();
+  await start.focus();
+  await page.keyboard.press('Enter');
   const stop = page.getByRole('button', { name: 'Stop recording' });
   await expect(stop).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(1300);
@@ -47,10 +48,14 @@ test('fake microphone recording reaches durable IndexedDB storage', async ({ pag
 
   await expect.poll(() => sessionCount(page), { timeout: 15_000 }).toBeGreaterThan(0);
 
-  const cancelAnalysis = page.getByRole('button', { name: 'Cancel Analysis' });
-  if (await cancelAnalysis.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await cancelAnalysis.click();
-  }
+  await expect(page.getByRole('button', { name: 'Cancel Analysis' })).toHaveCount(0, { timeout: 30000 });
+  const captured = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve) => { const req = indexedDB.open('polypro'); req.onsuccess = () => resolve(req.result); });
+    return await new Promise<any>((resolve) => { const req = db.transaction('sessions').objectStore('sessions').getAll(); req.onsuccess = () => { resolve(req.result[0]); db.close(); }; });
+  });
+  expect(captured.analyzed).toBe(true);
+  expect(captured.recordingTiming.recordingEndTime - captured.recordingTiming.recordingStartTime).toBeCloseTo(captured.durationMs / 1000, 5);
+  expect(captured.analysisConfig.sampleRate).toBe(captured.recordingSampleRate);
 });
 
 test('installed PWA shell reloads offline after service worker activation', async ({ page, context }) => {

@@ -5,9 +5,13 @@ import * as db from '../../../store/db';
 import { useSettingsStore } from '../../../store/settings-store';
 import { VOLUME_GAINS } from '../../../audio/types';
 import { createPlaybackLimiter, recordingPlaybackGain } from '../../../audio/recording-playback';
+import { audioEngine } from '../../../audio';
+import { getBuffer } from '../../../audio/sounds';
+import { mediaPosition, eventsInWindow, type PlaybackLoop } from '../../../audio/playback-clock';
 import { forEachClickBeat } from './timeline-shared';
 
 export interface TimelinePlayback {
+  error: string | null;
   isPlaying: boolean;
   playbackPos: number;
   playbackSpeed: number;
@@ -41,12 +45,16 @@ interface Options {
   session: SessionRecord;
   audioBufferRef: React.MutableRefObject<AudioBuffer | null>;
   zoom: number;
+  loopEnabled: boolean;
+  loopStart: number;
+  loopEnd: number;
   containerRef: React.RefObject<HTMLDivElement>;
   setScrollX: React.Dispatch<React.SetStateAction<number>>;
 }
 
-export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX }: Options): TimelinePlayback {
+export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX, loopEnabled, loopStart, loopEnd }: Options): TimelinePlayback {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [playbackPos, setPlaybackPos] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [playbackVolume, setPlaybackVolumeState] = useState(0.72);
@@ -58,249 +66,141 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
   const [lowPassHz, setLowPassHz] = useState(12000);
   const [presenceBoostDb, setPresenceBoostDb] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
-  const [latencyOffsetMs, setLatencyOffsetMs] = useState(() => {
-    const settings = useSettingsStore.getState();
-    return settings.calibratedOffset + settings.manualAdjustment;
-  });
-
+  const [latencyOffsetMs, setLatencyOffsetMs] = useState(() => session.analysisConfig?.latencyOffsetMs ?? useSettingsStore.getState().calibratedOffset + useSettingsStore.getState().manualAdjustment);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const limiterRef = useRef<DynamicsCompressorNode | null>(null);
-  const filterNodesRef = useRef<AudioNode[]>([]);
-  const clickNodesRef = useRef<AudioBufferSourceNode[]>([]);
   const clickGainRef = useRef<GainNode | null>(null);
-  const playStartTimeRef = useRef(0);
-  const playOffsetRef = useRef(0);
-  const animFrameRef = useRef(0);
-  const savedClickVolRef = useRef(0.5);
+  const nodesRef = useRef<AudioNode[]>([]);
+  const clicksRef = useRef(new Set<AudioBufferSourceNode>());
+  const epochRef = useRef(0);
+  const pendingRef = useRef(false);
+  const offsetRef = useRef(0);
+  const clockRef = useRef({ time: 0, offset: 0, speed: 1, duration: 1, loop: undefined as PlaybackLoop | undefined });
+  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const frameRef = useRef(0);
   const gridBeatsRef = useRef<HitEventsRecord['gridBeats']>(undefined);
-
+  const visualRef = useRef({ zoom, followPlayhead });
+  visualRef.current = { zoom, followPlayhead };
   const clickSoundId = useSettingsStore((state) => state.clickSound);
   const accentSoundId = useSettingsStore((state) => state.accentSound);
   const accentThreshold = useSettingsStore((state) => state.accentSoundThreshold);
 
-  useEffect(() => {
-    let cancelled = false;
-    db.getHitEvents(session.id).then((events) => {
-      if (!cancelled) gridBeatsRef.current = events?.gridBeats;
-    }).catch(() => {});
-    return () => { cancelled = true; gridBeatsRef.current = undefined; };
-  }, [session.id]);
+  const position = useCallback(() => {
+    const clock = clockRef.current;
+    return sourceNodeRef.current ? mediaPosition(clock.offset + Math.max(0, (audioEngine.getContext()?.currentTime ?? clock.time) - clock.time) * clock.speed, clock.duration, clock.loop) : offsetRef.current;
+  }, []);
 
   const stopPlayback = useCallback(() => {
+    ++epochRef.current; pendingRef.current = false;
     if (sourceNodeRef.current) {
+      offsetRef.current = position();
+      sourceNodeRef.current.onended = null;
       try { sourceNodeRef.current.stop(); } catch {}
-      try { sourceNodeRef.current.disconnect(); } catch {}
-      sourceNodeRef.current = null;
+      sourceNodeRef.current.disconnect(); sourceNodeRef.current = null;
     }
-    for (const node of filterNodesRef.current) {
-      try { node.disconnect(); } catch {}
-    }
-    filterNodesRef.current = [];
-    if (gainNodeRef.current) { try { gainNodeRef.current.disconnect(); } catch {} gainNodeRef.current = null; }
-    if (limiterRef.current) { try { limiterRef.current.disconnect(); } catch {} limiterRef.current = null; }
-    for (const node of clickNodesRef.current) { try { node.stop(); } catch {} }
-    clickNodesRef.current = [];
-    if (clickGainRef.current) { try { clickGainRef.current.disconnect(); } catch {} clickGainRef.current = null; }
-    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = 0; }
+    for (const source of clicksRef.current) { try { source.stop(); } catch {} source.disconnect(); }
+    clicksRef.current.clear();
+    for (const node of nodesRef.current) node.disconnect();
+    nodesRef.current = []; gainNodeRef.current = null; clickGainRef.current = null;
+    clearInterval(timerRef.current); cancelAnimationFrame(frameRef.current);
     setIsPlaying(false);
-  }, []);
+  }, [position]);
 
   const startPlayback = useCallback(async () => {
-    if (!audioBufferRef.current) return;
-    const { audioEngine } = await import('../../../audio');
-    const ctx = await audioEngine.initContext();
-    if (ctx.state === 'suspended') await ctx.resume();
-
-    const duration = audioBufferRef.current.duration;
-    if (playOffsetRef.current >= duration) playOffsetRef.current = 0;
-    const source = ctx.createBufferSource();
-    source.buffer = audioBufferRef.current;
-    source.playbackRate.value = playbackSpeed;
-
-    const gain = ctx.createGain();
-    const limiter = createPlaybackLimiter(ctx);
-    gain.gain.value = recordingPlaybackGain(playbackVolume);
-    gain.connect(limiter);
-    limiter.connect(ctx.destination);
-    gainNodeRef.current = gain;
-    limiterRef.current = limiter;
-
-    if (cleanupEnabled) {
-      const highPass = ctx.createBiquadFilter();
-      highPass.type = 'highpass';
-      highPass.frequency.value = Math.max(20, highPassHz);
-      highPass.Q.value = 0.707;
-      const lowPass = ctx.createBiquadFilter();
-      lowPass.type = 'lowpass';
-      lowPass.frequency.value = Math.max(highPassHz + 100, lowPassHz);
-      lowPass.Q.value = 0.707;
-      const presence = ctx.createBiquadFilter();
-      presence.type = 'peaking';
-      presence.frequency.value = 3200;
-      presence.Q.value = 0.8;
-      presence.gain.value = presenceBoostDb;
-      const compressor = ctx.createDynamicsCompressor();
-      compressor.threshold.value = -20;
-      compressor.knee.value = 18;
-      compressor.ratio.value = 2.5;
-      compressor.attack.value = 0.004;
-      compressor.release.value = 0.16;
-      source.connect(highPass);
-      highPass.connect(lowPass);
-      lowPass.connect(presence);
-      presence.connect(compressor);
-      compressor.connect(gain);
-      filterNodesRef.current = [highPass, lowPass, presence, compressor];
-    } else {
-      source.connect(gain);
-    }
-
-    const { getBuffer } = await import('../../../audio/sounds');
-    const latencyOffsetS = latencyOffsetMs / 1000;
-    const durationS = session.durationMs / 1000;
-    const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
-    const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
-    if (clickBuffer) {
-      if (!gridBeatsRef.current) {
-        gridBeatsRef.current = (await db.getHitEvents(session.id).catch(() => undefined))?.gridBeats;
-      }
-      const clickGain = ctx.createGain();
-      clickGain.gain.value = clickOverlay ? clickVolume : 0;
-      savedClickVolRef.current = clickVolume;
-      clickGain.connect(limiter);
-      clickGainRef.current = clickGain;
-      const scheduled: AudioBufferSourceNode[] = [];
-      forEachClickBeat(session, latencyOffsetS, ({ adjustedBeatTime, volState }) => {
-        const playbackTime = (adjustedBeatTime - playOffsetRef.current) / playbackSpeed;
-        if (playbackTime <= 0 || adjustedBeatTime >= durationS) return;
-        const buffer = volState >= accentThreshold ? (accentBuffer || clickBuffer) : clickBuffer;
-        const clickSource = ctx.createBufferSource();
-        clickSource.buffer = buffer;
-        const clickNodeGain = ctx.createGain();
-        clickNodeGain.gain.value = VOLUME_GAINS[volState];
-        clickSource.connect(clickNodeGain);
-        clickNodeGain.connect(clickGain);
-        clickSource.start(ctx.currentTime + playbackTime);
-        scheduled.push(clickSource);
+    const buffer = audioBufferRef.current;
+    if (!buffer) { setError('This recording is not ready for playback.'); return; }
+    const epoch = ++epochRef.current; pendingRef.current = true; setError(null);
+    try {
+      const [ctx, events] = await Promise.all([audioEngine.initContext(), db.getHitEvents(session.id)]);
+      if (ctx.state === 'suspended') await ctx.resume();
+      if (epoch !== epochRef.current) return;
+      gridBeatsRef.current = events?.gridBeats;
+      const duration = buffer.duration;
+      const loop = loopEnabled && loopEnd > loopStart ? { start: loopStart * duration, end: loopEnd * duration } : undefined;
+      if (offsetRef.current >= duration) offsetRef.current = 0;
+      if (loop && (offsetRef.current < loop.start || offsetRef.current >= loop.end)) offsetRef.current = loop.start;
+      const source = ctx.createBufferSource(); source.buffer = buffer; source.playbackRate.value = playbackSpeed;
+      if (loop) { source.loop = true; source.loopStart = loop.start; source.loopEnd = loop.end; }
+      const gain = ctx.createGain(); gain.gain.value = recordingPlaybackGain(playbackVolume);
+      const limiter = createPlaybackLimiter(ctx); gain.connect(limiter); limiter.connect(ctx.destination);
+      gainNodeRef.current = gain; nodesRef.current = [source, gain, limiter];
+      if (cleanupEnabled) {
+        const highPass = ctx.createBiquadFilter(); highPass.type = 'highpass'; highPass.frequency.value = highPassHz; highPass.Q.value = 0.707;
+        const lowPass = ctx.createBiquadFilter(); lowPass.type = 'lowpass'; lowPass.frequency.value = Math.max(highPassHz + 100, lowPassHz); lowPass.Q.value = 0.707;
+        const presence = ctx.createBiquadFilter(); presence.type = 'peaking'; presence.frequency.value = 3200; presence.Q.value = 0.8; presence.gain.value = presenceBoostDb;
+        source.connect(highPass); highPass.connect(lowPass); lowPass.connect(presence); presence.connect(gain);
+        nodesRef.current.push(highPass, lowPass, presence);
+      } else source.connect(gain);
+      const clickGain = ctx.createGain(); clickGain.gain.value = clickOverlay ? clickVolume : 0; clickGain.connect(limiter);
+      clickGainRef.current = clickGain; nodesRef.current.push(clickGain);
+      const beats: Array<{ time: number; volState: keyof typeof VOLUME_GAINS }> = [];
+      forEachClickBeat(session, latencyOffsetMs / 1000, ({ adjustedBeatTime, volState }) => {
+        if (adjustedBeatTime >= 0 && adjustedBeatTime < duration) beats.push({ time: adjustedBeatTime, volState });
       }, gridBeatsRef.current);
-      clickNodesRef.current = scheduled;
-    }
-
-    sourceNodeRef.current = source;
-    source.onended = () => stopPlayback();
-    playStartTimeRef.current = ctx.currentTime;
-    source.start(0, playOffsetRef.current);
-    setIsPlaying(true);
-
-    const animate = () => {
-      if (!sourceNodeRef.current) return;
-      const elapsed = (ctx.currentTime - playStartTimeRef.current) * playbackSpeed + playOffsetRef.current;
-      const pos = Math.min(1, elapsed / duration);
-      setPlaybackPos(pos);
-      const width = containerRef.current?.clientWidth ?? 350;
-      const totalWidth = width * zoom;
-      const playheadX = pos * totalWidth;
-      if (followPlayhead) setScrollX((previous) => {
-        if (playheadX < previous || playheadX > previous + width) {
-          const target = Math.max(0, playheadX - width * 0.3);
-          return previous + (target - previous) * 0.15;
+      const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
+      const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
+      const startTime = ctx.currentTime + 0.025;
+      clockRef.current = { time: startTime, offset: offsetRef.current, speed: playbackSpeed, duration, loop };
+      let through = offsetRef.current;
+      const schedule = () => {
+        const clock = clockRef.current;
+        const from = Math.max(through, clock.offset + (ctx.currentTime - clock.time) * clock.speed);
+        const to = clock.offset + (ctx.currentTime + 0.15 - clock.time) * clock.speed;
+        if (clickBuffer) for (const { event, time } of eventsInWindow(beats, from, to, loop)) {
+          const click = ctx.createBufferSource(); click.buffer = event.volState >= accentThreshold ? accentBuffer! : clickBuffer;
+          const level = ctx.createGain(); level.gain.value = VOLUME_GAINS[event.volState];
+          click.connect(level); level.connect(clickGain); clicksRef.current.add(click);
+          click.onended = () => { clicksRef.current.delete(click); click.disconnect(); level.disconnect(); };
+          click.start(clock.time + (time - clock.offset) / clock.speed);
         }
-        if (playheadX > previous + width * 0.7) {
-          const target = Math.max(0, playheadX - width * 0.3);
-          return previous + (target - previous) * 0.08;
+        through = to;
+      };
+      sourceNodeRef.current = source;
+      source.onended = () => { if (sourceNodeRef.current === source) { stopPlayback(); offsetRef.current = duration; setPlaybackPos(1); } };
+      source.start(startTime, offsetRef.current);
+      pendingRef.current = false; setIsPlaying(true); schedule(); timerRef.current = setInterval(schedule, 25);
+      const animate = () => {
+        if (epoch !== epochRef.current || !sourceNodeRef.current) return;
+        const pos = position() / duration; setPlaybackPos(pos);
+        const width = containerRef.current?.clientWidth ?? 350;
+        if (visualRef.current.followPlayhead) {
+          const x = pos * width * visualRef.current.zoom;
+          setScrollX((previous) => x < previous || x > previous + width * 0.8 ? Math.max(0, Math.min(width * (visualRef.current.zoom - 1), x - width * 0.3)) : previous);
         }
-        return previous;
-      });
-      if (pos < 1) animFrameRef.current = requestAnimationFrame(animate);
-    };
-    animFrameRef.current = requestAnimationFrame(animate);
-  }, [audioBufferRef, playbackSpeed, cleanupEnabled, highPassHz, lowPassHz, presenceBoostDb,
-    clickSoundId, accentSoundId, accentThreshold, clickOverlay, clickVolume, latencyOffsetMs,
-    session, containerRef, zoom, setScrollX, stopPlayback, playbackVolume, followPlayhead]);
+        frameRef.current = requestAnimationFrame(animate);
+      };
+      frameRef.current = requestAnimationFrame(animate);
+    } catch (failure) { if (epoch === epochRef.current) { stopPlayback(); setError(failure instanceof Error ? failure.message : 'Playback failed.'); } }
+  }, [audioBufferRef, session, playbackSpeed, playbackVolume, loopEnabled, loopStart, loopEnd, cleanupEnabled, highPassHz, lowPassHz, presenceBoostDb, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold, latencyOffsetMs, stopPlayback, position, containerRef, setScrollX]);
 
   const togglePlayback = useCallback(async () => {
-    if (isPlaying) {
-      const { audioEngine } = await import('../../../audio');
-      const ctx = audioEngine.getContext();
-      if (ctx) playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-      stopPlayback();
-    } else {
-      await startPlayback();
-    }
-  }, [isPlaying, playbackSpeed, startPlayback, stopPlayback]);
-
-  const skip = useCallback(async (deltaS: number) => {
-    const durationS = session.durationMs / 1000;
-    if (isPlaying) {
-      const { audioEngine } = await import('../../../audio');
-      const ctx = audioEngine.getContext();
-      if (ctx) playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-      stopPlayback();
-      playOffsetRef.current = Math.max(0, Math.min(durationS, playOffsetRef.current + deltaS));
-      await startPlayback();
-    } else {
-      playOffsetRef.current = Math.max(0, Math.min(durationS, playOffsetRef.current + deltaS));
-      setPlaybackPos(playOffsetRef.current / durationS);
-    }
-  }, [isPlaying, playbackSpeed, session.durationMs, startPlayback, stopPlayback]);
-
+    if (sourceNodeRef.current || pendingRef.current) stopPlayback(); else await startPlayback();
+  }, [startPlayback, stopPlayback]);
   const seekToFraction = useCallback((fraction: number) => {
-    const durationS = session.durationMs / 1000;
-    playOffsetRef.current = Math.max(0, Math.min(1, fraction)) * durationS;
-    setPlaybackPos(Math.max(0, Math.min(1, fraction)));
-    if (isPlaying) {
-      stopPlayback();
-      void startPlayback();
-    }
-  }, [session.durationMs, isPlaying, stopPlayback, startPlayback]);
+    const resume = !!sourceNodeRef.current || pendingRef.current;
+    stopPlayback();
+    const duration = audioBufferRef.current?.duration ?? session.durationMs / 1000;
+    offsetRef.current = Math.max(0, Math.min(1, fraction)) * duration;
+    setPlaybackPos(offsetRef.current / duration);
+    if (resume) void startPlayback();
+  }, [audioBufferRef, session.durationMs, startPlayback, stopPlayback]);
+  const skip = useCallback(async (delta: number) => {
+    const duration = audioBufferRef.current?.duration ?? session.durationMs / 1000;
+    seekToFraction((position() + delta) / duration);
+  }, [audioBufferRef, session.durationMs, position, seekToFraction]);
 
-  const previousLatencyRef = useRef(latencyOffsetMs);
+  const restartKey = `${playbackSpeed}:${loopEnabled}:${loopStart}:${loopEnd}:${cleanupEnabled}:${highPassHz}:${lowPassHz}:${presenceBoostDb}:${latencyOffsetMs}:${clickSoundId}:${accentSoundId}:${accentThreshold}`;
+  const previousKey = useRef(restartKey);
   useEffect(() => {
-    if (previousLatencyRef.current !== latencyOffsetMs && isPlaying) {
-      void (async () => {
-        const { audioEngine } = await import('../../../audio');
-        const ctx = audioEngine.getContext();
-        if (ctx) playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-        stopPlayback();
-        window.setTimeout(() => { void startPlayback(); }, 50);
-      })();
-    }
-    previousLatencyRef.current = latencyOffsetMs;
-  }, [latencyOffsetMs, isPlaying, playbackSpeed, stopPlayback, startPlayback]);
-
-  const cleanupKey = `${cleanupEnabled}:${highPassHz}:${lowPassHz}:${presenceBoostDb}`;
-  const previousCleanupKeyRef = useRef(cleanupKey);
-  useEffect(() => {
-    if (previousCleanupKeyRef.current !== cleanupKey && isPlaying) {
-      void (async () => {
-        const { audioEngine } = await import('../../../audio');
-        const ctx = audioEngine.getContext();
-        if (ctx) playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-        stopPlayback();
-        window.setTimeout(() => { void startPlayback(); }, 25);
-      })();
-    }
-    previousCleanupKeyRef.current = cleanupKey;
-  }, [cleanupKey, isPlaying, playbackSpeed, stopPlayback, startPlayback]);
-
-  useEffect(() => {
-    if (clickGainRef.current) clickGainRef.current.gain.value = clickOverlay ? savedClickVolRef.current : 0;
-  }, [clickOverlay]);
-
-  useEffect(() => {
-    savedClickVolRef.current = clickVolume;
-    if (clickGainRef.current && clickOverlay) clickGainRef.current.gain.value = clickVolume;
-  }, [clickVolume, clickOverlay]);
-
+    if (previousKey.current !== restartKey && (sourceNodeRef.current || pendingRef.current)) { stopPlayback(); void startPlayback(); }
+    previousKey.current = restartKey;
+  }, [restartKey, stopPlayback, startPlayback]);
+  useEffect(() => { if (clickGainRef.current) clickGainRef.current.gain.value = clickOverlay ? clickVolume : 0; }, [clickOverlay, clickVolume]);
   const setPlaybackVolume = useCallback((value: number) => {
-    const next = Math.max(0, Math.min(1, value));
-    setPlaybackVolumeState(next);
+    const next = Math.max(0, Math.min(1, value)); setPlaybackVolumeState(next);
     if (gainNodeRef.current) gainNodeRef.current.gain.value = recordingPlaybackGain(next);
   }, []);
-
   useEffect(() => () => stopPlayback(), [stopPlayback]);
-
   const saveAudio = useCallback(async (withClick: boolean) => {
     if (!audioBufferRef.current) return;
     setIsSaving(true);
@@ -366,20 +266,16 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (error) {
-      console.error('Save failed:', error);
+      setError(error instanceof Error ? error.message : 'Could not export this recording.');
     } finally {
       setIsSaving(false);
     }
   }, [audioBufferRef, session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs]);
 
-  return {
-    isPlaying, playbackPos, playbackSpeed, setPlaybackSpeed, playbackVolume, setPlaybackVolume, followPlayhead, setFollowPlayhead,
-    clickOverlay, setClickOverlay, clickVolume, setClickVolume,
-    cleanupEnabled, setCleanupEnabled, highPassHz, setHighPassHz,
-    lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb,
-    isSaving, latencyOffsetMs, setLatencyOffsetMs,
-    togglePlayback, skip, seekToFraction, saveAudio,
-  };
+  return { error, isPlaying, playbackPos, playbackSpeed, setPlaybackSpeed, playbackVolume, setPlaybackVolume, followPlayhead, setFollowPlayhead,
+    clickOverlay, setClickOverlay, clickVolume, setClickVolume, cleanupEnabled, setCleanupEnabled, highPassHz, setHighPassHz,
+    lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb, isSaving, latencyOffsetMs, setLatencyOffsetMs,
+    togglePlayback, skip, seekToFraction, saveAudio };
 }

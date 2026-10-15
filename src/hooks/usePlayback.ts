@@ -2,18 +2,25 @@ import { useRef, useCallback, useState, useEffect } from 'react';
 import { audioEngine } from '../audio';
 import { useMetronomeStore } from '../store/metronome-store';
 import { createPlaybackLimiter, recordingPlaybackGain } from '../audio/recording-playback';
+import { beginCriticalActivity, isCriticalActivityActive } from '../utils/critical-activity';
 import * as db from '../store/db';
 
 /** Plays saved session recordings with bounded makeup gain and a safety limiter. */
 export function usePlayback() {
   const [playingSessionId, setPlayingSessionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const epochRef = useRef(0);
+  const releaseRef = useRef<(() => void) | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const limiterRef = useRef<DynamicsCompressorNode | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
 
   const stopCurrent = useCallback(() => {
+    epochRef.current++;
+    releaseRef.current?.(); releaseRef.current = null;
     if (sourceRef.current) {
+      sourceRef.current.onended = null;
       try { sourceRef.current.stop(); } catch {}
       try { sourceRef.current.disconnect(); } catch {}
       sourceRef.current = null;
@@ -31,9 +38,12 @@ export function usePlayback() {
     setPlayingSessionId(null);
   }, []);
 
-  useEffect(() => () => stopCurrent(), [stopCurrent]);
+  useEffect(() => {
+    window.addEventListener('polypro:navigation', stopCurrent);
+    return () => { window.removeEventListener('polypro:navigation', stopCurrent); stopCurrent(); };
+  }, [stopCurrent]);
 
-  const playBlob = useCallback(async (blob: Blob, sessionId: string, isCompressed: boolean) => {
+  const playBlob = useCallback(async (blob: Blob, sessionId: string, isCompressed: boolean, epoch: number) => {
     try {
       const ctx = await audioEngine.initContext();
       const arrayBuffer = await blob.arrayBuffer();
@@ -53,6 +63,7 @@ export function usePlayback() {
         audioBuffer.getChannelData(0).set(float32);
       }
 
+      if (epoch !== epochRef.current) return;
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       const gain = ctx.createGain();
@@ -78,8 +89,7 @@ export function usePlayback() {
         if (gainRef.current) gainRef.current.gain.value = recordingPlaybackGain(state.volume);
       });
     } catch (error) {
-      console.error('Playback failed:', error);
-      stopCurrent();
+      if (epoch === epochRef.current) { stopCurrent(); setError(error instanceof Error ? error.message : 'Playback failed.'); }
     }
   }, [stopCurrent]);
 
@@ -90,15 +100,18 @@ export function usePlayback() {
     }
     stopCurrent();
 
-    const blob = await db.getRecording(sessionId);
-    if (blob && blob.size > 0) {
-      await playBlob(blob, sessionId, false);
-      return;
-    }
+    setError(null);
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
+    const epoch = epochRef.current;
+    releaseRef.current = beginCriticalActivity('playback');
+    try {
+      const blob = await db.getRecording(sessionId) ?? await db.getRecording(sessionId + '-playback');
+      if (epoch !== epochRef.current) return;
+      if (!blob?.size) throw new Error('Recording audio is unavailable. Restore a full backup to play this take.');
+      await playBlob(blob, sessionId, blob.type.startsWith('audio/'), epoch);
+    } catch (error) { if (epoch === epochRef.current) { stopCurrent(); setError(error instanceof Error ? error.message : 'Could not load audio.'); } }
 
-    const legacy = await db.getRecording(sessionId + '-playback');
-    if (legacy && legacy.size > 0) await playBlob(legacy, sessionId, true);
   }, [playingSessionId, stopCurrent, playBlob]);
 
-  return { playingSessionId, play, stop: stopCurrent };
+  return { error, playingSessionId, play, stop: stopCurrent };
 }

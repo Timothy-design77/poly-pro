@@ -11,7 +11,7 @@
 import { runOnsetDetection } from './onset-detection';
 import { computeSessionAnalysis } from './scoring';
 import { gridFromScheduledBeats, gridFromParams } from './grid';
-import type { SessionAnalysis, AnalysisConfig, AnalysisProgress } from './types';
+import type { SessionAnalysis, AnalysisConfig, AnalysisProgress, GridBeat } from './types';
 import { DEFAULT_ANALYSIS_CONFIG } from './types';
 import type { ScheduledBeat } from '../audio/types';
 
@@ -36,6 +36,7 @@ export interface AnalyzeSessionParams {
   recordingEndTime: number;
   /** Optional analysis config overrides */
   config?: Partial<AnalysisConfig>;
+  gridBeats?: GridBeat[];
   /** Progress callback */
   onProgress?: (progress: AnalysisProgress) => void;
 }
@@ -78,7 +79,9 @@ export async function analyzeSession(
 
   // 2. Build beat grid
   let grid;
-  if (scheduledBeats.length > 0) {
+  if (params.gridBeats) {
+    grid = params.gridBeats;
+  } else if (scheduledBeats.length > 0) {
     // Preferred: use actual engine-captured beat times
     grid = gridFromScheduledBeats(
       scheduledBeats,
@@ -93,7 +96,7 @@ export async function analyzeSession(
   }
 
   if (grid.length === 0) {
-    return emptyAnalysis(bpm, durationMs);
+    return emptyAnalysis(bpm, durationMs, 'No scored beats were recorded. Count-in beats are excluded; record beyond the count-in.');
   }
 
   // 3. Run onset detection pipeline (Stages 1–6)
@@ -103,6 +106,7 @@ export async function analyzeSession(
     bpm,
     subdivision,
     onProgress,
+    true,
   );
 
   // 4. Run scoring (Stage 7)
@@ -141,7 +145,7 @@ export async function analyzeSession(
 /**
  * Return an empty/zero analysis for degenerate cases.
  */
-function emptyAnalysis(bpm: number, durationMs: number): SessionAnalysis {
+function emptyAnalysis(bpm: number, durationMs: number, reason = 'Session too short for analysis'): SessionAnalysis {
   return {
     score: 0,
     sigma: 0,
@@ -161,9 +165,10 @@ function emptyAnalysis(bpm: number, durationMs: number): SessionAnalysis {
     autoLatencyMs: 0,
     scoredOnsets: [],
     rawOnsets: [],
-    sigmaLevel: 'Beginner',
+    sigmaLevel: 'Insufficient hits',
+    gridBeats: [],
     fatigueRatio: 1,
     maxDrift: 0,
-    headlines: [{ text: 'Session too short for analysis' }],
+    headlines: [{ text: reason }],
   };
 }

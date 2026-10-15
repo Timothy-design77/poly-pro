@@ -28,34 +28,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   updateSession: async (id, updates) => {
-    const existing = get().sessions.find((s) => s.id === id);
+    const existing = get().sessions.find((session) => session.id === id);
     if (!existing) return;
     const updated = { ...existing, ...updates };
     await db.putSession(updated);
-    set((s) => ({ sessions: s.sessions.map((ses) => (ses.id === id ? updated : ses)) }));
+    set((state) => ({ sessions: state.sessions.map((session) => session.id === id ? updated : session) }));
   },
 
   deleteSession: async (id) => {
-    const existing = get().sessions.find((session) => session.id === id);
-    await db.deleteSession(id);
-    await db.deleteRecording(id);
-    await db.deleteHitEvents(id);
-    await db.deleteRecording(id + '-playback');
-    set((s) => ({ sessions: s.sessions.filter((ses) => ses.id !== id) }));
-
-    // Keep the redundant project sessionIds list consistent as well.
-    if (existing?.projectId) {
-      const { useProjectStore } = await import('./project-store');
-      const projectState = useProjectStore.getState();
-      const project = projectState.projects.find((item) => item.id === existing.projectId);
-      if (project) {
-        const updated = { ...project, sessionIds: project.sessionIds.filter((sessionId) => sessionId !== id) };
-        useProjectStore.setState({
-          projects: projectState.projects.map((item) => item.id === project.id ? updated : item),
-        });
-        await db.putProject(updated);
-      }
-    }
+    await db.removeSessionData(id);
+    set((state) => ({ sessions: state.sessions.filter((session) => session.id !== id) }));
+    const { useProjectStore } = await import('./project-store');
+    await useProjectStore.getState().loadFromDB();
   },
 
   getSessionsForProject: (projectId) => get().sessions.filter((s) => s.projectId === projectId),

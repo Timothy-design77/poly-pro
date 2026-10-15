@@ -299,3 +299,6 @@ export function getSoundsByCategory(category: SoundEntry['category']): SoundEntr
 export function clearBufferCache(): void {
   bufferCache.clear();
 }
+
+/** Release deleted custom audio so playback falls back immediately. */
+export function forgetCustomBuffer(soundId: string): void { bufferCache.delete(soundId); }

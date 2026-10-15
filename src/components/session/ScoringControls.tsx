@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
 import type { SessionAnalysis, AnalysisConfig } from '../../analysis/types';
 import { DEFAULT_ANALYSIS_CONFIG } from '../../analysis/types';
+import { persistAnalysisResult } from '../../analysis/persistence';
 import { rescoreSession } from '../../analysis/reanalysis';
 import { useSettingsStore } from '../../store/settings-store';
 import { HelpTip } from '../ui/HelpTip';
@@ -24,8 +25,11 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
     scoringWindowPct: settings.scoringWindowPct,
     flamMergePct: settings.flamMergePct,
     latencyOffsetMs: defaultLatency,
+    ...session.analysisConfig,
   }));
   const [liveResult, setLiveResult] = useState<SessionAnalysis | null>(null);
+  const [applyState, setApplyState] = useState('');
+  const [applyError, setApplyError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const meterNumerator = parseInt(session.meter.split('/')[0]) || 4;
@@ -44,11 +48,15 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
 
   const updateConfig = useCallback((partial: Partial<AnalysisConfig>) => {
     setSaved(false);
+    setApplyState('');
+    setLiveResult(null);
     setConfig((current) => ({ ...current, ...partial }));
   }, []);
 
   const reset = () => {
     setSaved(false);
+    setApplyState('');
+    setLiveResult(null);
     setConfig((current) => ({
       ...current,
       scoringWindowPct: settings.scoringWindowPct,
@@ -61,6 +69,17 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
     settings.setScoringWindowPct(config.scoringWindowPct);
     settings.setFlamMergePct(config.flamMergePct);
     setSaved(true);
+  };
+
+  const apply = async () => {
+    if (!liveResult) return;
+    setApplyState('Saving…'); setApplyError(null);
+    try {
+      await persistAnalysisResult(session, { ...liveResult, noiseFloor: session.noiseFloor ?? 0, autoLatencyMs: session.autoLatencyMs ?? 0 }, hitEvents, config);
+      setApplyState('Applied to this session');
+    } catch (error) {
+      setApplyState(''); setApplyError(error instanceof Error ? error.message : 'Could not save scoring changes.');
+    }
   };
 
   const liveScore = liveResult?.score ?? session.score ?? 0;
@@ -90,7 +109,7 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
       <TuneSlider label="Flam Merge" value={config.flamMergePct} min={5} max={80} step={1}
         format={() => `${config.flamMergePct}% sub (${flamMs.toFixed(0)}ms)`}
         defaultValue={settings.flamMergePct} onChange={(value) => updateConfig({ flamMergePct: value })}
-        help="Re-groups already detected hits before scoring." />
+        help="Merges nearby saved hits. To recover previously merged hits, re-detect from audio." />
 
       {!compact && (
         <TuneSlider label="Latency Offset" value={config.latencyOffsetMs} min={-300} max={600} step={0.5}
@@ -102,10 +121,12 @@ export function ScoringControls({ session, hitEvents, compact = false, onResult,
       {!compact && (
         <div className="rounded-lg border border-border-subtle bg-bg-raised/40 p-3">
           <p className="text-[10px] font-semibold text-text-secondary">Detection controls are intentionally separate</p>
-          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">Noise gate, sensitivity, onset masking, and frequency filtering change which hits are detected. They cannot be represented honestly by an instant re-score of existing hits; configure them in Settings for full analysis/new recordings.</p>
+          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">Noise gate, sensitivity, onset masking, and frequency filtering change which hits are detected. They cannot be represented honestly by an instant re-score of existing hits; configure them in Settings, then use Re-detect from audio above.</p>
         </div>
       )}
 
+      {applyError && <p role="alert" className="text-sm text-danger">{applyError}</p>}
+      {!compact && <button disabled={!liveResult || applyState === 'Saving…'} onClick={() => void apply()} className="w-full min-h-[44px] rounded-lg bg-accent text-white font-semibold disabled:opacity-50">{applyState || 'Apply to this session'}</button>}
       {!compact && (
         <div className="flex gap-2">
           <button onClick={saveDefaults} className="flex-1 min-h-[40px] rounded-lg bg-white/8 text-xs text-text-secondary">{saved ? 'Defaults saved' : 'Save scoring defaults'}</button>
@@ -136,7 +157,7 @@ function TuneSlider({ label, value, min, max, step, format, defaultValue, onChan
         <span className="text-xs text-text-secondary flex items-center gap-1">{label}{help && <HelpTip text={help} />}</span>
         {modified && <button type="button" onClick={() => onChange(defaultValue)} className="text-[10px] text-text-muted underline">Revert</button>}
       </div>
-      <PrecisionSlider min={min} max={max} step={step} value={value} onChange={onChange} formatValue={format} showValue />
+      <PrecisionSlider ariaLabel={label} min={min} max={max} step={step} value={value} onChange={onChange} formatValue={format} showValue />
     </div>
   );
 }

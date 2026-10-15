@@ -1,16 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { AnalysisProgress, SessionAnalysis } from '../analysis/types';
-import type { ScheduledBeat } from '../audio/types';
+import type { AnalysisConfig, AnalysisProgress, SessionAnalysis } from '../analysis/types';
+import { DEFAULT_ANALYSIS_CONFIG } from '../analysis/types';
 import { runAnalysisInWorker } from '../analysis/worker-client';
 import { persistAnalysisResult } from '../analysis/persistence';
 import { useSessionStore } from '../store/session-store';
 import { useSettingsStore } from '../store/settings-store';
 import { useInstrumentStore } from '../store/instrument-store';
 import { useProjectStore } from '../store/project-store';
-import { beginCriticalActivity } from '../utils/critical-activity';
+import { beginCriticalActivity, isCriticalActivityActive } from '../utils/critical-activity';
 import * as db from '../store/db';
-
-const AUTO_ADVANCE_MIN_HITS = 8;
 
 export interface AnalysisState {
   isAnalyzing: boolean;
@@ -19,119 +17,108 @@ export interface AnalysisState {
   error: string | null;
 }
 
+export function currentAnalysisConfig(sampleRate: number): AnalysisConfig {
+  const settings = useSettingsStore.getState();
+  return {
+    ...DEFAULT_ANALYSIS_CONFIG, sampleRate,
+    scoringWindowPct: settings.scoringWindowPct, flamMergePct: settings.flamMergePct,
+    noiseGate: settings.noiseGate, accentThreshold: settings.accentThreshold,
+    highPassHz: settings.highPassHz, latencyOffsetMs: settings.calibratedOffset + settings.manualAdjustment,
+    inputGain: 1 + settings.sensitivity * 4, noiseFloorMultiplier: settings.noiseFloorMultiplier,
+    minOnsetIntervalMs: settings.minOnsetIntervalMs, postHitMaskingMs: settings.postHitMaskingMs,
+    postHitMaskingStrength: settings.postHitMaskingStrength, fluxThresholdOffset: settings.fluxThresholdOffset,
+  };
+}
+
 export function useAnalysis() {
   const [state, setState] = useState<AnalysisState>({ isAnalyzing: false, progress: null, result: null, error: null });
-  const cancelWorkerRef = useRef<(() => void) | null>(null);
-
+  const activeRef = useRef<{ cancelled: boolean; cancel?: () => void } | null>(null);
   const abort = useCallback(() => {
-    cancelWorkerRef.current?.();
-    cancelWorkerRef.current = null;
+    if (activeRef.current) { activeRef.current.cancelled = true; activeRef.current.cancel?.(); }
   }, []);
 
   useEffect(() => {
-    const handler = () => abort();
-    window.addEventListener('polypro:cancel-analysis', handler);
-    return () => window.removeEventListener('polypro:cancel-analysis', handler);
+    window.addEventListener('polypro:cancel-analysis', abort);
+    return () => { window.removeEventListener('polypro:cancel-analysis', abort); abort(); };
   }, [abort]);
 
   const analyze = useCallback(async (
     sessionId: string,
-    params: {
-      bpm: number;
-      meterNumerator: number;
-      meterDenominator: number;
-      subdivision: number;
-      durationMs: number;
-      scheduledBeats: ScheduledBeat[];
-      recordingStartTime: number;
-      recordingEndTime: number;
-    },
+    timing?: db.RecordingTiming,
+    useCurrentSettings = false,
   ): Promise<SessionAnalysis | null> => {
-    cancelWorkerRef.current?.();
+    if (isCriticalActivityActive()) {
+      setState((current) => ({ ...current, error: 'Finish the current recording, analysis or data operation first.' }));
+      return null;
+    }
+    const operation = { cancelled: false, cancel: undefined as (() => void) | undefined };
+    activeRef.current = operation;
+    const checkCancelled = () => { if (operation.cancelled) throw new DOMException('Analysis cancelled', 'AbortError'); };
     const releaseCritical = beginCriticalActivity('analysis');
     setState({ isAnalyzing: true, progress: null, result: null, error: null });
-
     try {
-      const pcmBlob = await db.getRecording(sessionId);
-      if (!pcmBlob) throw new Error('No recording found for session');
-      const sessionRecord = useSessionStore.getState().sessions.find((session) => session.id === sessionId);
-      if (!sessionRecord) throw new Error('Session metadata is missing');
-      const settings = useSettingsStore.getState();
+      const [storedBlob, previous, manifest] = await Promise.all([db.getRecording(sessionId), db.getHitEvents(sessionId), db.getRecordingManifest(sessionId)]);
+      checkCancelled();
+      if (!storedBlob) throw new Error('Audio is missing. Restore a full backup to analyze this take.');
 
+      const session = useSessionStore.getState().sessions.find((item) => item.id === sessionId);
+      if (!session) throw new Error('Session metadata is missing');
+      let pcmBlob = storedBlob;
+      let sampleRate = session.recordingSampleRate ?? 48000;
+      if (storedBlob.type.startsWith('audio/')) {
+        const context = new OfflineAudioContext(1, 1, sampleRate);
+        const decoded = await context.decodeAudioData(await storedBlob.arrayBuffer());
+        checkCancelled(); sampleRate = decoded.sampleRate;
+        pcmBlob = new Blob([new Float32Array(decoded.getChannelData(0)).buffer]);
+      }
+      const selectedConfig = !useCurrentSettings && session.analysisConfig ? session.analysisConfig : currentAnalysisConfig(session.recordingSampleRate ?? 48000);
+      const config = { ...selectedConfig, sampleRate };
+      const captured = timing ?? session.recordingTiming ?? manifest?.timing;
+      const [meterNumerator, meterDenominator] = session.meter.split('/').map(Number);
       const run = runAnalysisInWorker({
-        pcmBlob,
-        bpm: params.bpm,
-        meterNumerator: params.meterNumerator,
-        meterDenominator: params.meterDenominator,
-        subdivision: params.subdivision,
-        durationMs: params.durationMs,
-        scheduledBeats: params.scheduledBeats,
-        recordingStartTime: params.recordingStartTime,
-        recordingEndTime: params.recordingEndTime,
-        config: {
-          sampleRate: sessionRecord.recordingSampleRate ?? 48000,
-          scoringWindowPct: settings.scoringWindowPct,
-          flamMergePct: settings.flamMergePct,
-          noiseGate: settings.noiseGate,
-          accentThreshold: settings.accentThreshold,
-          highPassHz: settings.highPassHz,
-          latencyOffsetMs: settings.calibratedOffset + settings.manualAdjustment,
-          inputGain: 1 + settings.sensitivity * 4,
-          noiseFloorMultiplier: settings.noiseFloorMultiplier,
-          minOnsetIntervalMs: settings.minOnsetIntervalMs,
-          postHitMaskingMs: settings.postHitMaskingMs,
-          postHitMaskingStrength: settings.postHitMaskingStrength,
-          fluxThresholdOffset: settings.fluxThresholdOffset,
-        },
-      }, (progress) => setState((current) => ({ ...current, progress })));
-      cancelWorkerRef.current = run.cancel;
+        pcmBlob, bpm: session.bpm, meterNumerator, meterDenominator, subdivision: session.subdivision,
+        durationMs: session.durationMs,
+        scheduledBeats: captured?.scheduledBeats ?? [],
+        recordingStartTime: captured?.recordingStartTime ?? 0,
+        recordingEndTime: captured?.recordingEndTime ?? session.durationMs / 1000,
+        // An empty captured grid (e.g. all count-in) is meaningful, not a reason to invent beats.
+        gridBeats: !captured ? previous?.gridBeats : undefined,
+        config,
+      }, (progress) => { if (!operation.cancelled) setState((current) => ({ ...current, progress })); });
+      operation.cancel = run.cancel;
       const result = await run.promise;
-      cancelWorkerRef.current = null;
-
-      const instrumentStore = useInstrumentStore.getState();
-      if (instrumentStore.isClassifierReady()) {
-        const features = result.scoredOnsets.map((onset) => onset.spectralFeatures).filter((feature): feature is NonNullable<typeof feature> => feature !== null);
-        if (features.length > 0) {
-          const classifications = instrumentStore.classifyOnsets(features);
-          let index = 0;
-          for (const onset of result.scoredOnsets) {
-            if (!onset.spectralFeatures || index >= classifications.length) continue;
-            const classification = classifications[index++];
-            onset.instrumentLabel = classification.label;
-            onset.instrumentConfidence = classification.confidence;
-            onset.instrumentCandidates = classification.topCandidates;
-          }
+      checkCancelled();
+      const instruments = useInstrumentStore.getState();
+      if (instruments.isClassifierReady()) {
+        for (const onset of result.scoredOnsets) {
+          if (!onset.spectralFeatures) continue;
+          const [classification] = instruments.classifyOnsets([onset.spectralFeatures]);
+          onset.instrumentLabel = classification.label;
+          onset.instrumentConfidence = classification.confidence;
+          onset.instrumentCandidates = classification.topCandidates;
         }
       }
-
-      if (sessionRecord.projectId && result.totalScored >= AUTO_ADVANCE_MIN_HITS) {
-        try {
-          const advancement = await useProjectStore.getState().recordSessionResult(sessionRecord.projectId, result.score, params.bpm);
-          if (advancement.advanced && advancement.newBpm !== null) result.headlines.unshift({ text: `Project advanced to ${advancement.newBpm} BPM` });
-        } catch (error) {
-          console.warn('Auto-advance check failed:', error);
-        }
+      if (!captured?.scheduledBeats.length && !previous?.gridBeats) result.headlines.unshift({ text: 'Estimated beat grid: original metronome timing is unavailable. Timing scores are approximate.' });
+      await persistAnalysisResult(session, result, undefined, config);
+      // Only the first saved analysis counts toward progression. Retry/re-detection and edits do not add practice credit.
+      if (!session.analyzed && session.projectId && result.totalScored >= 8 && captured?.scheduledBeats.length) {
+        try { await useProjectStore.getState().recordSessionResult(session.projectId, result.score, session.bpm); }
+        catch (error) { console.warn('Project progression could not be saved:', error); result.headlines.unshift({ text: 'Your take is saved, but project advancement could not be saved. Check the project tempo before continuing.' }); }
       }
-
-      await persistAnalysisResult(sessionRecord, result);
-      try {
+      if (!session.analyzed) {
         const count = (await db.getSetting<number>('sessionsSinceBackup')) ?? 0;
-        await db.setSetting('sessionsSinceBackup', count + 1);
-      } catch {}
-
+        await db.setSetting('sessionsSinceBackup', count + 1).catch(() => {});
+      }
       setState({ isAnalyzing: false, progress: { stage: 'complete', progress: 1 }, result, error: null });
       return result;
     } catch (error) {
-      cancelWorkerRef.current = null;
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        setState({ isAnalyzing: false, progress: null, result: null, error: null });
-        return null;
-      }
-      const message = error instanceof Error ? error.message : 'Analysis failed';
-      console.error('Analysis error:', error);
+      const message = error instanceof DOMException && error.name === 'AbortError'
+        ? 'Analysis cancelled. Your recording and saved results are unchanged.'
+        : error instanceof Error ? error.message : 'Analysis failed';
       setState({ isAnalyzing: false, progress: null, result: null, error: message });
       return null;
     } finally {
+      if (activeRef.current === operation) activeRef.current = null;
       releaseCritical();
     }
   }, []);

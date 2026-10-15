@@ -4,6 +4,7 @@ import {
   estimateNoiseFloor,
   detectOnsetsCoarse,
   refineOnsets,
+  runOnsetDetection,
 } from './onset-detection';
 import { DEFAULT_ANALYSIS_CONFIG } from './types';
 
@@ -103,3 +104,26 @@ describe('applyHighPass', () => {
     expect(rms).toBeGreaterThan(0.5); // ~0.707 for unattenuated sine
   });
 });
+
+
+describe('shared session and training detector', () => {
+  it('returns real onset feature windows while keeping caller PCM intact', async () => {
+    const pcm = synthClicks(3, [0.5, 1, 1.5, 2, 2.5]);
+    const before = pcm.slice();
+    const result = await runOnsetDetection(pcm, { ...DEFAULT_ANALYSIS_CONFIG, inputGain: 3, highPassHz: 90 }, 120, 1);
+    expect(result.onsets).toHaveLength(5);
+    expect(result.spectralFeatures).toHaveLength(5);
+    expect(result.spectralFeatures.every((feature) => Number.isFinite(feature.centroid) && feature.centroid > 500)).toBe(true);
+    expect(pcm).toEqual(before);
+  });
+});
+
+
+it('detects every transient in a three-minute practice take with bounded owned PCM', async () => {
+  const times = Array.from({ length: 359 }, (_, index) => (index + 1) / 2);
+  const pcm = synthClicks(180, times);
+  const result = await runOnsetDetection(pcm, DEFAULT_ANALYSIS_CONFIG, 120, 1, undefined, true);
+  expect(result.onsets).toHaveLength(times.length);
+  expect(result.spectralFeatures).toHaveLength(times.length);
+  result.onsets.forEach((onset, index) => expect(Math.abs(onset.time - times[index])).toBeLessThan(0.02));
+}, 15000);

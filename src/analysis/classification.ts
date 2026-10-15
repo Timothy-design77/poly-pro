@@ -158,7 +158,7 @@ export class KNNClassifier {
 
   /** Check if classifier has enough data to classify */
   isReady(): boolean {
-    return this.samples.length >= K;
+    return this.samples.length >= K && this.getLabels().length >= 2;
   }
 
   /** Get unique instrument labels in training data */
@@ -300,7 +300,7 @@ export class KNNClassifier {
    * Returns accuracy (0–1).
    */
   crossValidate(instrumentSamples: TrainingSample[]): number {
-    if (instrumentSamples.length < K + 1) return 0;
+    if (this.getLabels().length < 2 || instrumentSamples.length < K + 1) return -1;
 
     let correct = 0;
 

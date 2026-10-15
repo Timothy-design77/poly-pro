@@ -13,6 +13,22 @@
  * on Chrome Android that disables ALL processing (AEC, AGC, NS).
  */
 
+async function requestStream(constraints: MediaStreamConstraints): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access requires a supported browser and a secure connection.');
+  const request = navigator.mediaDevices.getUserMedia(constraints);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([request, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Microphone setup timed out. Check permission and try again.')), 15000); })]);
+  } catch (error) {
+    request.then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
+function canRelaxConstraints(error: unknown): boolean {
+  return error instanceof DOMException && ['OverconstrainedError', 'ConstraintNotSatisfiedError'].includes(error.name);
+}
+
 const BT_KEYWORDS = [
   'bluetooth', 'bt ', 'hands-free', 'hfp', 'wireless',
   'airpod', 'buds', 'galaxy buds', 'headset', 'earbuds',
@@ -110,7 +126,7 @@ export async function getPreferredMicStream(): Promise<MicResult> {
     try {
       // Try requesting with constraints that prefer built-in (48kHz, no processing)
       // BT HFP mics typically only support 8/16kHz
-      dummyStream = await navigator.mediaDevices.getUserMedia({
+      dummyStream = await requestStream({
         audio: {
           sampleRate: { ideal: 48000 },
           echoCancellation: false,
@@ -118,16 +134,16 @@ export async function getPreferredMicStream(): Promise<MicResult> {
           noiseSuppression: false,
         },
       });
-    } catch {
+    } catch (error) {
+      if (!canRelaxConstraints(error)) throw error;
       // Fallback to bare minimum
-      dummyStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      dummyStream = await requestStream({ audio: true });
     }
 
     // Now enumerate with labels
-    const devicesWithLabels = await navigator.mediaDevices.enumerateDevices();
-    
-    // Stop dummy stream IMMEDIATELY
-    dummyStream.getTracks().forEach((t) => t.stop());
+    let devicesWithLabels: MediaDeviceInfo[];
+    try { devicesWithLabels = await navigator.mediaDevices.enumerateDevices(); }
+    finally { dummyStream.getTracks().forEach((track) => track.stop()); }
 
     const foundNow = findBuiltInMicId(devicesWithLabels);
     if (foundNow && foundNow.deviceId !== 'default') {
@@ -137,7 +153,7 @@ export async function getPreferredMicStream(): Promise<MicResult> {
 
     // Step 3: Couldn't identify built-in even with labels — use raw constraints without deviceId
     console.warn('[mic] ⚠️ Could not identify built-in mic, using default');
-    const stream = await navigator.mediaDevices.getUserMedia({
+    const stream = await requestStream({
       audio: { ...RAW_CONSTRAINTS, sampleRate: { ideal: 48000 }, channelCount: 1 },
     });
     const label = stream.getAudioTracks()[0]?.label || 'Default';
@@ -145,8 +161,8 @@ export async function getPreferredMicStream(): Promise<MicResult> {
     return { stream, deviceLabel: label, isBuiltIn: !isBtDevice(label), isRaw: raw.isRaw };
 
   } catch (err) {
-    console.error('[mic] All mic requests failed:', err);
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (!canRelaxConstraints(err)) throw err;
+    const stream = await requestStream({ audio: true });
     const label = stream.getAudioTracks()[0]?.label || 'Fallback';
     return { stream, deviceLabel: label, isBuiltIn: false, isRaw: false };
   }
@@ -156,7 +172,7 @@ export async function getPreferredMicStream(): Promise<MicResult> {
  * Request mic with exact deviceId and raw constraints.
  */
 async function requestMic(deviceId: string, label: string): Promise<MicResult> {
-  const stream = await navigator.mediaDevices.getUserMedia({
+  const stream = await requestStream({
     audio: {
       ...RAW_CONSTRAINTS,
       deviceId: { exact: deviceId },

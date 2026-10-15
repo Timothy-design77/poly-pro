@@ -499,6 +499,7 @@ export async function runOnsetDetection(
   bpm: number,
   subdivision: number,
   onProgress?: ProgressCallback,
+  consumeInput = false,
 ): Promise<{
   onsets: DetectedOnset[];
   noiseFloor: number;
@@ -508,12 +509,15 @@ export async function runOnsetDetection(
   const sampleRate = config.sampleRate;
   const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
 
-  let processedPcm = pcm;
-  if (config.inputGain !== 1) {
-    processedPcm = new Float32Array(pcm.length);
-    for (let i = 0; i < pcm.length; i++) processedPcm[i] = pcm[i] * config.inputGain;
+  // Workers own their decoded PCM; reuse it instead of allocating gain/filter copies.
+  const processedPcm = consumeInput ? pcm : new Float32Array(pcm);
+  const alpha = config.highPassHz > 0 ? (1 / (2 * Math.PI * config.highPassHz)) / ((1 / (2 * Math.PI * config.highPassHz)) + 1 / sampleRate) : 0;
+  let previousInput = 0, previousOutput = 0;
+  for (let i = 0; i < processedPcm.length; i++) {
+    const input = processedPcm[i] * config.inputGain;
+    const output = config.highPassHz > 0 && i > 0 ? alpha * (previousOutput + input - previousInput) : input;
+    previousInput = input; previousOutput = output; processedPcm[i] = output;
   }
-  if (config.highPassHz > 0) processedPcm = applyHighPass(processedPcm, sampleRate, config.highPassHz);
 
   onProgress?.({ stage: 'noise-floor', progress: 0 });
   const noiseFloor = estimateNoiseFloor(processedPcm, sampleRate, config.noiseFloorMultiplier);

@@ -1,7 +1,7 @@
 /**
  * Persistence layer for metronome and settings stores.
- * Persisted writes are debounced during normal interaction and flushed on
- * pagehide so the newest state is not silently lost when the PWA is closed.
+ * User settings and transport changes start durable writes immediately.
+ * Project snapshots are coalesced and all state is flushed on pagehide.
  */
 
 import { shallow } from 'zustand/shallow';
@@ -24,16 +24,12 @@ import * as db from './db';
 const METRONOME_KEY = 'metronome-state';
 const SETTINGS_KEY = 'settings-state';
 
-let metronomeTimer: ReturnType<typeof setTimeout> | null = null;
-let settingsTimer: ReturnType<typeof setTimeout> | null = null;
 let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 let persistenceStarted = false;
 let unsubscribeMetronome: (() => void) | null = null;
 let unsubscribeSettings: (() => void) | null = null;
 
 async function persistMetronomeNow(): Promise<void> {
-  if (metronomeTimer) clearTimeout(metronomeTimer);
-  metronomeTimer = null;
   const data: PersistedMetronome = {
     _schemaVersion: METRONOME_SCHEMA_VERSION,
     ...pickPersistedMetronome(useMetronomeStore.getState()),
@@ -42,8 +38,6 @@ async function persistMetronomeNow(): Promise<void> {
 }
 
 async function persistSettingsNow(): Promise<void> {
-  if (settingsTimer) clearTimeout(settingsTimer);
-  settingsTimer = null;
   await db.setSetting(SETTINGS_KEY, pickPersistedSettings(useSettingsStore.getState()));
 }
 
@@ -58,21 +52,15 @@ async function persistActiveProjectSnapshotNow(): Promise<void> {
 
   const metronome = useMetronomeStore.getState();
   const snapshot = captureSnapshot(metronome, useSettingsStore.getState());
-  const updated = { ...project, snapshot, currentBpm: metronome.bpm };
-  useProjectStore.setState({
-    projects: projects.map((p) => (p.id === activeProjectId ? updated : p)),
-  });
-  await db.putProject(updated);
+  await useProjectStore.getState().updateProject(activeProjectId, { snapshot, currentBpm: metronome.bpm });
 }
 
 function saveMetronome(): void {
-  if (metronomeTimer) clearTimeout(metronomeTimer);
-  metronomeTimer = setTimeout(() => { persistMetronomeNow().catch(console.error); }, 500);
+  void persistMetronomeNow().catch(console.error);
 }
 
 function saveSettings(): void {
-  if (settingsTimer) clearTimeout(settingsTimer);
-  settingsTimer = setTimeout(() => { persistSettingsNow().catch(console.error); }, 500);
+  void persistSettingsNow().catch(console.error);
 }
 
 function saveActiveProjectSnapshot(): void {
@@ -140,6 +128,8 @@ export function startPersistence(): void {
 }
 
 export function stopPersistence(): void {
+  if (snapshotTimer) clearTimeout(snapshotTimer);
+  snapshotTimer = null;
   unsubscribeMetronome?.();
   unsubscribeSettings?.();
   unsubscribeMetronome = null;

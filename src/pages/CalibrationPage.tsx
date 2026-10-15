@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 /**
  * CalibrationPage — Full-screen 3-step calibration flow.
  *
@@ -19,13 +21,15 @@ interface Props {
 
 export function CalibrationPage({ visible, onClose }: Props) {
   const cal = useCalibration();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, visible, () => { cal.cancel(); onClose(); });
 
   if (!visible) return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex flex-col"
-      style={{ backgroundColor: '#0C0C0E' }}
+      className="bg-bg-primary fixed inset-0 z-50 flex flex-col"
+      ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Audio calibration" data-no-swipe
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">
@@ -81,7 +85,7 @@ function SetupStep({ onStart }: { onStart: () => void }) {
       {/* Icon */}
       <div className="mb-6">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
-          stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" strokeLinecap="round"
+          stroke="rgba(21,23,26,0.6)" strokeWidth="1.5" strokeLinecap="round"
           className="mx-auto"
         >
           <circle cx="12" cy="12" r="10" />
@@ -105,8 +109,8 @@ function SetupStep({ onStart }: { onStart: () => void }) {
         onClick={onStart}
         className="w-full h-[48px] rounded-xl font-bold text-sm tracking-wide
                    touch-manipulation select-none
-                   bg-[rgba(255,255,255,0.85)] text-[#0C0C0E]
-                   active:bg-[rgba(255,255,255,0.95)]"
+                   bg-[rgba(21,23,26,0.85)] text-white
+                   active:bg-[rgba(21,23,26,0.95)]"
       >
         Calibrate
       </button>
@@ -125,7 +129,7 @@ function MeasuringStep({ progress, total }: { progress: number; total: number })
           <circle cx="24" cy="24" r="20" stroke="#2A2A2E" strokeWidth="4" />
           <path
             d="M24 4a20 20 0 0 1 20 20"
-            stroke="rgba(255,255,255,0.85)"
+            stroke="rgba(21,23,26,0.85)"
             strokeWidth="4"
             strokeLinecap="round"
           />
@@ -148,8 +152,8 @@ function MeasuringStep({ progress, total }: { progress: number; total: number })
             className="w-3 h-3 rounded-full transition-all duration-300"
             style={{
               backgroundColor: i < progress
-                ? 'rgba(255,255,255,0.85)'
-                : 'rgba(255,255,255,0.1)',
+                ? 'rgba(21,23,26,0.85)'
+                : 'rgba(21,23,26,0.1)',
             }}
           />
         ))}
@@ -180,9 +184,9 @@ function ResultsStep({
   onRunAgain: () => void;
 }) {
   const qualityColor =
-    quality === 'excellent' ? '#4ADE80'
-    : quality === 'good' ? '#FBBF24'
-    : '#F87171';
+    quality === 'excellent' ? '#187A3B'
+    : quality === 'good' ? '#A45108'
+    : '#B4232C';
 
   const qualityLabel =
     quality === 'excellent' ? 'Excellent'
@@ -238,8 +242,8 @@ function ResultsStep({
         onClick={onAccept}
         className="w-full h-[48px] rounded-xl font-bold text-sm tracking-wide mb-2
                    touch-manipulation select-none
-                   bg-[rgba(255,255,255,0.85)] text-[#0C0C0E]
-                   active:bg-[rgba(255,255,255,0.95)]"
+                   bg-[rgba(21,23,26,0.85)] text-white
+                   active:bg-[rgba(21,23,26,0.95)]"
       >
         Accept & Save
       </button>
@@ -272,7 +276,7 @@ function FailedStep({
     <div className="text-center max-w-xs">
       <div className="mb-4">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
-          stroke="#F87171" strokeWidth="2" strokeLinecap="round"
+          stroke="#B4232C" strokeWidth="2" strokeLinecap="round"
           className="mx-auto"
         >
           <circle cx="12" cy="12" r="10" />
@@ -293,8 +297,8 @@ function FailedStep({
         onClick={onRetry}
         className="w-full h-[48px] rounded-xl font-bold text-sm tracking-wide mb-2
                    touch-manipulation select-none
-                   bg-[rgba(255,255,255,0.85)] text-[#0C0C0E]
-                   active:bg-[rgba(255,255,255,0.95)]"
+                   bg-[rgba(21,23,26,0.85)] text-white
+                   active:bg-[rgba(21,23,26,0.95)]"
       >
         Try Again
       </button>

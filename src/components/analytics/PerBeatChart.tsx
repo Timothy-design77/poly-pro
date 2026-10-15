@@ -68,7 +68,7 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
 
         // Mean offset dot
         const dotY = pad.top + chartH / 2 - (s.mean / maxOffset) * (chartH / 2) * 0.4;
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillStyle = 'rgba(21,23,26,0.8)';
         ctx.beginPath();
         ctx.arc(x + barW / 2, dotY, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -81,7 +81,7 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
       }
 
       // Zero line for offset
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.15)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();

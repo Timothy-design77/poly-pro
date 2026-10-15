@@ -106,7 +106,8 @@ function fftInPlace(buf: Float32Array, n: number): void {
  * @returns SpectrogramData with per-band energy arrays
  */
 export function computeSpectrogram(pcm: Float32Array, sampleRate: number): SpectrogramData {
-  const windowCount = Math.max(1, Math.floor((pcm.length - FFT_SIZE) / HOP_SIZE) + 1);
+  const hopSize = Math.max(HOP_SIZE, Math.ceil(pcm.length / 32768));
+  const windowCount = Math.max(1, Math.floor((pcm.length - FFT_SIZE) / hopSize) + 1);
 
   const bass = new Float32Array(windowCount);
   const mid = new Float32Array(windowCount);
@@ -128,7 +129,7 @@ export function computeSpectrogram(pcm: Float32Array, sampleRate: number): Spect
   let peakEnergy = 0;
 
   for (let w = 0; w < windowCount; w++) {
-    const offset = w * HOP_SIZE;
+    const offset = w * hopSize;
 
     // Fill FFT buffer with windowed samples
     for (let i = 0; i < FFT_SIZE; i++) {
@@ -199,7 +200,7 @@ export function computeSpectrogram(pcm: Float32Array, sampleRate: number): Spect
     total,
     miniMapEnvelope,
     windowCount,
-    hopSize: HOP_SIZE,
+    hopSize,
     sampleRate,
     peakEnergy,
   };

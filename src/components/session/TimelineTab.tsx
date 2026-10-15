@@ -75,11 +75,11 @@ export function TimelineTab({ session, hitEvents }: Props) {
     setLiveOnsets(null);
   }, []);
 
-  const { isLoading, isReady, spectrogramData, audioBufferRef, rawPcmRef } = useSessionAudio(session);
+  const { error: audioError, isLoading, isReady, spectrogramData, audioBufferRef, rawPcmRef } = useSessionAudio(session);
   const onTapRef = useRef<(clientX: number) => void>(() => {});
   const gestures = useTimelineGestures((clientX) => onTapRef.current(clientX));
   const { zoom, scrollX, setScrollX, containerWidth, totalWidth, containerRef } = gestures;
-  const playback = useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX });
+  const playback = useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX, loopEnabled, loopStart, loopEnd });
 
   const onsets = liveOnsets ?? editableHitEvents?.scoredOnsets ?? [];
   const currentTimeMs = playback.playbackPos * session.durationMs;
@@ -107,11 +107,6 @@ export function TimelineTab({ session, hitEvents }: Props) {
   }, [containerRef, scrollX, totalWidth, playback]);
 
   useEffect(() => { onTapRef.current = handleCanvasTap; }, [handleCanvasTap]);
-
-  useEffect(() => {
-    if (!loopEnabled || !playback.isPlaying || loopEnd - loopStart < 0.005) return;
-    if (playback.playbackPos >= loopEnd) playback.seekToFraction(loopStart);
-  }, [loopEnabled, loopStart, loopEnd, playback.playbackPos, playback.isPlaying, playback.seekToFraction]);
 
   const setLoopA = useCallback(() => {
     setLoopStart(Math.max(0, Math.min(playback.playbackPos, loopEnd - 0.005)));
@@ -200,8 +195,8 @@ export function TimelineTab({ session, hitEvents }: Props) {
         <div ref={containerRef} className="overflow-hidden relative bg-[rgba(0,0,0,0.34)]" style={{ touchAction: 'none' }} onTouchStart={gestures.handleTouchStart} onTouchMove={gestures.handleTouchMove} onTouchEnd={gestures.handleTouchEnd}>
           <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth, position: 'relative' }}>
             <canvas ref={canvasRef} style={{ width: totalWidth, height: CANVAS_HEIGHT }} />
-            {loopEnabled && <div aria-hidden="true" style={{ position: 'absolute', left: `${loopStart * 100}%`, width: `${(loopEnd - loopStart) * 100}%`, top: 0, bottom: 0, background: 'rgba(255,255,255,0.055)', borderLeft: '2px solid rgba(255,255,255,0.65)', borderRight: '2px solid rgba(255,255,255,0.65)', pointerEvents: 'none' }} />}
-            <div style={{ position: 'absolute', left: `${playback.playbackPos * 100}%`, top: 0, bottom: 0, width: 2, backgroundColor: 'rgba(255,255,255,0.98)', pointerEvents: 'none', boxShadow: '0 0 10px rgba(255,255,255,0.55)' }} />
+            {loopEnabled && <div aria-hidden="true" style={{ position: 'absolute', left: `${loopStart * 100}%`, width: `${(loopEnd - loopStart) * 100}%`, top: 0, bottom: 0, background: 'rgba(21,23,26,0.055)', borderLeft: '2px solid rgba(21,23,26,0.65)', borderRight: '2px solid rgba(21,23,26,0.65)', pointerEvents: 'none' }} />}
+            <div style={{ position: 'absolute', left: `${playback.playbackPos * 100}%`, top: 0, bottom: 0, width: 2, backgroundColor: 'rgba(21,23,26,0.98)', pointerEvents: 'none', boxShadow: '0 0 10px rgba(21,23,26,0.55)' }} />
           </div>
         </div>
       </div>
@@ -296,6 +291,8 @@ export function TimelineTab({ session, hitEvents }: Props) {
         </div>
       )}
 
+      {audioError && <p role="alert" className="p-3 text-sm text-danger">{audioError}</p>}
+      {playback.error && <p role="alert" className="p-3 text-sm text-danger">{playback.error}</p>}
       <TuneDrawer session={session} hitEvents={editableHitEvents} onResult={handleScoringResult} onLatencyChange={playback.setLatencyOffsetMs} />
 
       <div className="sticky bottom-2 z-20 rounded-[22px] border border-border-emphasis bg-bg-surface/95 backdrop-blur-xl shadow-lg p-2.5">
@@ -310,7 +307,7 @@ export function TimelineTab({ session, hitEvents }: Props) {
           <button type="button" aria-label="Skip forward 5 seconds" onClick={() => void playback.skip(5)} className="h-11 rounded-xl bg-bg-raised text-text-secondary font-mono text-xs">+5</button>
         </div>
         <div className="grid grid-cols-[52px_1fr_58px_52px] gap-2 items-center mt-2">
-          <button type="button" onClick={() => { const idx = SPEED_OPTIONS.indexOf(playback.playbackSpeed); playback.setPlaybackSpeed(SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]); }} className="h-9 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">{playback.playbackSpeed}×</button>
+          <button type="button" aria-label={`Playback speed ${playback.playbackSpeed}×`} onClick={() => { const idx = SPEED_OPTIONS.indexOf(playback.playbackSpeed); playback.setPlaybackSpeed(SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]); }} className="h-9 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">{playback.playbackSpeed}×</button>
           <input aria-label="Playback volume" type="range" min="0" max="100" value={Math.round(playback.playbackVolume * 100)} onChange={(e) => playback.setPlaybackVolume(Number(e.target.value) / 100)} />
           <span className="text-[10px] font-mono text-text-muted text-right">Vol {Math.round(playback.playbackVolume * 100)}</span>
           <button type="button" onClick={() => playback.setClickOverlay(!playback.clickOverlay)} className={`h-9 rounded-lg text-[10px] font-bold ${playback.clickOverlay ? 'bg-accent-dim text-accent' : 'bg-bg-raised text-text-muted'}`}>Click</button>
@@ -322,5 +319,5 @@ export function TimelineTab({ session, hitEvents }: Props) {
 
 function TuneDrawer({ session, hitEvents, onResult, onLatencyChange }: { session: SessionRecord; hitEvents: HitEventsRecord | null; onResult: (result: SessionAnalysis) => void; onLatencyChange: (ms: number) => void; }) {
   const [open, setOpen] = useState(false);
-  return <><button onClick={() => setOpen(!open)} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${open ? 'bg-white/10 text-white' : 'bg-white/5 text-white/40'}`}>Tune</button>{open && hitEvents && session.analyzed && <div className="border border-border-subtle rounded-lg p-3 bg-bg-raised/40"><ScoringControls session={session} hitEvents={hitEvents} compact={false} onResult={onResult} onLatencyChange={onLatencyChange} /></div>}</>;
+  return <><button onClick={() => setOpen(!open)} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${open ? 'bg-accent-dim text-text-primary' : 'bg-bg-raised text-text-secondary'}`}>Tune</button>{open && hitEvents && session.analyzed && <div className="border border-border-subtle rounded-lg p-3 bg-bg-raised/40"><ScoringControls session={session} hitEvents={hitEvents} compact={false} onResult={onResult} onLatencyChange={onLatencyChange} /></div>}</>;
 }

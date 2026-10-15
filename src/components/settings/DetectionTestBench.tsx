@@ -14,9 +14,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useSettingsStore } from '../../store/settings-store';
-import { detectOnsetsCoarse, estimateNoiseFloor, refineOnsets, analyzeFlams } from '../../analysis/onset-detection';
+import { estimateNoiseFloor } from '../../analysis/onset-detection';
 import type { DetectedOnset, AnalysisConfig } from '../../analysis/types';
-import { DEFAULT_ANALYSIS_CONFIG } from '../../analysis/types';
+import { useTrainingCapture } from '../../hooks/useTrainingCapture';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 // ─── Test Pattern Definitions ───
 
@@ -101,7 +102,7 @@ const PATTERNS: TestPattern[] = [
     id: 'sixteenths',
     name: '16th Notes',
     icon: '🎵',
-    instruction: 'Play 4 even 16th notes at tempo',
+    instruction: 'Play 4 even 16th notes at 120 BPM',
     detail: 'Four evenly spaced hits. Should detect 4.',
     durationS: 4,
     expectedCount: 4,
@@ -222,168 +223,53 @@ export function DetectionTestBench({ visible, onClose }: Props) {
     results: [],
   });
 
-  // Audio refs
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Float32Array[]>([]);
-  const timerRef = useRef<number>(0);
-  const countdownRef = useRef<number>(0);
-
-  // Canvas ref for waveform
+  const capture = useTrainingCapture();
+  const generationRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const sampleRateRef = useRef(48000);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Cleanup on unmount/hide
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  useDialogFocus(dialogRef, visible, onClose);
   useEffect(() => {
-    if (!visible) cleanup();
-    return () => cleanup();
-  }, [visible]);
-
-  // Reset on show
-  useEffect(() => {
-    if (visible) {
-      setState({
-        patternIndex: 0, phase: 'ready', countdown: 0,
-        pcm: null, detections: null, result: null, results: [],
-      });
-    }
-  }, [visible]);
-
-  const cleanup = () => {
-    clearInterval(timerRef.current);
-    clearInterval(countdownRef.current);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
-      audioCtxRef.current = null;
-    }
-  };
-
+    if (visible) setState({ patternIndex: 0, phase: 'ready', countdown: 0, pcm: null, detections: null, result: null, results: [] });
+    return () => { generationRef.current++; clearTimeout(timerRef.current); capture.stop(); };
+  }, [visible, capture.stop]);
   const pattern = PATTERNS[state.patternIndex];
   const isComplete = state.patternIndex >= PATTERNS.length;
 
-  // ─── Start test (with countdown) ───
-
   const startTest = useCallback(async () => {
-    setState((s) => ({ ...s, phase: 'countdown', countdown: 3 }));
-
-    let count = 3;
-    countdownRef.current = window.setInterval(() => {
-      count--;
-      if (count <= 0) {
-        clearInterval(countdownRef.current);
-        beginRecording();
-      } else {
-        setState((s) => ({ ...s, countdown: count }));
-      }
-    }, 700);
-  }, []);
-
-  // ─── Record ───
-
-  const beginRecording = useCallback(async () => {
-    chunksRef.current = [];
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: { ideal: 48000 }, channelCount: 1 },
-      });
-      streamRef.current = stream;
-
-      const ctx = new AudioContext({ sampleRate: 48000 });
-      audioCtxRef.current = ctx;
-
-      const source = ctx.createMediaStreamSource(stream);
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      source.connect(processor);
-      processor.connect(ctx.destination);
-
-      processor.onaudioprocess = (e) => {
-        const input = e.inputBuffer.getChannelData(0);
-        const copy = new Float32Array(input.length);
-        copy.set(input);
-        chunksRef.current.push(copy);
-      };
-
-      setState((s) => ({ ...s, phase: 'recording', countdown: 0 }));
-
-      // Auto-stop after pattern duration
-      const dur = PATTERNS[state.patternIndex]?.durationS ?? 3;
-      timerRef.current = window.setTimeout(() => {
-        stopAndAnalyze();
-      }, dur * 1000);
-
-    } catch {
-      setState((s) => ({ ...s, phase: 'ready' }));
-    }
-  }, [state.patternIndex]);
-
-  // ─── Stop + Analyze ───
-
-  const stopAndAnalyze = useCallback(() => {
-    clearTimeout(timerRef.current);
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
-      audioCtxRef.current = null;
-    }
-
-    // Merge PCM
-    const totalLen = chunksRef.current.reduce((s, c) => s + c.length, 0);
-    const pcm = new Float32Array(totalLen);
-    let off = 0;
-    for (const chunk of chunksRef.current) { pcm.set(chunk, off); off += chunk.length; }
-    chunksRef.current = [];
-
-    setState((s) => ({ ...s, phase: 'analyzing', pcm }));
-
-    // Run detection (synchronous, short buffer)
-    const config: AnalysisConfig = {
-      ...DEFAULT_ANALYSIS_CONFIG,
-      noiseGate: settings.noiseGate,
-      noiseFloorMultiplier: settings.noiseFloorMultiplier,
-      minOnsetIntervalMs: settings.minOnsetIntervalMs,
-      postHitMaskingMs: settings.postHitMaskingMs,
-      postHitMaskingStrength: settings.postHitMaskingStrength,
-      fluxThresholdOffset: settings.fluxThresholdOffset,
-      highPassHz: settings.highPassHz,
-      flamMergePct: settings.flamMergePct,
-      sampleRate: 48000,
+    const index = state.patternIndex;
+    const generation = ++generationRef.current;
+    setError(null); setState((current) => ({ ...current, phase: 'countdown', countdown: 3 }));
+    let finishing = false;
+    const finish = async () => {
+      if (finishing || generation !== generationRef.current) return;
+      finishing = true;
+      clearTimeout(timerRef.current);
+      setState((current) => ({ ...current, phase: 'analyzing' }));
+      try {
+        const result = await capture.finish({ bpm: 120, subdivision: PATTERNS[index].id === 'sixteenths' ? 4 : 1 });
+        const pcm = new Float32Array(await result.pcmBlob.arrayBuffer());
+        if (generation !== generationRef.current) return;
+        sampleRateRef.current = result.sampleRate;
+        setState((current) => ({ ...current, phase: 'result', pcm, detections: result.onsets, result: PATTERNS[index].evaluate(result.onsets, result.config) }));
+      } catch (error) { if (generation === generationRef.current) { setError(error instanceof Error ? error.message : 'Detection test failed.'); setState((current) => ({ ...current, phase: 'ready' })); } }
     };
-
-    const sampleRate = 48000;
-    const noiseFloor = estimateNoiseFloor(pcm, sampleRate, config.noiseFloorMultiplier);
-    const effectiveGate = Math.max(noiseFloor, config.noiseGate);
-
-    const coarse = detectOnsetsCoarse(pcm, sampleRate, effectiveGate, {
-      minOnsetIntervalMs: config.minOnsetIntervalMs,
-      postHitMaskingMs: config.postHitMaskingMs,
-      postHitMaskingStrength: config.postHitMaskingStrength,
-      fluxThresholdOffset: config.fluxThresholdOffset,
-    });
-
-    const refined = refineOnsets(pcm, sampleRate, coarse);
-    const bpm = 120; // doesn't matter for flam merge calc here
-    const flamMergeS = (60 / bpm) * (config.flamMergePct / 100);
-    const final = analyzeFlams(refined, flamMergeS);
-
-    const pat = PATTERNS[state.patternIndex];
-    const result = pat.evaluate(final, config);
-
-    setState((s) => ({
-      ...s,
-      phase: 'result',
-      detections: final,
-      result,
-    }));
-  }, [settings, state.patternIndex]);
+    try {
+      for (let count = 3; count > 0; count--) {
+        if (generation !== generationRef.current) return;
+        setState((current) => ({ ...current, countdown: count }));
+        await new Promise<void>((resolve) => setTimeout(resolve, 700));
+      }
+      if (generation !== generationRef.current) return;
+      if (!await capture.start(() => { void finish(); })) return;
+      if (generation !== generationRef.current) { capture.stop(); return; }
+      setState((current) => ({ ...current, phase: 'recording' }));
+      timerRef.current = setTimeout(() => { void finish(); }, PATTERNS[index].durationS * 1000);
+    } catch (error) { if (generation === generationRef.current) { setError(error instanceof Error ? error.message : 'Microphone unavailable.'); setState((current) => ({ ...current, phase: 'ready' })); } }
+  }, [state.patternIndex, capture.start, capture.finish, capture.stop]);
 
   // ─── Next test ───
 
@@ -424,10 +310,10 @@ export function DetectionTestBench({ visible, onClose }: Props) {
     ctx.scale(dpr, dpr);
 
     const pcm = state.pcm;
-    const sampleRate = 48000;
+    const sampleRate = sampleRateRef.current;
 
     // Background
-    ctx.fillStyle = '#1A1A1E';
+    ctx.fillStyle = '#E7E9ED';
     ctx.fillRect(0, 0, w, h);
 
     // Waveform
@@ -440,7 +326,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
         if (abs > maxAbs) maxAbs = abs;
       }
       const barH = maxAbs * (h - 10);
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillStyle = 'rgba(21,23,26,0.4)';
       ctx.fillRect(x, (h - barH) / 2, 1, Math.max(1, barH));
     }
 
@@ -463,7 +349,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
 
     for (const d of detections) {
       const x = (d.time / duration) * w;
-      const color = d.isFlam ? '#FBBF24' : '#4ADE80';
+      const color = d.isFlam ? '#A45108' : '#187A3B';
 
       // Vertical line
       ctx.strokeStyle = color;
@@ -490,7 +376,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
     }
 
     // Detection count label
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = 'rgba(21,23,26,0.5)';
     ctx.font = '10px "DM Sans", sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(`${detections.length} detected`, w - 4, 14);
@@ -508,7 +394,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
     const suggestions = new Set(allResults.filter((r) => r.result.suggestion).map((r) => r.result.suggestion!));
 
     return createPortal(
-      <div className="fixed inset-0 z-[9999] bg-bg-primary flex flex-col" style={{ touchAction: 'none' }}>
+      <div className="fixed inset-0 z-[9999] bg-bg-primary flex flex-col" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Detection test" data-no-swipe>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
           <button onClick={onClose} className="text-text-secondary text-sm min-w-[44px] min-h-[44px] flex items-center">← Back</button>
           <h1 className="text-text-primary text-base font-medium">Test Results</h1>
@@ -567,31 +453,32 @@ export function DetectionTestBench({ visible, onClose }: Props) {
   // ─── Test screen ───
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-bg-primary flex flex-col" style={{ touchAction: 'none' }}>
+    <div className="fixed inset-0 z-[9999] bg-bg-primary flex flex-col" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Detection test" data-no-swipe>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
         <button onClick={onClose} className="text-text-secondary text-sm min-w-[44px] min-h-[44px] flex items-center">← Back</button>
         <h1 className="text-text-primary text-sm font-medium">
           Test {state.patternIndex + 1}/{PATTERNS.length}
         </h1>
-        <button onClick={() => setState((s) => ({ ...s, patternIndex: PATTERNS.length, phase: 'ready', results: s.result && s.detections ? [...s.results, { pattern: PATTERNS[s.patternIndex], result: s.result, detections: s.detections }] : s.results }))}
+        <button disabled={state.phase !== 'ready' && state.phase !== 'result'} onClick={() => setState((s) => ({ ...s, patternIndex: PATTERNS.length, phase: 'ready', results: s.result && s.detections ? [...s.results, { pattern: PATTERNS[s.patternIndex], result: s.result, detections: s.detections }] : s.results }))}
           className="text-text-muted text-xs min-w-[44px] min-h-[44px] flex items-center justify-end">
           Skip All
         </button>
       </div>
 
+      {error && <p role="alert" className="p-3 text-sm text-danger">{error}</p>}
       {/* Progress dots */}
       <div className="flex gap-1.5 px-4 py-2 justify-center">
         {PATTERNS.map((_, i) => {
           const r = state.results[i];
           const isCurrent = i === state.patternIndex;
-          const color = r ? (r.result.pass ? '#4ADE80' : '#F87171') : isCurrent ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.15)';
+          const color = r ? (r.result.pass ? '#187A3B' : '#B4232C') : isCurrent ? 'rgba(21,23,26,0.6)' : 'rgba(21,23,26,0.15)';
           return <div key={i} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />;
         })}
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4">
+      <div className="flex-1 overflow-y-auto flex flex-col items-center px-4 py-4">
         {/* Ready */}
         {state.phase === 'ready' && pattern && (
           <div className="text-center space-y-4 w-full max-w-xs">

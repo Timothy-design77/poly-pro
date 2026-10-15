@@ -27,6 +27,7 @@ The intended final repository names and maintenance rules are documented in [`do
 ## Local development
 
 ```bash
+# Node.js 22.12+ (CI uses Node.js 24)
 npm ci
 npm run dev
 ```
@@ -34,13 +35,24 @@ npm run dev
 ## Verification
 
 ```bash
-npm run lint
+npm run typecheck
 npm run test:run
 npm run build
+npm audit --audit-level=moderate
+npx playwright install chromium
+npm run test:e2e
 ```
 
-Pull requests and production deployments are gated by automated type-checking, regression tests, and a production build.
+The development app is served at `/poly-pro/`. Browser tests start a local production preview automatically. Pull requests and deployments are gated by type-checking, regression tests, a production build, the dependency audit and browser workflows at narrow and wide viewports. Deployments publish the artifact from that verified build.
+
+## Current release
+
+The 2.1 upgrade completes the recording → analysis → saved review workflow, repairs project advancement and playback, and adds safe recovery, take comparison, durable tuning, shared instrument detection and validated backup restoration. Audio and practice data remain local; no account or cloud service is required.
+
+See [WORK_QUEUE.md](WORK_QUEUE.md) for the plan/test/simplify iteration record, [production readiness](docs/PRODUCTION_READINESS.md) for the audit outcome and physical-device acceptance checklist, and [verification results](docs/release/verification.txt) for the final automated checks. Physical Galaxy Z Fold 7 microphone, Bluetooth and long-session acceptance remains a release gate.
+
+For a first practice session: set tempo on Home, record a take, then choose Review take. Playback includes hit correction and WAV export. Tune applies scoring changes to that take; full re-detection asks before replacing corrections. Settings contains calibration, instrument training and backups. Export a Full Backup regularly to keep a portable copy of recordings and settings.
 
 ## Source of truth
 
-The consolidated implementation history and architecture plan are maintained in [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md). Historical repositories are retained for reference only and must not receive new product development.
+The current release status is in the readiness report above. The historical implementation and architecture plan are maintained in [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md). Historical repositories are retained for reference only and must not receive new product development.

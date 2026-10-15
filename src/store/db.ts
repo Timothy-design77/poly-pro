@@ -1,6 +1,8 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import { DB_NAME, DB_VERSION, upgradeDatabase } from './migrations';
 import type { MetronomeSnapshot } from './persisted-shapes';
+import type { ScheduledBeat } from '../audio/types';
+import type { AnalysisConfig } from '../analysis/types';
 export type { MetronomeSnapshot } from './persisted-shapes';
 
 export interface PolyProDB {
@@ -93,6 +95,11 @@ export interface SessionRecord {
   velocityDecayLabel?: string;
   recordingSampleRate?: number;
   recoveredRecording?: boolean;
+  analysisRevision?: number;
+  analysisConfig?: AnalysisConfig;
+  analysisVersion?: number;
+  recordingTiming?: RecordingTiming;
+  analysisError?: string;
 }
 
 export interface HitEventsRecord {
@@ -134,12 +141,19 @@ export interface HitEventsRecord {
   }>;
 }
 
+export interface RecordingTiming {
+  scheduledBeats: ScheduledBeat[];
+  recordingStartTime: number;
+  recordingEndTime: number;
+}
+
 export interface RecordingManifest {
   sessionId: string;
   sampleRate: number;
   chunkCount: number;
   totalSamples: number;
   finalized: boolean;
+  timing?: RecordingTiming;
   createdAt: string;
   /** Updated on every durable chunk write; absent on older manifests. */
   updatedAt?: string;
@@ -317,6 +331,7 @@ export async function appendRecordingChunk(
   sessionId: string,
   index: number,
   samples: Float32Array,
+  timing?: RecordingTiming,
 ): Promise<void> {
   const db = await getDB();
   const tx = db.transaction(['recordingChunks', 'recordingManifests'], 'readwrite');
@@ -332,6 +347,7 @@ export async function appendRecordingChunk(
   await chunkStore.put(blob, recordingChunkKey(sessionId, index));
   manifest.chunkCount = Math.max(manifest.chunkCount, index + 1);
   manifest.totalSamples += samples.length;
+  if (timing) manifest.timing = { ...timing, recordingEndTime: timing.recordingStartTime + manifest.totalSamples / manifest.sampleRate };
   manifest.updatedAt = new Date().toISOString();
   await manifestStore.put(manifest);
   await tx.done;
@@ -377,7 +393,7 @@ export async function discardChunkedRecording(sessionId: string): Promise<void> 
  * but never got its final SessionRecord. At most the final in-flight sub-second
  * worklet buffer is lost; completed chunks remain user-visible and playable.
  */
-export async function recoverOrphanedRecordings(staleMs = 10_000): Promise<number> {
+export async function recoverOrphanedRecordings(staleMs = 10_000, onlySessionId?: string): Promise<number> {
   const db = await getDB();
   const [manifests, sessions] = await Promise.all([
     db.getAll('recordingManifests') as Promise<RecordingManifest[]>,
@@ -387,6 +403,7 @@ export async function recoverOrphanedRecordings(staleMs = 10_000): Promise<numbe
   let recovered = 0;
 
   for (const manifest of manifests) {
+    if (onlySessionId && manifest.sessionId !== onlySessionId) continue;
     if (sessionIds.has(manifest.sessionId) || manifest.chunkCount === 0 || manifest.totalSamples === 0) continue;
     const lastWriteMs = new Date(manifest.updatedAt ?? manifest.createdAt).getTime();
     // A non-finalized manifest may belong to a recording still active in another tab.
@@ -409,6 +426,7 @@ export async function recoverOrphanedRecordings(staleMs = 10_000): Promise<numbe
       analyzed: false,
       recordingSampleRate: manifest.sampleRate,
       recoveredRecording: true,
+      recordingTiming: manifest.timing,
     };
     const tx = db.transaction(['sessions', 'recordingManifests'], 'readwrite');
     await Promise.all([
@@ -504,14 +522,22 @@ export async function deleteHitEvents(sessionId: string): Promise<void> {
 }
 
 /** Persist analyzed session metadata and its event set in one IDB transaction. */
-export async function putAnalysis(session: SessionRecord, hitEvents: HitEventsRecord): Promise<void> {
+export async function putAnalysis(session: SessionRecord, hitEvents: HitEventsRecord, expectedRevision = 0): Promise<SessionRecord> {
   const db = await getDB();
   const tx = db.transaction(['sessions', 'recordings'], 'readwrite');
+  const current = await tx.objectStore('sessions').get(session.id) as SessionRecord | undefined;
+  if (!current || (current.analysisRevision ?? 0) !== expectedRevision) {
+    tx.abort();
+    await tx.done.catch(() => {});
+    throw new Error('This session changed in another view. Reopen it before saving so your latest work is preserved.');
+  }
+  const saved = { ...session, projectId: current.projectId, hasRecording: current.hasRecording };
   await Promise.all([
-    tx.objectStore('sessions').put(session),
+    tx.objectStore('sessions').put(saved),
     tx.objectStore('recordings').put(JSON.stringify(hitEvents), `hitevents:${hitEvents.sessionId}`),
   ]);
   await tx.done;
+  return saved;
 }
 
 export interface InstrumentProfileRecord {
@@ -590,5 +616,106 @@ export async function clearAllData(): Promise<void> {
   ];
   const tx = db.transaction(stores, 'readwrite');
   await Promise.all(stores.map((name) => tx.objectStore(name).clear()));
+  await tx.done;
+}
+
+/** Delete metadata and every associated audio/event record atomically. */
+export async function removeSessionData(id: string, audioOnly = false): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['sessions', 'recordings', 'recordingChunks', 'recordingManifests', 'projects'], 'readwrite');
+  const session = await tx.objectStore('sessions').get(id) as SessionRecord | undefined;
+  const manifest = await tx.objectStore('recordingManifests').get(id) as RecordingManifest | undefined;
+  const recordings = tx.objectStore('recordings');
+  await recordings.delete(id); await recordings.delete(id + '-playback');
+  await tx.objectStore('recordingManifests').delete(id);
+  for (let i = 0; i < (manifest?.chunkCount ?? 0); i++) await tx.objectStore('recordingChunks').delete(recordingChunkKey(id, i));
+  if (audioOnly) {
+    if (session) await tx.objectStore('sessions').put({ ...session, hasRecording: false });
+  } else {
+    await tx.objectStore('sessions').delete(id); await recordings.delete(`hitevents:${id}`);
+    if (session?.projectId) {
+      const projects = tx.objectStore('projects');
+      const project = await projects.get(session.projectId) as ProjectRecord | undefined;
+      if (project) await projects.put({ ...project, sessionIds: project.sessionIds.filter((item) => item !== id) });
+    }
+  }
+  await tx.done;
+}
+
+export async function removeProjectData(id: string): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['projects', 'sessions', 'presets'], 'readwrite');
+  const sessions = await tx.objectStore('sessions').index('projectId').getAll(id) as SessionRecord[];
+  for (const session of sessions) await tx.objectStore('sessions').put({ ...session, projectId: null });
+  const presets = await tx.objectStore('presets').getAll() as PresetRecord[];
+  for (const preset of presets) if (preset.projectId === id) await tx.objectStore('presets').delete(preset.id);
+  await tx.objectStore('projects').delete(id);
+  await tx.done;
+}
+
+export interface BackupData {
+  settings: Record<string, unknown>;
+  projects: ProjectRecord[];
+  presets: PresetRecord[];
+  sessions: SessionRecord[];
+  events: HitEventsRecord[];
+  recordings: Array<{ id: string; blob: Blob }>;
+  profiles: InstrumentProfileRecord[];
+  customSamples: CustomSampleRecord[];
+}
+
+/** All archive parsing and validation completes before this transaction begins. */
+export async function restoreBackup(data: BackupData, restoreSettings: boolean) {
+  const db = await getDB();
+  const tx = db.transaction(['settings', 'projects', 'presets', 'sessions', 'recordings', 'instrumentProfiles', 'customSamples', 'recordingManifests'], 'readwrite');
+  let projects = 0, sessions = 0, skipped = 0;
+  try {
+    for (const project of data.projects) {
+      if (await tx.objectStore('projects').get(project.id)) skipped++;
+      else { await tx.objectStore('projects').put(project); projects++; }
+    }
+    const newSessionIds = new Set<string>();
+    for (const session of data.sessions) {
+      if (await tx.objectStore('sessions').get(session.id)) skipped++;
+      else {
+        const projectId = session.projectId && await tx.objectStore('projects').get(session.projectId) ? session.projectId : null;
+        await tx.objectStore('sessions').put({ ...session, projectId, hasRecording: false }); newSessionIds.add(session.id); sessions++; }
+    }
+    for (const events of data.events) {
+      const key = `hitevents:${events.sessionId}`;
+      // Existing corrections are authoritative; only fill missing data for imported takes.
+      if (newSessionIds.has(events.sessionId)) await tx.objectStore('recordings').put(JSON.stringify(events), key);
+    }
+    for (const recording of data.recordings) {
+      const store = tx.objectStore('recordings');
+      const manifest = await tx.objectStore('recordingManifests').get(recording.id);
+      if (!await store.get(recording.id) && !manifest) await store.put(recording.blob, recording.id);
+      const session = await tx.objectStore('sessions').get(recording.id) as SessionRecord | undefined;
+      if (session) await tx.objectStore('sessions').put({ ...session, hasRecording: true });
+    }
+    for (const preset of data.presets) if (!await tx.objectStore('presets').get(preset.id)) await tx.objectStore('presets').put(preset);
+    for (const profile of data.profiles) if (!await tx.objectStore('instrumentProfiles').get(profile.name)) await tx.objectStore('instrumentProfiles').put(profile);
+    for (const sample of data.customSamples) if (!await tx.objectStore('customSamples').get(sample.id)) await tx.objectStore('customSamples').put(sample);
+    if (restoreSettings) for (const [key, value] of Object.entries(data.settings)) await tx.objectStore('settings').put(value, key);
+    await tx.done;
+    return { imported: { projects, sessions }, skipped };
+  } catch (error) { try { tx.abort(); } catch {} await tx.done.catch(() => {}); throw error; }
+}
+
+export async function patchProject(id: string, updates: Partial<ProjectRecord>): Promise<ProjectRecord | undefined> {
+  const db = await getDB();
+  const tx = db.transaction('projects', 'readwrite');
+  const current = await tx.store.get(id) as ProjectRecord | undefined;
+  if (!current) { await tx.done; return undefined; }
+  const updated = { ...current, ...updates, id };
+  await tx.store.put(updated); await tx.done; return updated;
+}
+
+/** Persist a classifier's complete, consistently validated profile set atomically. */
+export async function replaceInstrumentProfiles(profiles: InstrumentProfileRecord[]): Promise<void> {
+  const database = await getDB();
+  const tx = database.transaction('instrumentProfiles', 'readwrite');
+  await tx.store.clear();
+  for (const profile of profiles) await tx.store.put(profile);
   await tx.done;
 }

@@ -29,7 +29,7 @@ export function SubdivisionPicker() {
               h-[40px] px-3.5 rounded-xl text-xs font-bold transition-colors
               touch-manipulation select-none min-w-[52px]
               ${subdivision === s.value
-                ? 'bg-[rgba(255,255,255,0.15)] text-text-primary border border-[rgba(255,255,255,0.15)]'
+                ? 'bg-[rgba(21,23,26,0.15)] text-text-primary border border-[rgba(21,23,26,0.15)]'
                 : 'bg-bg-surface border border-border-subtle text-text-muted active:bg-bg-raised'
               }
             `}

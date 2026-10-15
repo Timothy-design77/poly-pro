@@ -15,6 +15,7 @@ interface Props {
   formatValue?: (value: number) => string;
   showValue?: boolean;
   label?: string;
+  ariaLabel?: string;
   className?: string;
   unit?: string;
 }
@@ -33,6 +34,7 @@ export function PrecisionSlider({
   formatValue,
   showValue = false,
   label,
+  ariaLabel,
   className = '',
   unit = '',
 }: Props) {
@@ -166,7 +168,7 @@ export function PrecisionSlider({
 
   const handleEditKeyDown = useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Enter') handleEditSubmit();
-    if (event.key === 'Escape') setIsEditing(false);
+    if (event.key === 'Escape') { event.stopPropagation(); setIsEditing(false); }
   }, [handleEditSubmit]);
 
   const displayValue = formatValue ? formatValue(value) : (
@@ -192,6 +194,7 @@ export function PrecisionSlider({
             <div className="flex items-center gap-1">
               <input
                 type="number"
+                aria-label={ariaLabel ?? label ?? 'Value'}
                 value={editText}
                 onChange={(event) => setEditText(event.target.value)}
                 onBlur={handleEditSubmit}
@@ -211,6 +214,20 @@ export function PrecisionSlider({
 
       <div
         ref={trackRef}
+        role="slider"
+        tabIndex={0}
+        aria-label={ariaLabel ?? label ?? 'Value'}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-valuetext={displayValue}
+        onKeyDown={(event) => {
+          const direction = ['ArrowRight', 'ArrowUp'].includes(event.key) ? 1 : ['ArrowLeft', 'ArrowDown'].includes(event.key) ? -1 : 0;
+          if (direction || event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            onChange(clampAndStep(event.key === 'Home' ? min : event.key === 'End' ? max : value + direction * step));
+          }
+        }}
         data-no-swipe
         className="relative h-10 flex items-center select-none"
         style={{ touchAction: 'pan-y' }}

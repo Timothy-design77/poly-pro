@@ -52,6 +52,8 @@ export function SwipeNavigation({
     clearTarget();
   }, [targetPage, pages.length, clearTarget]);
 
+  useEffect(() => { window.dispatchEvent(new Event('polypro:navigation')); }, [currentPage]);
+
   const navigateTo = (index: number) => {
     const clamped = Math.max(0, Math.min(destinationLabels.length - 1, index));
     setCurrentPage(clamped);
