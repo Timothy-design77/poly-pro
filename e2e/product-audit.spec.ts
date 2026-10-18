@@ -18,6 +18,8 @@ test('backup reminders snooze from the current count and clear immediately after
   });
   await expect(page.getByText('You have 20 sessions since your last backup.')).toBeVisible();
   await page.getByRole('button', { name: 'Remind me later', exact: true }).click();
+  // Hiding the reminder acknowledges the completed IndexedDB transaction.
+  await expect(page.getByText(/sessions since your last backup/)).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('button', { name: 'Home', exact: true })).toBeVisible();
   await expect(page.getByText(/sessions since your last backup/)).toHaveCount(0);
