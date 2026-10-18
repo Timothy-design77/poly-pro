@@ -202,7 +202,7 @@ export function SwipeNavigation({
                 onClick={() => navigateTo(index)}
                 disabled={isRecording && !active}
                 aria-current={active ? 'page' : undefined}
-                className={`min-h-[50px] rounded-md px-2 py-2 text-xs font-semibold transition-colors duration-75 disabled:opacity-40 ${
+                className={`min-h-[50px] rounded-md px-2 py-2 text-xs font-semibold disabled:opacity-40 ${
                   active
                     ? 'bg-accent text-bg-primary'
                     : 'bg-bg-raised text-text-secondary active:bg-accent-dim active:text-text-primary'
