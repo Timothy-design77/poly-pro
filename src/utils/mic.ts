@@ -13,16 +13,32 @@
  * on Chrome Android that disables ALL processing (AEC, AGC, NS).
  */
 
-async function requestStream(constraints: MediaStreamConstraints): Promise<MediaStream> {
+function checkCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException('Microphone setup cancelled.', 'AbortError');
+}
+
+async function requestStream(constraints: MediaStreamConstraints, signal?: AbortSignal): Promise<MediaStream> {
+  checkCancelled(signal);
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access requires a supported browser and a secure connection.');
   const request = navigator.mediaDevices.getUserMedia(constraints);
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   try {
-    return await Promise.race([request, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Microphone setup timed out. Check permission and try again.')), 15000); })]);
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Microphone setup timed out. Check permission and try again.')), 15000);
+        onAbort = () => reject(new DOMException('Microphone setup cancelled.', 'AbortError'));
+        signal?.addEventListener('abort', onAbort, { once: true });
+      }),
+    ]);
   } catch (error) {
     request.then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
     throw error;
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 function canRelaxConstraints(error: unknown): boolean {
@@ -104,16 +120,18 @@ function findBuiltInMicId(devices: MediaDeviceInfo[]): { deviceId: string; label
  *    Request dummy stream targeting a NON-default device to avoid BT,
  *    or if we can't, use the dummy but immediately stop + re-request
  */
-export async function getPreferredMicStream(): Promise<MicResult> {
+export async function getPreferredMicStream(signal?: AbortSignal): Promise<MicResult> {
   try {
+    checkCancelled(signal);
     // Step 1: Try enumerating WITHOUT a dummy stream (works if permission was previously granted)
     const devices = await navigator.mediaDevices.enumerateDevices();
+    checkCancelled(signal);
     const found = findBuiltInMicId(devices);
 
     if (found && found.deviceId !== 'default') {
       // We have labels — go straight to requesting built-in mic
       console.log(`[mic] Labels available, requesting: "${found.label}"`);
-      return await requestMic(found.deviceId, found.label);
+      return await requestMic(found.deviceId, found.label, signal);
     }
 
     // Step 2: No labels — permission not yet granted. Need dummy stream.
@@ -133,36 +151,44 @@ export async function getPreferredMicStream(): Promise<MicResult> {
           autoGainControl: false,
           noiseSuppression: false,
         },
-      });
+      }, signal);
     } catch (error) {
       if (!canRelaxConstraints(error)) throw error;
       // Fallback to bare minimum
-      dummyStream = await requestStream({ audio: true });
+      dummyStream = await requestStream({ audio: true }, signal);
     }
 
     // Now enumerate with labels
     let devicesWithLabels: MediaDeviceInfo[];
-    try { devicesWithLabels = await navigator.mediaDevices.enumerateDevices(); }
-    finally { dummyStream.getTracks().forEach((track) => track.stop()); }
+    const stopProbe = () => dummyStream.getTracks().forEach((track) => track.stop());
+    signal?.addEventListener('abort', stopProbe, { once: true });
+    try {
+      checkCancelled(signal);
+      devicesWithLabels = await navigator.mediaDevices.enumerateDevices();
+    } finally {
+      signal?.removeEventListener('abort', stopProbe);
+      stopProbe();
+    }
+    checkCancelled(signal);
 
     const foundNow = findBuiltInMicId(devicesWithLabels);
     if (foundNow && foundNow.deviceId !== 'default') {
       console.log(`[mic] After permission, requesting: "${foundNow.label}"`);
-      return await requestMic(foundNow.deviceId, foundNow.label);
+      return await requestMic(foundNow.deviceId, foundNow.label, signal);
     }
 
     // Step 3: Couldn't identify built-in even with labels — use raw constraints without deviceId
     console.warn('[mic] ⚠️ Could not identify built-in mic, using default');
     const stream = await requestStream({
       audio: { ...RAW_CONSTRAINTS, sampleRate: { ideal: 48000 }, channelCount: 1 },
-    });
+    }, signal);
     const label = stream.getAudioTracks()[0]?.label || 'Default';
     const raw = verifyRawAudio(stream);
     return { stream, deviceLabel: label, isBuiltIn: !isBtDevice(label), isRaw: raw.isRaw };
 
   } catch (err) {
     if (!canRelaxConstraints(err)) throw err;
-    const stream = await requestStream({ audio: true });
+    const stream = await requestStream({ audio: true }, signal);
     const label = stream.getAudioTracks()[0]?.label || 'Fallback';
     return { stream, deviceLabel: label, isBuiltIn: false, isRaw: false };
   }
@@ -171,7 +197,7 @@ export async function getPreferredMicStream(): Promise<MicResult> {
 /**
  * Request mic with exact deviceId and raw constraints.
  */
-async function requestMic(deviceId: string, label: string): Promise<MicResult> {
+async function requestMic(deviceId: string, label: string, signal?: AbortSignal): Promise<MicResult> {
   const stream = await requestStream({
     audio: {
       ...RAW_CONSTRAINTS,
@@ -179,7 +205,7 @@ async function requestMic(deviceId: string, label: string): Promise<MicResult> {
       sampleRate: { ideal: 48000 },
       channelCount: 1,
     },
-  });
+  }, signal);
   const actualLabel = stream.getAudioTracks()[0]?.label || label;
   const raw = verifyRawAudio(stream);
   console.log(`[mic] ✅ Stream opened: "${actualLabel}" (raw: ${raw.isRaw})`);

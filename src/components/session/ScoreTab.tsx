@@ -304,8 +304,9 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
           </p>
           <hr className="border-border-subtle" />
           <p className="text-text-muted leading-relaxed">
-            Scoring window: {scoringWindowMs == null ? 'not saved' : `±${scoringWindowMs.toFixed(1)}ms`} (tempo-scaled).
+            Scoring window: {scoringWindowMs == null ? 'not saved' : `±${scoringWindowMs.toFixed(1)}ms`}.
             Flam merge: {flamMergeMs == null ? 'not saved' : `${flamMergeMs.toFixed(1)}ms`}.
+            {' '}Both windows use the starting tempo ({session.bpm} BPM) and remain fixed through tempo-trainer changes. The beat grid follows captured timing when available.
             σ (standard deviation) measures timing consistency — being
             consistently early or late doesn&apos;t hurt your σ.
           </p>

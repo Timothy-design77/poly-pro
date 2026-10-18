@@ -33,6 +33,8 @@ export interface ScoredOnset {
   matchedBeatTime: number;
   /** Beat index this onset matched within the measure */
   matchedBeatIndex: number;
+  /** Actual captured measure, independent of the within-measure beat index. */
+  matchedMeasure?: number;
   /** Whether this onset passed the scoring window */
   scored: boolean;
   /** Position within measure (0–1 fraction) */

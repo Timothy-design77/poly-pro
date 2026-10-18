@@ -100,6 +100,8 @@ export interface SessionRecord {
   analysisVersion?: number;
   recordingTiming?: RecordingTiming;
   analysisError?: string;
+  /** A durable notice when analysis saved but a follow-up operation is unconfirmed. */
+  analysisNotice?: string;
 }
 
 export interface HitEventsRecord {
@@ -111,6 +113,7 @@ export interface HitEventsRecord {
     peak: number;
     matchedBeatTime: number;
     matchedBeatIndex: number;
+    matchedMeasure?: number;
     scored: boolean;
     measurePosition: number;
     spectralFeatures?: {
@@ -296,6 +299,24 @@ export async function getSessionsByProject(projectId: string): Promise<SessionRe
 export async function putSession(session: SessionRecord): Promise<void> {
   const db = await getDB();
   await db.put('sessions', session);
+}
+
+/** Patch only the intended metadata without overwriting newer analysis or audio state. */
+export async function patchSession(id: string, updates: Partial<SessionRecord>): Promise<SessionRecord | undefined> {
+  const database = await getDB();
+  const tx = database.transaction('sessions', 'readwrite');
+  try {
+    const current = await tx.store.get(id) as SessionRecord | undefined;
+    if (!current) { await tx.done; return undefined; }
+    const updated = { ...current, ...updates, id };
+    await tx.store.put(updated);
+    await tx.done;
+    return updated;
+  } catch (error) {
+    try { tx.abort(); } catch { /* Already aborted. */ }
+    await tx.done.catch(() => {});
+    throw error;
+  }
 }
 
 export async function deleteSession(id: string): Promise<void> {

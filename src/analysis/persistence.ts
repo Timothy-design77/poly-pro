@@ -60,6 +60,7 @@ export function analysisToHitEvents(
         peak: onset.peak,
         matchedBeatTime: onset.matchedBeatTime,
         matchedBeatIndex: onset.matchedBeatIndex,
+        matchedMeasure: onset.matchedMeasure,
         scored: onset.scored,
         measurePosition: onset.measurePosition,
         spectralFeatures: onset.spectralFeatures ?? old?.spectralFeatures ?? null,

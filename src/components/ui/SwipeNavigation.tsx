@@ -33,6 +33,20 @@ export function SwipeNavigation({
   const destinationLabels = [...pageLabels, 'Settings'];
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [navDragX, setNavDragX] = useState(0);
+  const [capturePhase, setCapturePhase] = useState('idle');
+  const captureLockedRef = useRef(false);
+  const isRecording = ['recording', 'stopping', 'saving'].includes(capturePhase);
+
+  useEffect(() => {
+    const onCapturePhase = (event: Event) => {
+      const phase = (event as CustomEvent<{ phase: string }>).detail.phase;
+      captureLockedRef.current = ['recording', 'stopping', 'saving'].includes(phase);
+      setCapturePhase(phase);
+      if (captureLockedRef.current) setCurrentPage(initialPage);
+    };
+    window.addEventListener('polypro:recording-phase', onCapturePhase);
+    return () => window.removeEventListener('polypro:recording-phase', onCapturePhase);
+  }, [initialPage]);
 
   const pointerRef = useRef<{
     id: number;
@@ -48,14 +62,19 @@ export function SwipeNavigation({
 
   useEffect(() => {
     if (targetPage === null) return;
-    if (targetPage >= 0 && targetPage < pages.length) setCurrentPage(targetPage);
+    if (!captureLockedRef.current && targetPage >= 0 && targetPage < pages.length) {
+      if (targetPage !== currentPage) window.dispatchEvent(new Event('polypro:navigation'));
+      setCurrentPage(targetPage);
+    }
     clearTarget();
-  }, [targetPage, pages.length, clearTarget]);
+  }, [targetPage, pages.length, clearTarget, isRecording, currentPage]);
 
   useEffect(() => { window.dispatchEvent(new Event('polypro:navigation')); }, [currentPage]);
 
   const navigateTo = (index: number) => {
+    if (captureLockedRef.current) return;
     const clamped = Math.max(0, Math.min(destinationLabels.length - 1, index));
+    if (clamped !== currentPage) window.dispatchEvent(new Event('polypro:navigation'));
     setCurrentPage(clamped);
     setNavDragX(0);
   };
@@ -172,6 +191,7 @@ export function SwipeNavigation({
           event.stopPropagation();
         }}
       >
+        {isRecording && <p role="status" className="pb-2 text-center text-xs font-semibold text-danger">{capturePhase === 'recording' ? 'Recording in progress · stop the take to change section' : 'Saving your take…'}</p>}
         <div className="grid grid-cols-4 gap-1.5 max-w-lg mx-auto">
           {destinationLabels.map((label, index) => {
             const active = index === currentPage;
@@ -180,8 +200,9 @@ export function SwipeNavigation({
                 key={label}
                 type="button"
                 onClick={() => navigateTo(index)}
+                disabled={isRecording && !active}
                 aria-current={active ? 'page' : undefined}
-                className={`min-h-[50px] rounded-md px-2 py-2 text-xs font-semibold transition-colors duration-75 ${
+                className={`min-h-[50px] rounded-md px-2 py-2 text-xs font-semibold disabled:opacity-40 ${
                   active
                     ? 'bg-accent text-bg-primary'
                     : 'bg-bg-raised text-text-secondary active:bg-accent-dim active:text-text-primary'

@@ -36,6 +36,7 @@ export function GroupingPicker() {
           return (
             <button
               key={key}
+              type="button" aria-pressed={isActive}
               onClick={() => setGrouping(grouping)}
               className={`
                 h-[40px] px-3 rounded-xl text-xs font-bold font-mono

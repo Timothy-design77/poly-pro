@@ -78,6 +78,7 @@ export function validateSessions(value: unknown): db.SessionRecord[] {
     if (typeof session.hasRecording !== 'boolean') fail('invalid recording flag');
     for (const key of ['score', 'sigma', 'meanOffset', 'hitRate', 'goodPct', 'totalDetected', 'totalScored', 'totalExpected', 'scoringWindowMs', 'flamMergeMs', 'noiseFloor', 'autoLatencyMs', 'fatigueRatio', 'maxDrift', 'swingRatio', 'swingSigma', 'analysisRevision', 'analysisVersion']) if (session[key] !== undefined) number(session[key], `invalid ${key}`);
     if (session.analyzed !== undefined && typeof session.analyzed !== 'boolean') fail('invalid analyzed flag');
+    if (session.analysisNotice !== undefined) string(session.analysisNotice, 'invalid analysis notice', 2000);
     if (session.analysisConfig) config(session.analysisConfig);
     if (session.recordingTiming) timing(session.recordingTiming);
     if (session.recordingSampleRate !== undefined) number(session.recordingSampleRate, 'invalid sample rate', 8000, 192000);
@@ -108,6 +109,7 @@ export function validateEvents(value: unknown, sessionId: string): db.HitEventsR
   for (const key of ['rawOnsets', 'scoredOnsets']) for (const onset of list(events[key], 'invalid hits')) {
     const hit = object(onset, 'invalid hit'); number(hit.time, 'invalid hit time', 0, 86400); number(hit.peak, 'invalid hit strength', 0, 1e6);
     if (key === 'scoredOnsets') { number(hit.delta, 'invalid timing deviation'); number(hit.absDelta, 'invalid absolute deviation', 0); if (typeof hit.scored !== 'boolean') fail('invalid scored flag'); }
+    if (hit.matchedMeasure !== undefined) number(hit.matchedMeasure, 'invalid matched measure', 0);
   }
   if (events.gridBeats) for (const beat of list(events.gridBeats, 'invalid beat grid', 200000)) {
     const item = object(beat, 'invalid grid beat'); number(item.time, 'invalid grid time', 0, 86400); number(item.beatIndex, 'invalid beat index', 0, 128); number(item.measure, 'invalid measure', 0); string(item.trackId, 'invalid track');

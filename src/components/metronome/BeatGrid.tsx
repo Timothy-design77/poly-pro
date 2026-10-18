@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { VolumeState } from '../../audio/types';
 import { SoundPickerSheet } from './SoundPickerSheet';
@@ -12,11 +12,7 @@ const FILL_COLOR: Record<number, string> = {
   [VolumeState.SOFT]: 'rgba(21,23,26,0.06)', [VolumeState.MED]: 'rgba(21,23,26,0.10)',
   [VolumeState.LOUD]: 'rgba(21,23,26,0.18)', [VolumeState.ACCENT]: 'rgba(21,23,26,0.28)',
 };
-const TEXT_COLOR: Record<number, string> = {
-  [VolumeState.OFF]: 'rgba(21,23,26,0.06)', [VolumeState.GHOST]: 'rgba(21,23,26,0.14)',
-  [VolumeState.SOFT]: 'rgba(21,23,26,0.25)', [VolumeState.MED]: 'rgba(21,23,26,0.40)',
-  [VolumeState.LOUD]: 'rgba(21,23,26,0.60)', [VolumeState.ACCENT]: 'rgba(21,23,26,0.90)',
-};
+
 
 const LONG_PRESS_MS = 600;
 
@@ -52,14 +48,15 @@ function SubVolumeControl({ track, subdivision }: { track: { accents: VolumeStat
           return (
             <button
               key={state}
+              type="button" aria-label={`Set subdivisions to ${label}`} aria-pressed={isActive}
               onClick={() => setAllSubVol(state)}
               className={`
-                flex-1 h-[28px] rounded-md text-[8px] font-bold
+                flex-1 h-[36px] rounded-md text-[10px] font-bold
                 touch-manipulation select-none relative overflow-hidden
                 border transition-colors
                 ${isActive
                   ? 'border-[rgba(21,23,26,0.15)] text-text-primary'
-                  : 'border-border-subtle text-text-muted active:bg-bg-raised'
+                  : 'border-border-subtle text-text-primary active:bg-bg-raised'
                 }
               `}
             >
@@ -95,7 +92,15 @@ export function BeatGrid() {
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const didLongPress = useRef(false);
 
+  useEffect(() => {
+    const cancel = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); didLongPress.current = true; };
+    window.addEventListener('blur', cancel);
+    window.addEventListener('polypro:navigation', cancel);
+    return () => { cancel(); window.removeEventListener('blur', cancel); window.removeEventListener('polypro:navigation', cancel); };
+  }, []);
+
   const handlePointerDown = useCallback((trackId: string, beatIndex: number) => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
     didLongPress.current = false;
     longPressTimer.current = setTimeout(() => {
       didLongPress.current = true;
@@ -113,6 +118,7 @@ export function BeatGrid() {
   }, [updateTrackAccent]);
 
   const handlePointerLeave = useCallback(() => {
+    didLongPress.current = true;
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
   }, []);
 
@@ -158,13 +164,12 @@ export function BeatGrid() {
               {/* Beat cells */}
               <div
                 className="grid gap-0.5"
-                style={{ gridTemplateColumns: `repeat(${beatIndices.length}, 1fr)` }}
+                style={{ gridTemplateColumns: `repeat(${Math.min(6, beatIndices.length)}, 1fr)` }}
               >
                 {beatIndices.map((beatIdx) => {
                   const vol = track.accents[beatIdx] ?? VolumeState.SOFT;
                   const fillPct = FILL_MAP[vol] ?? 0;
                   const fillCol = FILL_COLOR[vol] ?? 'transparent';
-                  const textCol = TEXT_COLOR[vol] ?? 'rgba(21,23,26,0.06)';
                   const beatNum = isMainTrack ? Math.floor(beatIdx / subdivision) + 1 : beatIdx + 1;
                   const isActive = playing && currentBeats[track.id] === beatIdx;
                   const hasOverride = track.soundOverrides[beatIdx] !== undefined;
@@ -172,12 +177,17 @@ export function BeatGrid() {
                   return (
                     <button
                       key={beatIdx}
-                      onPointerDown={(e) => { e.preventDefault(); handlePointerDown(track.id, beatIdx); }}
-                      onPointerUp={() => handlePointerUp(track.id, beatIdx)}
+                      type="button"
+                      aria-label={`Track ${trackIdx + 1} beat ${beatNum}, ${VOL_LEVELS.find((level) => level.state === vol)?.label}`}
+                      title="Tap to change volume. Hold or press F2 to choose a sound."
+                      onClick={(event) => { if (event.detail === 0) updateTrackAccent(track.id, beatIdx); }}
+                      onKeyDown={(event) => { if (event.key === 'F2') { event.preventDefault(); setPickerTarget({ trackId: track.id, beatIndex: beatIdx }); setPickerOpen(true); } }}
+                      onPointerDown={(e) => { if (!e.isPrimary || e.button !== 0) return; e.preventDefault(); handlePointerDown(track.id, beatIdx); }}
+                      onPointerUp={(event) => { if (event.isPrimary && event.button === 0) handlePointerUp(track.id, beatIdx); }}
                       onPointerLeave={handlePointerLeave}
                       onPointerCancel={handlePointerLeave}
                       className={`
-                        h-[34px] rounded-md flex items-center justify-center
+                        h-[44px] rounded-md flex items-center justify-center
                         overflow-hidden touch-manipulation select-none relative border
                         ${isActive ? 'ring-1 ring-[rgba(21,23,26,0.3)]' : ''}
                         ${vol === VolumeState.OFF
@@ -191,8 +201,7 @@ export function BeatGrid() {
                         style={{ height: `${fillPct}%`, backgroundColor: fillCol }}
                       />
                       <span
-                        className="relative z-10 font-mono text-[10px] font-bold"
-                        style={{ color: textCol }}
+                        className="relative z-10 font-mono text-xs font-bold text-text-primary"
                       >
                         {beatNum}
                       </span>
@@ -214,7 +223,7 @@ export function BeatGrid() {
               {hasSubRow && (
                 <div
                   className="grid gap-0.5 mt-0.5"
-                  style={{ gridTemplateColumns: `repeat(${totalCells}, 1fr)` }}
+                  style={{ gridTemplateColumns: `repeat(${Math.min(8, totalCells)}, 1fr)` }}
                 >
                   {Array.from({ length: totalCells }, (_, i) => {
                     const isBeat = i % subdivision === 0;
@@ -227,12 +236,17 @@ export function BeatGrid() {
                     return (
                       <button
                         key={i}
-                        onPointerDown={(e) => { e.preventDefault(); handlePointerDown(track.id, i); }}
-                        onPointerUp={() => handlePointerUp(track.id, i)}
+                        type="button"
+                        aria-label={`Track ${trackIdx + 1} beat ${Math.floor(i / subdivision) + 1} subdivision ${i % subdivision + 1}, ${VOL_LEVELS.find((level) => level.state === vol)?.label}`}
+                        title="Tap to change volume. Hold or press F2 to choose a sound."
+                        onClick={(event) => { if (event.detail === 0) updateTrackAccent(track.id, i); }}
+                        onKeyDown={(event) => { if (event.key === 'F2') { event.preventDefault(); setPickerTarget({ trackId: track.id, beatIndex: i }); setPickerOpen(true); } }}
+                        onPointerDown={(e) => { if (!e.isPrimary || e.button !== 0) return; e.preventDefault(); handlePointerDown(track.id, i); }}
+                        onPointerUp={(event) => { if (event.isPrimary && event.button === 0) handlePointerUp(track.id, i); }}
                         onPointerLeave={handlePointerLeave}
                         onPointerCancel={handlePointerLeave}
                         className={`
-                          h-[10px] rounded-sm overflow-hidden touch-manipulation select-none relative
+                          h-[32px] rounded-sm overflow-hidden touch-manipulation select-none relative
                           ${isActive ? 'ring-1 ring-[rgba(21,23,26,0.2)]' : ''}
                           ${isBeat
                             ? 'bg-[rgba(21,23,26,0.04)] border border-[rgba(21,23,26,0.06)]'
@@ -243,6 +257,7 @@ export function BeatGrid() {
                           className="absolute bottom-0 left-0 right-0 rounded-b-sm transition-all duration-100"
                           style={{ height: `${fillPct}%`, backgroundColor: fillCol }}
                         />
+                        <span aria-hidden="true" className="relative z-10 text-[9px] font-mono text-text-primary">{Math.floor(i / subdivision) + 1}.{i % subdivision + 1}</span>
                         {hasOverride && (
                           <div className="absolute top-0.5 right-0.5 w-[3px] h-[3px] rounded-full bg-[rgba(45,212,191,0.6)]" />
                         )}

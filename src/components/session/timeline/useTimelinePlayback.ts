@@ -10,6 +10,7 @@ import { beginCriticalActivity, isCriticalActivityActive } from '../../../utils/
 import { getBuffer } from '../../../audio/sounds';
 import { mediaPosition, eventsInWindow, type PlaybackLoop } from '../../../audio/playback-clock';
 import { forEachClickBeat } from './timeline-shared';
+import { exportWav, type ExportClick } from '../../../audio/wav-export';
 
 export interface TimelinePlayback {
   error: string | null;
@@ -34,6 +35,8 @@ export interface TimelinePlayback {
   presenceBoostDb: number;
   setPresenceBoostDb: (value: number) => void;
   isSaving: boolean;
+  exportProgress: number;
+  cancelExport: () => void;
   latencyOffsetMs: number;
   togglePlayback: () => Promise<void>;
   skip: (deltaS: number) => Promise<void>;
@@ -69,6 +72,8 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
   const [lowPassHz, setLowPassHz] = useState(12000);
   const [presenceBoostDb, setPresenceBoostDb] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const exportRef = useRef<{ controller: AbortController; release: () => void } | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const clickGainRef = useRef<GainNode | null>(null);
@@ -206,64 +211,39 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
     const next = Math.max(0, Math.min(1, value)); setPlaybackVolumeState(next);
     if (gainNodeRef.current) gainNodeRef.current.gain.value = recordingPlaybackGain(next);
   }, []);
-  useEffect(() => { if (!active) stopPlayback(); }, [active, stopPlayback]);
-  useEffect(() => () => stopPlayback(), [stopPlayback]);
+  const cancelExport = useCallback(() => {
+    const operation = exportRef.current;
+    if (!operation) return;
+    operation.controller.abort(); operation.release(); exportRef.current = null;
+    setIsSaving(false); setExportProgress(0);
+  }, []);
+  useEffect(() => { if (!active) { stopPlayback(); cancelExport(); } }, [active, stopPlayback, cancelExport]);
+  useEffect(() => () => {
+    stopPlayback();
+    exportRef.current?.controller.abort(); exportRef.current?.release(); exportRef.current = null;
+  }, [stopPlayback]);
   const saveAudio = useCallback(async (withClick: boolean) => {
-    if (!audioBufferRef.current) return;
-    setIsSaving(true);
+    const sourceBuffer = audioBufferRef.current;
+    if (!sourceBuffer || !active || exportRef.current) return;
+    stopPlayback();
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
+    const operation = { controller: new AbortController(), release: beginCriticalActivity('data') };
+    exportRef.current = operation;
+    setIsSaving(true); setExportProgress(0); setError(null);
     try {
-      const { getBuffer } = await import('../../../audio/sounds');
-      const sourceBuffer = audioBufferRef.current;
-      const sampleRate = sourceBuffer.sampleRate;
-      const durationS = sourceBuffer.duration;
-      const offline = new OfflineAudioContext(1, Math.ceil(durationS * sampleRate), sampleRate);
-      const recordingSource = offline.createBufferSource();
-      recordingSource.buffer = sourceBuffer;
-      recordingSource.connect(offline.destination);
-      recordingSource.start(0);
-
+      const clicks: ExportClick[] = [];
       if (withClick) {
         const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
         const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
-        if (clickBuffer) {
-          const clickMaster = offline.createGain();
-          clickMaster.gain.value = clickVolume;
-          clickMaster.connect(offline.destination);
-          forEachClickBeat(session, latencyOffsetMs / 1000, ({ adjustedBeatTime, volState }) => {
-            if (adjustedBeatTime < 0 || adjustedBeatTime >= durationS) return;
-            const buffer = volState >= accentThreshold ? (accentBuffer || clickBuffer) : clickBuffer;
-            const clickSource = offline.createBufferSource();
-            clickSource.buffer = buffer;
-            const clickGain = offline.createGain();
-            clickGain.gain.value = VOLUME_GAINS[volState];
-            clickSource.connect(clickGain);
-            clickGain.connect(clickMaster);
-            clickSource.start(adjustedBeatTime);
-          }, gridBeats);
-        }
+        if (!clickBuffer) throw new Error('Click sounds are still loading. Try exporting again.');
+        forEachClickBeat(session, latencyOffsetMs / 1000, ({ adjustedBeatTime, volState }) => {
+          if (adjustedBeatTime < 0 || adjustedBeatTime >= sourceBuffer.duration) return;
+          clicks.push({ time: adjustedBeatTime, buffer: volState >= accentThreshold ? accentBuffer! : clickBuffer, gain: clickVolume * VOLUME_GAINS[volState] });
+        }, gridBeats);
       }
-
-      const rendered = await offline.startRendering();
-      const pcm = rendered.getChannelData(0);
-      let peak = 0;
-      for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
-      const scale = peak > 0.98 ? 0.98 / peak : 1;
-      const dataSize = pcm.length * 2;
-      const wavBuffer = new ArrayBuffer(44 + dataSize);
-      const view = new DataView(wavBuffer);
-      const write = (offset: number, text: string) => { for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i)); };
-      write(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); write(8, 'WAVE');
-      write(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
-      view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
-      view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, 'data'); view.setUint32(40, dataSize, true);
-      let offset = 44;
-      for (let i = 0; i < pcm.length; i++) {
-        const sample = pcm[i] * scale;
-        view.setInt16(offset, Math.max(-32768, Math.min(32767, sample < 0 ? sample * 0x8000 : sample * 0x7FFF)), true);
-        offset += 2;
-      }
-
-      const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+      const blob = await exportWav({ buffer: sourceBuffer, clicks, signal: operation.controller.signal,
+        onProgress: (progress) => { if (exportRef.current === operation) setExportProgress(progress); } });
+      operation.controller.signal.throwIfAborted();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       const date = new Date(session.date).toISOString().slice(0, 10);
@@ -273,15 +253,18 @@ export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRe
       anchor.click();
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 30000);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Could not export this recording.');
+    } catch (failure) {
+      if (!operation.controller.signal.aborted && exportRef.current === operation) {
+        setError(failure instanceof Error ? failure.message : 'Could not export this recording.');
+      }
     } finally {
-      setIsSaving(false);
+      operation.release();
+      if (exportRef.current === operation) { exportRef.current = null; setIsSaving(false); }
     }
-  }, [gridBeats, audioBufferRef, session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs]);
+  }, [active, gridBeats, audioBufferRef, session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs, stopPlayback]);
 
   return { error, isPlaying, playbackPos, playbackSpeed, setPlaybackSpeed, playbackVolume, setPlaybackVolume, followPlayhead, setFollowPlayhead,
     clickOverlay, setClickOverlay, clickVolume, setClickVolume, cleanupEnabled, setCleanupEnabled, highPassHz, setHighPassHz,
-    lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb, isSaving, latencyOffsetMs,
+    lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb, isSaving, exportProgress, cancelExport, latencyOffsetMs,
     togglePlayback, skip, seekToFraction, saveAudio };
 }

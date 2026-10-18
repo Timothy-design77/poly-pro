@@ -1,54 +1,56 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 
-/**
- * Acquires a screen wake lock while the metronome is playing.
- * Releases on stop or unmount.
- */
+/** Own one practice session's lock, including requests that outlive the session. */
+export function holdScreenWakeLock(): () => void {
+  if (!('wakeLock' in navigator)) return () => {};
+  let active = true;
+  let pending = false;
+  let sentinel: WakeLockSentinel | null = null;
+
+  const release = () => {
+    const previous = sentinel;
+    sentinel = null;
+    if (previous && !previous.released) void previous.release().catch(() => {});
+  };
+
+  const acquire = async () => {
+    if (!active || pending || (sentinel && !sentinel.released) || document.visibilityState !== 'visible') return;
+    pending = true;
+    try {
+      const granted = await navigator.wakeLock.request('screen');
+      if (!active || document.visibilityState !== 'visible') {
+        // Cleanup may have run while the browser was deciding the request.
+        void granted.release().catch(() => {});
+        return;
+      }
+      sentinel = granted;
+      granted.addEventListener('release', () => {
+        if (sentinel === granted) sentinel = null;
+      }, { once: true });
+    } catch {
+      // Low battery, browser policy, or a hidden page can deny this convenience.
+    } finally {
+      pending = false;
+    }
+  };
+
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'visible') void acquire();
+    else release();
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  void acquire();
+
+  return () => {
+    active = false;
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    release();
+  };
+}
+
+/** Keep the screen awake during audible or silent metronome practice. */
 export function useWakeLock() {
   const playing = useMetronomeStore((s) => s.playing);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-
-  useEffect(() => {
-    if (!('wakeLock' in navigator)) return;
-
-    const acquire = async () => {
-      try {
-        wakeLockRef.current = await navigator.wakeLock.request('screen');
-      } catch {
-        // Wake lock request failed — not critical
-      }
-    };
-
-    const release = async () => {
-      if (wakeLockRef.current) {
-        try {
-          await wakeLockRef.current.release();
-        } catch {
-          // Already released
-        }
-        wakeLockRef.current = null;
-      }
-    };
-
-    if (playing) {
-      acquire();
-    } else {
-      release();
-    }
-
-    // Re-acquire on visibility change (e.g., after screen lock)
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && playing) {
-        acquire();
-      }
-    };
-
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
-    return () => {
-      release();
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [playing]);
+  useEffect(() => playing ? holdScreenWakeLock() : undefined, [playing]);
 }

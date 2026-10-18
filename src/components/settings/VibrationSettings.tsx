@@ -24,7 +24,9 @@ export function VibrationSettings() {
         </div>
         <button
           type="button"
-          aria-pressed={hapticEnabled && hasVibration}
+          role="switch"
+          aria-label="Haptic feedback"
+          aria-checked={hapticEnabled && hasVibration}
           onClick={() => setHapticEnabled(!hapticEnabled)}
           disabled={!hasVibration}
           className={`relative w-[46px] h-[28px] rounded-full transition-colors border
@@ -50,6 +52,7 @@ export function VibrationSettings() {
           </div>
           <input
             type="range"
+            aria-label="Vibration intensity"
             min="0"
             max="100"
             value={Math.round(vibrationIntensity * 100)}

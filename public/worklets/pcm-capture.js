@@ -11,6 +11,7 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
     this._isCapturing = false;
     this._blockCount = 0;
     this._capturedSamples = 0;
+    this._maxSamples = Infinity;
 
     this._onsetDetectionEnabled = false;
     this._energyHistory = new Float32Array(16);
@@ -28,6 +29,7 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
         this._writePos = 0;
         this._blockCount = 0;
         this._capturedSamples = 0;
+        this._maxSamples = Number.isSafeInteger(event.data.maxSamples) && event.data.maxSamples > 0 ? event.data.maxSamples : Infinity;
         this._onsetDetectionEnabled = true;
         this._lastOnsetBlock = -100;
         this._calibrationBlocks = 0;
@@ -36,16 +38,20 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
         this._energyHistory.fill(0);
         this._energyPos = 0;
       } else if (event.data.type === 'stop') {
-        if (this._writePos > 0) {
-          const chunk = this._buffer.slice(0, this._writePos);
-          this.port.postMessage({ type: 'pcm', samples: chunk }, [chunk.buffer]);
-        }
-        this._isCapturing = false;
-        this._onsetDetectionEnabled = false;
-        this._writePos = 0;
-        this.port.postMessage({ type: 'done', totalSamples: this._capturedSamples, sampleRate });
+        if (this._isCapturing) this.finish('manual');
       }
     };
+  }
+
+  finish(reason) {
+    if (this._writePos > 0) {
+      const chunk = this._buffer.slice(0, this._writePos);
+      this.port.postMessage({ type: 'pcm', samples: chunk }, [chunk.buffer]);
+    }
+    this._isCapturing = false;
+    this._onsetDetectionEnabled = false;
+    this._writePos = 0;
+    this.port.postMessage({ type: 'done', reason, totalSamples: this._capturedSamples, sampleRate });
   }
 
   process(inputs) {
@@ -107,6 +113,10 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
         this.port.postMessage({ type: 'pcm', samples: chunk }, [chunk.buffer]);
         this._buffer = new Float32Array(sampleRate);
         this._writePos = 0;
+      }
+      if (this._capturedSamples >= this._maxSamples) {
+        this.finish('limit');
+        break;
       }
     }
 

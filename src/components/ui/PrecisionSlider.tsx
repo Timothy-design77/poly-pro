@@ -39,6 +39,7 @@ export function PrecisionSlider({
   unit = '',
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const valueButtonRef = useRef<HTMLButtonElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [precisionLevel, setPrecisionLevel] = useState(1);
   const [isEditing, setIsEditing] = useState(false);
@@ -48,8 +49,7 @@ export function PrecisionSlider({
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const startValueRef = useRef(value);
-  const directionRef = useRef<'h' | 'v' | null>(null);
-  const activeRef = useRef(false);
+  const directionRef = useRef<'h' | null>(null);
   const trackWidth = useRef(0);
   const lockHeldRef = useRef(false);
 
@@ -58,15 +58,6 @@ export function PrecisionSlider({
       endControlDrag();
       lockHeldRef.current = false;
     }
-  }, []);
-
-  useEffect(() => {
-    const measure = () => {
-      if (trackRef.current) trackWidth.current = trackRef.current.clientWidth;
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
   }, []);
 
   const clampAndStep = useCallback((raw: number): number => {
@@ -78,20 +69,31 @@ export function PrecisionSlider({
   const fraction = max === min ? 0 : Math.max(0, Math.min(1, (value - min) / (max - min)));
 
   const handlePointerDown = useCallback((event: React.PointerEvent) => {
-    if (isEditing || !trackRef.current) return;
+    if (isEditing || !trackRef.current || !event.isPrimary || event.button !== 0 || touchIdRef.current !== null) return;
 
     touchIdRef.current = event.pointerId;
     startXRef.current = event.clientX;
     startYRef.current = event.clientY;
     startValueRef.current = value;
     directionRef.current = null;
-    activeRef.current = false;
     setPrecisionLevel(1);
 
-    (event.target as HTMLElement).setPointerCapture(event.pointerId);
+    trackWidth.current = trackRef.current.clientWidth;
+    event.currentTarget.setPointerCapture(event.pointerId);
     beginControlDrag();
     lockHeldRef.current = true;
   }, [value, isEditing]);
+
+  const finishPointer = useCallback(() => {
+    touchIdRef.current = null;
+    directionRef.current = null;
+    setIsDragging(false);
+    setPrecisionLevel(1);
+    if (lockHeldRef.current) {
+      endControlDrag();
+      lockHeldRef.current = false;
+    }
+  }, []);
 
   const handlePointerMove = useCallback((event: React.PointerEvent) => {
     if (touchIdRef.current !== event.pointerId) return;
@@ -104,17 +106,11 @@ export function PrecisionSlider({
       if (distance < DIRECTION_LOCK_PX) return;
 
       if (Math.abs(dy) > Math.abs(dx) * 1.2) {
-        directionRef.current = 'v';
-        touchIdRef.current = null;
-        if (lockHeldRef.current) {
-          endControlDrag();
-          lockHeldRef.current = false;
-        }
+        finishPointer();
         return;
       }
 
       directionRef.current = 'h';
-      activeRef.current = true;
       setIsDragging(true);
     }
 
@@ -131,12 +127,12 @@ export function PrecisionSlider({
     const width = trackWidth.current || 200;
     const newValue = clampAndStep(startValueRef.current + (dx / width) * (max - min) * sensitivity);
     if (newValue !== value) onChange(newValue);
-  }, [min, max, value, onChange, clampAndStep]);
+  }, [min, max, value, onChange, clampAndStep, finishPointer]);
 
   const handlePointerUp = useCallback((event: React.PointerEvent) => {
     if (touchIdRef.current !== event.pointerId) return;
 
-    if (directionRef.current === null && !activeRef.current) {
+    if (directionRef.current === null) {
       const rect = trackRef.current?.getBoundingClientRect();
       if (rect) {
         const frac = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
@@ -144,16 +140,8 @@ export function PrecisionSlider({
       }
     }
 
-    touchIdRef.current = null;
-    directionRef.current = null;
-    activeRef.current = false;
-    setIsDragging(false);
-    setPrecisionLevel(1);
-    if (lockHeldRef.current) {
-      endControlDrag();
-      lockHeldRef.current = false;
-    }
-  }, [min, max, onChange, clampAndStep]);
+    finishPointer();
+  }, [min, max, onChange, clampAndStep, finishPointer]);
 
   const handleValueTap = useCallback(() => {
     setEditText(String(value));
@@ -167,8 +155,12 @@ export function PrecisionSlider({
   }, [editText, onChange, clampAndStep]);
 
   const handleEditKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
     if (event.key === 'Enter') handleEditSubmit();
-    if (event.key === 'Escape') { event.stopPropagation(); setIsEditing(false); }
+    else setIsEditing(false);
+    requestAnimationFrame(() => valueButtonRef.current?.focus());
   }, [handleEditSubmit]);
 
   const displayValue = formatValue ? formatValue(value) : (
@@ -182,7 +174,9 @@ export function PrecisionSlider({
           {label && <span className="text-xs text-text-muted uppercase tracking-wider">{label}</span>}
           {showValue && !isEditing && (
             <button
+              ref={valueButtonRef}
               type="button"
+              aria-label={`Edit ${ariaLabel ?? label ?? 'value'}`}
               onClick={handleValueTap}
               className="font-mono text-xs text-text-primary px-2 py-1 rounded-md border border-transparent
                          active:bg-bg-raised active:border-border-subtle transition-colors min-h-[32px] flex items-center"
@@ -234,7 +228,8 @@ export function PrecisionSlider({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerCancel={(event) => { if (touchIdRef.current === event.pointerId) finishPointer(); }}
+        onLostPointerCapture={(event) => { if (touchIdRef.current === event.pointerId) finishPointer(); }}
       >
         <div
           className="absolute inset-x-0 h-2 rounded-full overflow-hidden bg-bg-raised border border-border-subtle"

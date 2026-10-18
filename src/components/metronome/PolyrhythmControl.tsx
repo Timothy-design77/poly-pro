@@ -25,6 +25,8 @@ function TrackSoundPicker({
       <label className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 block">{label}</label>
       <button
         type="button"
+        aria-label={`${label}: ${getSoundName(currentSound)}`}
+        aria-expanded={open}
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between py-2 px-2.5 rounded-lg
                    bg-bg-surface border border-border-subtle text-xs min-h-[40px]"
@@ -121,6 +123,8 @@ export function PolyrhythmControl() {
 
               <button
                 type="button"
+                aria-label={`Mute track ${index + 2}`}
+                aria-pressed={track.muted}
                 onClick={() => setTrackMuted(track.id, !track.muted)}
                 className={`h-[40px] px-3 rounded-lg text-[10px] font-bold touch-manipulation border
                   ${track.muted
@@ -169,6 +173,7 @@ export function PolyrhythmControl() {
                   </div>
                   <input
                     type="range"
+                    aria-label={`Track ${index + 2} swing`}
                     min="0"
                     max="100"
                     value={Math.round(track.swing * 100)}
@@ -194,12 +199,14 @@ export function PolyrhythmControl() {
           <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
             <button
               type="button"
+              aria-label="Decrease new track beats"
               onClick={() => setNewBeats(Math.max(2, newBeats - 1))}
               className="w-[44px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-bold"
             >−</button>
             <span className="w-[40px] text-center font-mono text-base text-text-primary font-bold">{newBeats}</span>
             <button
               type="button"
+              aria-label="Increase new track beats"
               onClick={() => setNewBeats(Math.min(16, newBeats + 1))}
               className="w-[44px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-bold"
             >+</button>

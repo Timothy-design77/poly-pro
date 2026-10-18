@@ -2,11 +2,10 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { AnalysisConfig, AnalysisProgress, SessionAnalysis } from '../analysis/types';
 import { DEFAULT_ANALYSIS_CONFIG } from '../analysis/types';
 import { runAnalysisInWorker } from '../analysis/worker-client';
-import { persistAnalysisResult } from '../analysis/persistence';
+import { saveAnalysisResult } from '../analysis/save-result';
 import { useSessionStore } from '../store/session-store';
 import { useSettingsStore } from '../store/settings-store';
 import { useInstrumentStore } from '../store/instrument-store';
-import { useProjectStore } from '../store/project-store';
 import { beginCriticalActivity, isCriticalActivityActive } from '../utils/critical-activity';
 import * as db from '../store/db';
 
@@ -99,16 +98,7 @@ export function useAnalysis() {
         }
       }
       if (!captured?.scheduledBeats.length && !previous?.gridBeats) result.headlines.unshift({ text: 'Estimated beat grid: original metronome timing is unavailable. Timing scores are approximate.' });
-      await persistAnalysisResult(session, result, undefined, config);
-      // Only the first saved analysis counts toward progression. Retry/re-detection and edits do not add practice credit.
-      if (!session.analyzed && session.projectId && result.totalScored >= 8 && captured?.scheduledBeats.length) {
-        try { await useProjectStore.getState().recordSessionResult(session.projectId, result.score, session.bpm); }
-        catch (error) { console.warn('Project progression could not be saved:', error); result.headlines.unshift({ text: 'Your take is saved, but project advancement could not be saved. Check the project tempo before continuing.' }); }
-      }
-      if (!session.analyzed) {
-        const count = (await db.getSetting<number>('sessionsSinceBackup')) ?? 0;
-        await db.setSetting('sessionsSinceBackup', count + 1).catch(() => {});
-      }
+      await saveAnalysisResult(session, result, config, !!captured?.scheduledBeats.length);
       setState({ isAnalyzing: false, progress: { stage: 'complete', progress: 1 }, result, error: null });
       return result;
     } catch (error) {

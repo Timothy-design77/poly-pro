@@ -59,11 +59,16 @@ export class AudioEngine {
   private outputGain: GainNode | null = null;
   private scheduledSources = new Set<AudioBufferSourceNode>();
   private outputSuppressions = new Set<symbol>();
+  private vibrationTimers = new Set<ReturnType<typeof setTimeout>>();
+  private vibrationActive = false;
+  private transportGeneration = 0;
 
   /** Keep the transport and captured grid running without audible or haptic clicks. */
   suppressOutput(): () => void {
     const token = Symbol();
     this.outputSuppressions.add(token);
+    this.stopScheduledSources();
+    this.stopVibration();
     this.refreshOutputGain();
     return () => { this.outputSuppressions.delete(token); this.refreshOutputGain(); };
   }
@@ -215,26 +220,36 @@ export class AudioEngine {
   async start(): Promise<void> {
     if (this.isRunning) return;
     if (this.startSync()) return;
+    const generation = this.transportGeneration;
 
-    if (this._warmUpPromise) {
-      await this._warmUpPromise;
-    }
+    try {
+      if (this._warmUpPromise) {
+        await this._warmUpPromise;
+      }
+      if (generation !== this.transportGeneration) return;
 
-    const ctx = await this.initContext();
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
-    }
+      const ctx = await this.initContext();
+      if (generation !== this.transportGeneration) return;
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
 
-    if (!this.isRunning) {
-      this.startSync();
+      if (generation === this.transportGeneration && !this.isRunning) {
+        this.startSync();
+      }
+    } catch (error) {
+      // An old interrupted request must not stop a newer practice session.
+      if (generation === this.transportGeneration) throw error;
     }
   }
 
   stop(): void {
-    if (!this.isRunning) return;
+    // A Stop while initialization is pending must also cancel that future start.
+    this.transportGeneration++;
+    const wasRunning = this.isRunning;
     this.isRunning = false;
-    for (const source of this.scheduledSources) { try { source.stop(); } catch {} }
-    this.scheduledSources.clear();
+    this.stopScheduledSources();
+    this.stopVibration();
 
     if (this.schedulerTimer !== null) {
       clearTimeout(this.schedulerTimer);
@@ -243,9 +258,15 @@ export class AudioEngine {
 
     this.countInActive = false;
     this.countInRemaining = 0;
+    if (!wasRunning) return;
     // Clear all per-track beat indicators
     const state = this.host.getMetronome();
     this.host.onStop(state.tracks.map((t) => t.id));
+  }
+
+  private stopScheduledSources(): void {
+    for (const source of this.scheduledSources) { try { source.stop(); } catch {} }
+    this.scheduledSources.clear();
   }
 
   get running(): boolean {
@@ -296,6 +317,9 @@ export class AudioEngine {
       while (this.nextNoteTime[track.id] < now + SCHEDULE_AHEAD_S) {
         const beatTime = this.nextNoteTime[track.id];
         const beatIndex = this.currentBeat[track.id];
+        // Timers can be throttled in the background. Keep the elapsed grid and
+        // transport state, but never replay a backlog of clicks all at once.
+        const missed = beatTime < now - SCHEDULE_INTERVAL_MS / 1000;
 
         // During count-in: play count-1/2/3/4 voice samples on main beats
         let volumeState: VolumeState;
@@ -338,7 +362,7 @@ export class AudioEngine {
         }
 
         // Play the sound
-        if (volumeState !== VolumeState.OFF && !muted && !this.outputSuppressions.size) {
+        if (!missed && volumeState !== VolumeState.OFF && !muted && !this.outputSuppressions.size) {
           if (countInSound) {
             // Count-in: play the specific count-N voice sample
             this.playBuffer(countInSound, volumeState, beatTime);
@@ -348,7 +372,7 @@ export class AudioEngine {
         }
 
         // Haptic
-        if (!this.outputSuppressions.size && settings.hapticEnabled && volumeState >= VolumeState.LOUD && !muted) {
+        if (!missed && !this.outputSuppressions.size && settings.hapticEnabled && volumeState >= VolumeState.LOUD && !muted) {
           this.triggerVibration(beatTime - now, volumeState, settings.vibrationIntensity);
         }
 
@@ -356,8 +380,10 @@ export class AudioEngine {
         this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState, isCountIn: this.countInActive });
 
         // Notify UI for ALL tracks (each track gets its own dial ring)
-        const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
-        this.beatCallbacks.forEach((cb) => cb(event));
+        if (!missed) {
+          const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
+          this.beatCallbacks.forEach((cb) => cb(event));
+        }
 
         // Advance
         this.advanceBeat(track.id, state);
@@ -522,18 +548,34 @@ export class AudioEngine {
 
   // ─── Vibration ───
 
-  private triggerVibration(delayMs: number, volumeState: VolumeState, intensity: number): void {
+  private stopVibration(): void {
+    for (const timer of this.vibrationTimers) clearTimeout(timer);
+    this.vibrationTimers.clear();
+    if (this.vibrationActive && navigator.vibrate) navigator.vibrate(0);
+    this.vibrationActive = false;
+  }
+
+  private triggerVibration(delayS: number, volumeState: VolumeState, intensity: number): void {
     if (!navigator.vibrate) return;
 
     const duration = volumeState === VolumeState.ACCENT ? 20 : 12;
     const scaledDuration = Math.round(duration * intensity);
     if (scaledDuration <= 0) return;
 
-    const delay = Math.max(0, delayMs * 1000);
-    if (delay > 0) {
-      setTimeout(() => navigator.vibrate(scaledDuration), delay);
-    } else {
+    const vibrate = () => {
+      if (!this.isRunning || this.outputSuppressions.size || !this.host.getSettings().hapticEnabled) return;
       navigator.vibrate(scaledDuration);
+      this.vibrationActive = true;
+    };
+    const delay = Math.max(0, delayS * 1000);
+    if (delay > 0) {
+      const timer = setTimeout(() => {
+        this.vibrationTimers.delete(timer);
+        vibrate();
+      }, delay);
+      this.vibrationTimers.add(timer);
+    } else {
+      vibrate();
     }
   }
 
@@ -552,6 +594,8 @@ export class AudioEngine {
 
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
+    this.scheduledSources.add(source);
+    source.onended = () => { this.scheduledSources.delete(source); source.disconnect(); gainNode.disconnect(); };
     source.start();
   }
 

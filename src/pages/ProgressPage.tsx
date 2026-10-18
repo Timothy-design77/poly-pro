@@ -6,12 +6,14 @@ const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module)
 import type { SessionRecord } from '../store/db';
 import { TakeComparison } from '../components/progress/TakeComparison';
 import { HelpTip } from '../components/ui/HelpTip';
+import { getPracticeStreak } from '../utils/practice-streak';
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
   const mins = Math.floor(totalSec / 60);
   const hours = Math.floor(mins / 60);
   if (hours > 0) return `${hours}h ${mins % 60}m`;
+  if (mins === 0) return `${totalSec}s`;
   return `${mins}m`;
 }
 
@@ -46,17 +48,7 @@ export function ProgressPage() {
   const scoredSessions = sessions.filter((session) => session.analyzed && (session.totalScored ?? session.totalHits) >= 8);
   const bestPct = scoredSessions.reduce((best, session) => Math.max(best, session.score ?? 0), 0);
 
-  const streak = (() => {
-    if (sessions.length === 0) return 0;
-    const days = new Set(sessions.map((session) => new Date(session.date).toDateString()));
-    let count = 0;
-    const day = new Date();
-    while (days.has(day.toDateString())) {
-      count++;
-      day.setDate(day.getDate() - 1);
-    }
-    return count;
-  })();
+  const streak = getPracticeStreak(sessions.map((session) => session.date));
 
   const heatmapData = (() => {
     const cells: number[] = [];

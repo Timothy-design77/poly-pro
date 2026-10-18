@@ -19,7 +19,7 @@ export function TrainerConfig() {
       {/* Enable toggle */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm text-text-primary">Enable Trainer</span>
-        <Toggle enabled={enabled} onChange={setEnabled} />
+        <Toggle label="Enable Trainer" enabled={enabled} onChange={setEnabled} />
       </div>
 
       {enabled && (
@@ -30,6 +30,7 @@ export function TrainerConfig() {
               <label className="text-[10px] text-text-muted uppercase mb-1 block">Start BPM</label>
               <input
                 type="number"
+                aria-label="Trainer start BPM" min={10} max={400} step={0.5}
                 value={startBpm}
                 onChange={(e) => setConfig({ trainerStartBpm: Math.max(10, Math.min(400, Number(e.target.value))) })}
                 className="w-full h-[44px] bg-bg-surface border border-border-subtle rounded-xl
@@ -47,6 +48,7 @@ export function TrainerConfig() {
               <label className="text-[10px] text-text-muted uppercase mb-1 block">End BPM</label>
               <input
                 type="number"
+                aria-label="Trainer end BPM" min={10} max={400} step={0.5}
                 value={endBpm}
                 onChange={(e) => setConfig({ trainerEndBpm: Math.max(10, Math.min(400, Number(e.target.value))) })}
                 className="w-full h-[44px] bg-bg-surface border border-border-subtle rounded-xl
@@ -62,12 +64,14 @@ export function TrainerConfig() {
               <label className="text-[10px] text-text-muted uppercase mb-1 block">BPM Step</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button
+                  type="button" aria-label="Decrease trainer BPM step"
                   onClick={() => setConfig({ trainerBpmStep: Math.max(1, step - 1) })}
                   className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
                              active:bg-bg-raised text-lg font-bold touch-manipulation"
                 >−</button>
                 <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{step}</span>
                 <button
+                  type="button" aria-label="Increase trainer BPM step"
                   onClick={() => setConfig({ trainerBpmStep: Math.min(20, step + 1) })}
                   className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
                              active:bg-bg-raised text-lg font-bold touch-manipulation"
@@ -78,12 +82,14 @@ export function TrainerConfig() {
               <label className="text-[10px] text-text-muted uppercase mb-1 block">Every N Bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button
+                  type="button" aria-label="Decrease trainer bars per step"
                   onClick={() => setConfig({ trainerBarsPerStep: Math.max(1, bars - 1) })}
                   className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
                              active:bg-bg-raised text-lg font-bold touch-manipulation"
                 >−</button>
                 <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{bars}</span>
                 <button
+                  type="button" aria-label="Increase trainer bars per step"
                   onClick={() => setConfig({ trainerBarsPerStep: Math.min(16, bars + 1) })}
                   className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
                              active:bg-bg-raised text-lg font-bold touch-manipulation"
