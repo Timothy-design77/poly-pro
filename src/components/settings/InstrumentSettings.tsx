@@ -20,6 +20,19 @@ export function InstrumentSettings() {
 
   const [showTraining, setShowTraining] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleClear = async () => {
+    if (clearing) return;
+    setClearing(true); setError(null);
+    try {
+      await clearAllProfiles();
+      setShowClearConfirm(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not clear instrument profiles. Please try again.');
+    } finally { setClearing(false); }
+  };
 
   const classifierReady = isReady();
 
@@ -74,30 +87,31 @@ export function InstrumentSettings() {
       {/* Train button */}
       <button
         onClick={() => setShowTraining(true)}
+        disabled={clearing}
         className="w-full py-2.5 bg-bg-raised border border-border-subtle text-text-primary rounded-md text-sm min-h-[44px] hover:bg-border-subtle transition-colors"
       >
         {profiles.length > 0 ? 'Manage Instruments' : 'Train Instruments'}
       </button>
 
       {/* Clear all */}
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
       {profiles.length > 0 && (
         <>
           {showClearConfirm ? (
             <div className="flex gap-2">
               <button
                 onClick={() => setShowClearConfirm(false)}
+                disabled={clearing}
                 className="flex-1 py-2 border border-border-subtle text-text-secondary rounded-md text-xs min-h-[44px]"
               >
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await clearAllProfiles();
-                  setShowClearConfirm(false);
-                }}
+                onClick={() => void handleClear()}
+                disabled={clearing}
                 className="flex-1 py-2 bg-danger-dim border border-danger/30 text-danger rounded-md text-xs min-h-[44px]"
               >
-                Confirm Clear
+                {clearing ? 'Clearing…' : 'Confirm Clear'}
               </button>
             </div>
           ) : (

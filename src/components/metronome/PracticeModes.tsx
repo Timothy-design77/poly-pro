@@ -32,11 +32,11 @@ export function PracticeModes() {
           <span className="text-sm text-text-primary">Count-in Bars</span>
         </div>
         <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
-          <button type="button" onClick={() => setCountInBars(Math.max(0, countInBars - 1))} className={stepperButton}>−</button>
+          <button type="button" aria-label="Decrease count-in bars" onClick={() => setCountInBars(Math.max(0, countInBars - 1))} className={stepperButton}>−</button>
           <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">
             {countInBars === 0 ? 'Off' : countInBars}
           </span>
-          <button type="button" onClick={() => setCountInBars(Math.min(8, countInBars + 1))} className={stepperButton}>+</button>
+          <button type="button" aria-label="Increase count-in bars" onClick={() => setCountInBars(Math.min(8, countInBars + 1))} className={stepperButton}>+</button>
         </div>
       </div>
 
@@ -51,6 +51,7 @@ export function PracticeModes() {
           type="range"
           min="0"
           max="100"
+          aria-label="Swing"
           value={Math.round(swing * 100)}
           onChange={(event) => setSwing(Number(event.target.value) / 100)}
           className={sliderClass}
@@ -65,24 +66,24 @@ export function PracticeModes() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-text-primary">Play / Mute Cycle</span>
-          <Toggle enabled={playMuteCycleEnabled} onChange={(value) => setPlayMuteCycle(value)} />
+          <Toggle label="Play / Mute Cycle" enabled={playMuteCycleEnabled} onChange={(value) => setPlayMuteCycle(value)} />
         </div>
         {playMuteCycleEnabled && (
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-[10px] text-text-muted uppercase mb-1 block">Play Bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
-                <button type="button" onClick={() => setPlayMuteCycle(true, Math.max(1, playMuteCyclePlayBars - 1))} className={stepperButton}>−</button>
+                <button type="button" aria-label="Decrease play bars" onClick={() => setPlayMuteCycle(true, Math.max(1, playMuteCyclePlayBars - 1))} className={stepperButton}>−</button>
                 <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{playMuteCyclePlayBars}</span>
-                <button type="button" onClick={() => setPlayMuteCycle(true, Math.min(16, playMuteCyclePlayBars + 1))} className={stepperButton}>+</button>
+                <button type="button" aria-label="Increase play bars" onClick={() => setPlayMuteCycle(true, Math.min(16, playMuteCyclePlayBars + 1))} className={stepperButton}>+</button>
               </div>
             </div>
             <div className="flex-1">
               <label className="text-[10px] text-text-muted uppercase mb-1 block">Mute Bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
-                <button type="button" onClick={() => setPlayMuteCycle(true, undefined, Math.max(1, playMuteCycleMuteBars - 1))} className={stepperButton}>−</button>
+                <button type="button" aria-label="Decrease mute bars" onClick={() => setPlayMuteCycle(true, undefined, Math.max(1, playMuteCycleMuteBars - 1))} className={stepperButton}>−</button>
                 <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{playMuteCycleMuteBars}</span>
-                <button type="button" onClick={() => setPlayMuteCycle(true, undefined, Math.min(16, playMuteCycleMuteBars + 1))} className={stepperButton}>+</button>
+                <button type="button" aria-label="Increase mute bars" onClick={() => setPlayMuteCycle(true, undefined, Math.min(16, playMuteCycleMuteBars + 1))} className={stepperButton}>+</button>
               </div>
             </div>
           </div>
@@ -92,7 +93,7 @@ export function PracticeModes() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-text-primary">Gap Click</span>
-          <Toggle enabled={gapClickEnabled} onChange={(value) => setGapClick(value)} />
+          <Toggle label="Gap Click" enabled={gapClickEnabled} onChange={(value) => setGapClick(value)} />
         </div>
         {gapClickEnabled && (
           <div>
@@ -104,6 +105,7 @@ export function PracticeModes() {
               type="range"
               min="5"
               max="80"
+              aria-label="Gap click mute probability"
               value={Math.round(gapClickProbability * 100)}
               onChange={(event) => setGapClick(true, Number(event.target.value) / 100)}
               className={sliderClass}
@@ -115,7 +117,7 @@ export function PracticeModes() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-text-primary">Random Mute</span>
-          <Toggle enabled={randomMuteEnabled} onChange={(value) => setRandomMute(value)} />
+          <Toggle label="Random Mute" enabled={randomMuteEnabled} onChange={(value) => setRandomMute(value)} />
         </div>
         {randomMuteEnabled && (
           <div>
@@ -127,6 +129,7 @@ export function PracticeModes() {
               type="range"
               min="10"
               max="75"
+              aria-label="Random measure mute probability"
               value={Math.round(randomMuteProbability * 100)}
               onChange={(event) => setRandomMute(true, Number(event.target.value) / 100)}
               className={sliderClass}

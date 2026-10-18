@@ -74,3 +74,22 @@ Audit findings: post-analysis summary duplicates saved-take review; separate Tun
 
 - R4 complete: 95 unit/regression tests in 16 files, 58 browser checks across both main viewports, build/type-check, and dependency audit pass. Final legacy-metric display adjustment passes the six accessibility/layout checks again. No browser tests were disabled. Physical acceptance stays open.
 - Visual review also corrected legacy takes showing an invented 0 ms scoring window or a default Beginner badge; missing windows are disclosed and available timing/hit data drives fallback metrics.
+
+## Practice flow polish — 2026-10-18
+
+Baseline: `8d36c1a` (deployed 2.2). Branch: `improve/practice-flow-polish`.
+
+- [x] P1 Capture preparation: optional visible countdown and automatic take duration; cancellation never starts a late recording; silent/click choices and captured timing stay correct.
+- [x] P2 Recoverable editing: undo/redo hit and timing changes, one consistent preview, safe save/discard/close, no stale writes.
+- [x] P3 Audio lifecycle: stop cancels pending starts and haptics; silent capture suppresses queued output; screen locks are released after cancellation and unmount.
+- [x] P4 Deep audit: exercise advanced settings, projects/progression, analysis, import/export, keyboard/touch and narrow layouts; fix concrete defects and add focused regressions.
+- [x] P5 Release readiness: full unit/browser/build/dependency checks, independent review, and a verified live-check procedure for the authorized merge/deployment.
+
+Physical Fold 7, acoustic accuracy and long-session thermal acceptance remain open; automated phone-sized browsers are not physical-device evidence.
+
+- P1 verified: optional delay/manual defaults, exact 15-second auto-stop, no saved countdown audio, cancellation before/after microphone permission, and Trainer starting-tempo agreement. Setup and navigation cannot hide or alter an active take.
+- P2 verified: mixed edit/timing undo/redo, one step per slider drag, branch reset, failed-save retry and stale post-save reads all preserve the correct draft/base.
+- P3 verified: pending starts, haptic timers, suspended scheduler catch-up and overlapping wake-lock requests have focused regressions.
+- P4 verified: real measure IDs fix groove consistency; 16,000-hit analysis coverage; durable analysis success and progression notices; truthful backup outcomes/streaks; all advanced controls audited at 320px. WAV exports are cancellable, bounded during mixing and match a whole-buffer reference.
+- P5 evidence: **125 unit/regression tests, 104 browser checks, type-check, production build, clean dependency audit and diff checks pass**. Final screenshots and [verification record](docs/release/verification.txt) are updated. [Practice flow audit](docs/PRACTICE_FLOW_AUDIT.md) records findings and the fixed starting-tempo scoring convention.
+- Delivery follows the standing merge/deploy authorization and existing verified-artifact workflow; final live build evidence is reported with the release. Physical acceptance remains open.

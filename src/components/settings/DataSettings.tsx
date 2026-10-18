@@ -58,9 +58,16 @@ export function DataSettings() {
     try {
       const blob = await exportBackup(setProgress, { includeRecordings });
       downloadBackup(blob, includeRecordings ? 'full' : 'data-only');
-      await db.setSetting('lastBackupAt', new Date().toISOString());
-      await db.setSetting('sessionsSinceBackup', 0);
-      setMessage(includeRecordings ? 'Full backup created.' : 'Data-only backup created. Recordings were not included.');
+      const success = includeRecordings ? 'Full backup created.' : 'Data-only backup created. Recordings were not included.';
+      setMessage(success);
+      try {
+        await db.setSetting('lastBackupAt', new Date().toISOString());
+        await db.setSetting('sessionsSinceBackup', 0);
+        await db.setSetting('backupThreshold', 10);
+      } catch {
+        setMessage(`${success} The backup reminder could not be reset; your downloaded backup is ready.`);
+      }
+      window.dispatchEvent(new Event('polypro:backup-status-changed'));
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : 'Backup failed');
     } finally {

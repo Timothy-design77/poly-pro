@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 interface SoundPickerSheetProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export function SoundPickerSheet({
   beatLabel,
 }: SoundPickerSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(panelRef, isOpen, onClose);
   const openTimeRef = useRef(0);
 
   // Track when sheet opens — ignore close events for 300ms after
@@ -42,16 +44,6 @@ export function SoundPickerSheet({
       openTimeRef.current = Date.now();
     }
   }, [isOpen]);
-
-  // Escape to close
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -84,6 +76,7 @@ export function SoundPickerSheet({
     >
       <div
         ref={panelRef}
+        role="dialog" aria-modal="true" aria-label={`${beatLabel} sound`} tabIndex={-1}
         className="w-full max-h-[70vh] bg-bg-surface rounded-t-2xl flex flex-col animate-slide-up"
         onClick={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}

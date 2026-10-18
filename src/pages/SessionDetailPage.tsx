@@ -34,7 +34,10 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
   const [confirmClose, setConfirmClose] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const draft = useTakeDraft(loaded?.session ?? session, loaded?.hitEvents ?? null);
+  // Metadata-only updates (for example project progression notices) can use
+  // the loaded events immediately. New analysis waits for its matching events.
+  const draftSession = loaded && (loaded.session.analysisRevision ?? 0) !== (session.analysisRevision ?? 0) ? loaded.session : session;
+  const draft = useTakeDraft(draftSession, loaded?.hitEvents ?? null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const tabsId = useId();
   const requestClose = () => {
@@ -70,7 +73,22 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
   const take = draft.session;
   const reliable = (take.totalScored ?? take.totalHits) >= 8;
   const busy = draft.saving || deleting || analysis.isAnalyzing;
-  return createPortal(<div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Review take" tabIndex={-1} data-no-swipe className="fixed inset-0 z-50 flex flex-col bg-bg-primary outline-none">
+  return createPortal(<div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Review take" tabIndex={-1} data-no-swipe
+    onPointerDownCapture={(event) => { if ((event.target as HTMLElement).closest('[role="slider"]')) draft.beginConfigEdit(); }}
+    onPointerUpCapture={draft.endConfigEdit} onPointerCancelCapture={draft.endConfigEdit}
+    onKeyDown={(event) => {
+      if (busy || confirmClose || confirmDelete || confirmRedetect || event.defaultPrevented || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+      // Leave native text editing alone. Review shortcuts also work on sliders.
+      if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
+      const key = event.key.toLowerCase();
+      const undo = key === 'z' && !event.shiftKey;
+      const redo = (key === 'z' && event.shiftKey) || key === 'y';
+      if (!undo && !redo) return;
+      event.preventDefault();
+      if (undo && draft.canUndo) draft.undo();
+      if (redo && draft.canRedo) draft.redo();
+    }}
+    className="fixed inset-0 z-50 flex flex-col bg-bg-primary outline-none">
     <header className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border-subtle bg-bg-surface shrink-0">
       <button onClick={requestClose} disabled={busy} className="min-h-[44px] text-sm font-semibold disabled:opacity-50">← Back</button>
       <div className="text-center"><h1 className="text-sm font-bold text-text-primary">Review take</h1><p className="text-xs text-text-muted">{new Date(session.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p></div>
@@ -93,6 +111,7 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
             <div className="text-right text-xs text-text-secondary"><p>{take.totalScored ?? take.totalHits}/{take.totalExpected ?? 0} matched beats</p><p>Timing spread {take.sigma?.toFixed(1) ?? '—'} ms</p></div>
           </div>
           {!reliable && <p role="status" className="text-xs text-text-secondary mt-2">Fewer than 8 matched hits. Check detection below or record a longer take for useful timing feedback.</p>}
+          {take.analysisNotice && <p role="status" className="text-xs text-text-secondary mt-2">{take.analysisNotice}</p>}
         </div>}
         {!session.analyzed && analysisControls}
         {!session.hasRecording && draft.hitEvents && session.analyzed && <ScoringControls bpm={take.bpm} subdivision={take.subdivision} config={draft.config} onChange={draft.updateConfig} />}
@@ -104,17 +123,26 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
         {activeTab === 'charts' && <><ScoreTab session={take} hitEvents={draft.hitEvents} onNavigateChart={navigateChart} /><ChartsTab session={take} hitEvents={draft.hitEvents} autoOpenSection={openChart} /></>}
       </section>
     </div>
-    {(draft.dirty || draft.message || draft.error) && <div className="shrink-0 border-t border-border-subtle bg-bg-surface px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+    {(draft.dirty || draft.canUndo || draft.canRedo || draft.message || draft.error) && <div className="shrink-0 border-t border-border-subtle bg-bg-surface px-4 py-2 pb-[max(8px,env(safe-area-inset-bottom))]">
       {draft.error && <p role="alert" className="text-sm text-danger mb-2">{draft.error}</p>}
-      {draft.dirty ? <div className="flex items-center gap-2 max-w-4xl mx-auto"><p className="text-xs text-text-muted flex-1">Unsaved changes</p><button disabled={draft.saving} onClick={draft.discard} className="min-h-[44px] px-3 text-sm">Discard</button><button disabled={draft.saving} onClick={() => void draft.save()} className="min-h-[44px] px-4 rounded-xl bg-accent text-white font-semibold">{draft.saving ? 'Saving…' : 'Save changes'}</button></div> : <p role="status" className="text-sm text-success text-center">{draft.message}</p>}
+      {(draft.canUndo || draft.canRedo || draft.dirty) ? <div className="max-w-4xl mx-auto">
+        <p role="status" className="text-xs text-text-muted mb-1">{draft.dirty ? 'Unsaved changes' : 'Back to saved version'}</p>
+        <div className="flex items-center gap-2">
+          <button aria-label="Undo last change" aria-keyshortcuts="Control+Z Meta+Z" title="Undo last change" disabled={busy || !draft.canUndo} onClick={draft.undo} className="min-h-[44px] min-w-[44px] rounded-lg border border-border-subtle text-xl disabled:opacity-30">↶</button>
+          <button aria-label="Redo last change" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y" title="Redo last change" disabled={busy || !draft.canRedo} onClick={draft.redo} className="min-h-[44px] min-w-[44px] rounded-lg border border-border-subtle text-xl disabled:opacity-30">↷</button>
+          <div className="flex-1" />
+          <button disabled={busy} onClick={draft.discard} className="min-h-[44px] px-2 text-sm">Discard</button>
+          <button disabled={busy || !draft.dirty} onClick={() => void draft.save()} className="min-h-[44px] px-3 rounded-xl bg-accent text-white text-sm font-semibold disabled:opacity-50">{draft.saving ? 'Saving…' : 'Save changes'}</button>
+        </div>
+      </div> : <p role="status" className="text-sm text-success text-center">{draft.message}</p>}
     </div>}
-    {confirmClose && <ReviewConfirmation label="Unsaved changes" onCancel={() => setConfirmClose(false)}>
+    {confirmClose && <ReviewConfirmation label="Unsaved changes" cancelDisabled={draft.saving} onCancel={() => { if (!draft.saving) setConfirmClose(false); }}>
       <p>Your timing and hit edits haven’t been saved.</p>
       <button disabled={draft.saving} onClick={() => void draft.save().then((saved) => { if (saved) onClose(); })} className="min-h-[44px] w-full rounded-lg bg-accent text-white font-semibold">Save and close</button>
       <button disabled={draft.saving} onClick={onClose} className="min-h-[44px] w-full text-danger">Discard and close</button>
       {draft.error && <p role="alert" className="text-danger text-sm">{draft.error}</p>}
     </ReviewConfirmation>}
-    {confirmDelete && <ReviewConfirmation label="Delete session confirmation" onCancel={() => { if (!deleting) setConfirmDelete(false); }}>
+    {confirmDelete && <ReviewConfirmation label="Delete session confirmation" cancelDisabled={deleting} onCancel={() => { if (!deleting) setConfirmDelete(false); }}>
       <p>Delete this take and all its recording data?</p><button disabled={deleting} onClick={() => void remove()} className="min-h-[44px] w-full rounded-lg bg-danger text-white">{deleting ? 'Deleting…' : 'Delete'}</button>
     </ReviewConfirmation>}
     {confirmRedetect && <ReviewConfirmation label="Replace saved corrections" onCancel={() => setConfirmRedetect(false)} cancelLabel="Keep saved analysis">
@@ -123,8 +151,8 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
   </div>, document.body);
 }
 
-function ReviewConfirmation({ label, children, onCancel, cancelLabel = 'Keep reviewing' }: { label: string; children: React.ReactNode; onCancel: () => void; cancelLabel?: string }) {
+function ReviewConfirmation({ label, children, onCancel, cancelLabel = 'Keep reviewing', cancelDisabled = false }: { label: string; children: React.ReactNode; onCancel: () => void; cancelLabel?: string; cancelDisabled?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(ref, true, onCancel);
-  return <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"><div ref={ref} role="alertdialog" aria-modal="true" aria-label={label} tabIndex={-1} className="w-full max-w-md bg-bg-surface p-5 rounded-2xl space-y-3 outline-none text-text-primary"><h2 className="font-bold">{label}</h2>{children}<button onClick={onCancel} className="min-h-[44px] w-full rounded-lg border border-border-subtle">{cancelLabel}</button></div></div>;
+  return <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"><div ref={ref} role="alertdialog" aria-modal="true" aria-label={label} tabIndex={-1} className="w-full max-w-md bg-bg-surface p-5 rounded-2xl space-y-3 outline-none text-text-primary"><h2 className="font-bold">{label}</h2>{children}<button onClick={onCancel} disabled={cancelDisabled} className="min-h-[44px] w-full rounded-lg border border-border-subtle disabled:opacity-50">{cancelLabel}</button></div></div>;
 }

@@ -1,12 +1,12 @@
-# Poly Pro 2.2 release readiness
+# Poly Pro 2.3 release readiness
 
-Updated 2026-10-15. Current iteration: `improve/practice-review-sync`, based on deployed `e7676a2`. The original 2.1 audit below started at `c90e2d8`.
+Updated 2026-10-18. Current iteration: `improve/practice-flow-polish`, based on deployed `8d36c1a`. The original 2.1 audit below started at `c90e2d8`.
 
 ## Release decision
 
-The core local-first upgrade passes all automated release checks: 95 unit/regression tests, 58 browser checks, type-checking, production build and a zero-finding dependency audit. Target-device acceptance remains open below. Physical Galaxy Z Fold 7 acceptance is required before calling the release fully production-validated.
+The 2.3 release passes 125 unit/regression tests and 104 browser checks, type-checking, production build and a clean dependency audit. Release verification is recorded in [release/verification.txt](release/verification.txt). Target-device acceptance remains open below. Physical Galaxy Z Fold 7 acceptance is required before calling the release fully production-validated.
 
-The 2.2 [Practice and Review audit](PRACTICE_REVIEW_AUDIT.md) records the latest findings: silent capture, one review draft/save, captured-grid rendering, reversible flam tuning, and synchronous storage-failure rollback. Review has two views: Review for listening/editing/timing and Charts for detailed metrics.
+The 2.3 [Practice flow audit](PRACTICE_FLOW_AUDIT.md) adds timed capture, cancellation, undo/redo, bounded WAV export, audio lifecycle fixes, correct groove analysis and deeper accessibility checks. The [2.2 audit](PRACTICE_REVIEW_AUDIT.md) covers silent capture, one review draft/save, captured-grid rendering, reversible flam tuning, and synchronous storage-failure rollback. Review has two views: Review for listening/editing/timing and Charts for detailed metrics.
 
 The product is a percussion practice companion: start a dependable metronome, record a take, understand and correct its timing, then practice toward a project tempo goal. Android Chrome is the primary browser. The light interface, existing metronome engine, local storage and account-free operation are preserved. Cloud enhancement is deferred; this build does not upload recordings.
 
@@ -45,7 +45,7 @@ Coverage includes:
 - Take comparison without changing saved scores, dialog focus, narrow layout and offline service-worker reload.
 - Deterministic synthetic transients, including all 359 hits in a three-minute recording within 20 ms of their known locations. This is a synthetic-signal regression, not an acoustic accuracy claim.
 
-Screenshots of [Home](release/home.png), [Review](release/review.png), [Timing](release/timing.png), [Charts](release/charts.png), [320px Review](release/review-320.png) and [wide Review](release/review-wide.png) were reviewed. Automated WCAG A/AA checks cover the primary screens and Review controls at both main viewports; canvas bounds are also tested at 3× pixel density. The initial application JavaScript chunk is approximately 327 kB (102 kB gzip); settings and Session Detail load separately. Waveform/spectrogram preparation runs in a worker, spectral display work is bounded and playback schedules only the next 150 ms of clicks.
+Screenshots of [Home](release/home.png), [Review](release/review.png), [Timing](release/timing.png), [Charts](release/charts.png), [320px Review](release/review-320.png) and [wide Review](release/review-wide.png) were reviewed. Automated WCAG A/AA checks cover primary screens, Review, expanded Home/Settings controls and training/project dialogs at both main viewports; canvas bounds are also tested at 3× pixel density. The initial application JavaScript chunk is approximately 340 kB (105 kB gzip); settings and Session Detail load separately. Waveform/spectrogram preparation runs in a worker, spectral display work is bounded and playback schedules only the next 150 ms of clicks.
 
 ## Device acceptance still required
 
@@ -66,7 +66,8 @@ Mobile browsers can suspend microphone/audio work in the background. Keeping the
 
 ## Data and operational limits
 
-- Recording is capped at 30 minutes with a warning after 25 minutes; chunks are stored during capture. Memory still scales with recording length during full analysis/playback/WAV rendering, so long-session device checks remain necessary.
+- Recording is capped at 30 minutes with a warning after 25 minutes; chunks are stored during capture. Optional preparation delays are 3/5/10 seconds and timed takes are 15/30/60/120/300 seconds, including musical count-in. Preparation choices are device-local preferences. Memory still scales with recording length during analysis/playback and the exported WAV blob; additional float rendering during click export is bounded to ten seconds.
+- Scoring and flam windows are fixed milliseconds derived from the take's starting tempo and subdivision. The captured grid follows trainer tempo changes, while these tolerance windows stay fixed throughout the take; Timing and Charts state this convention explicitly.
 - Training stops at 60 seconds. Custom sounds record at most four seconds; imports are limited to 20 MB and the first four seconds.
 - Full backups are bounded at approximately 512 MiB of source data. Import limits are 768 MiB compressed and 1 GiB expanded. A data-only backup omits recording audio but retains analysis, profiles and custom samples.
 - IndexedDB is device/browser-profile local. Clearing site storage deletes it; the app requests persistent storage but the browser controls eviction. Export backups regularly.

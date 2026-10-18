@@ -18,7 +18,7 @@ export function useMetronome() {
       }
       const timer = setTimeout(() => {
         visualTimersRef.current.delete(timer);
-        setCurrentBeat(event.trackId, event.beatIndex);
+        if (audioEngine.running) setCurrentBeat(event.trackId, event.beatIndex);
       }, delayMs);
       visualTimersRef.current.add(timer);
     });
@@ -36,7 +36,7 @@ export function useMetronome() {
         console.error('Failed to start audio engine:', error);
         setPlaying(false);
       });
-    } else if (!playing && audioEngine.running) {
+    } else if (!playing) {
       audioEngine.stop();
       for (const timer of visualTimersRef.current) clearTimeout(timer);
       visualTimersRef.current.clear();

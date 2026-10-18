@@ -27,6 +27,7 @@ import { useSettingsStore } from '../store/settings-store';
 const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module) => ({ default: module.SessionDetailPage })));
 import { useSessionStore } from '../store/session-store';
 import type { SessionRecord } from '../store/db';
+import { PREPARATION_DELAYS, TAKE_LENGTHS, readRecordingPreferences, saveRecordingPreferences, takeLengthLabel, type RecordingPreferences } from '../utils/recording-preferences';
 
 export function HomePage() {
   const bpm = useMetronomeStore((s) => s.bpm);
@@ -49,8 +50,17 @@ export function HomePage() {
   const [failedSessionId, setFailedSessionId] = useState<string | null>(null);
   const includeClick = useSettingsStore((state) => state.includeClickInRecording);
   const setIncludeClick = useSettingsStore((state) => state.setIncludeClickInRecording);
-  const captureBusy = ['preparing', 'recording', 'stopping', 'saving'].includes(recording.phase);
+  const captureBusy = ['preparing', 'countdown', 'recording', 'stopping', 'saving'].includes(recording.phase);
+  const setupLocked = captureBusy;
+  const [recordingPreferences, setRecordingPreferences] = useState(readRecordingPreferences);
+  const updateRecordingPreferences = (updates: Partial<RecordingPreferences>) => {
+    const next = { ...recordingPreferences, ...updates };
+    setRecordingPreferences(next);
+    saveRecordingPreferences(next);
+  };
   const [detailSession, setDetailSession] = useState<SessionRecord | null>(null);
+
+  useEffect(() => { if (setupLocked) setShowKeypad(false); }, [setupLocked]);
 
   const processRecordingResult = useCallback(async (result: RecordingResult) => {
     setFailedSessionId(null);
@@ -67,9 +77,9 @@ export function HomePage() {
   }, [analysis.analyze]);
 
   const handleRecordToggle = useCallback(async () => {
-    const result = await recording.toggleRecording();
+    const result = await recording.toggleRecording(recordingPreferences);
     if (result) await processRecordingResult(result);
-  }, [recording.toggleRecording, processRecordingResult]);
+  }, [recording.toggleRecording, recordingPreferences, processRecordingResult]);
 
   useEffect(() => {
     recording.setOnAutoStop(processRecordingResult);
@@ -165,12 +175,15 @@ export function HomePage() {
       <BackupBanner />
       <div className="w-full max-w-xl mx-auto px-4 pb-8">
         <div className="min-h-[34px] flex items-center justify-center gap-2 py-1 text-center" aria-live="polite">
-          {recording.isRecording ? (
+          {recording.phase === 'countdown' ? (
+            <span className="text-sm font-semibold text-accent">Get ready · {recording.countdown}s</span>
+          ) : recording.isRecording ? (
             <>
               <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
               <span className="text-sm font-bold text-danger">RECORDING</span>
               <span className="font-mono text-xs text-text-secondary">
                 {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
+                {recording.takeSeconds > 0 && ` / ${Math.floor(recording.takeSeconds / 60)}:${String(recording.takeSeconds % 60).padStart(2, '0')}`}
               </span>
               {recording.warning && <span className="text-[10px] text-warning">{recording.warning}</span>}
             </>
@@ -199,8 +212,10 @@ export function HomePage() {
         <div
           ref={dialContainerRef}
           className="-mx-4 w-[calc(100%+2rem)] flex items-center justify-center relative pb-3"
+          role={setupLocked ? 'img' : undefined}
+          aria-label={setupLocked ? `Tempo ${bpm} BPM` : undefined}
         >
-          <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
+          <Dial size={dialSize} onTapBpm={setupLocked ? undefined : () => setShowKeypad(true)} />
         </div>
 
         {/* Primary practice stack: large, full-width, low-cognitive-load controls. */}
@@ -213,9 +228,34 @@ export function HomePage() {
             </div>
             <p className="text-xs text-text-muted">{includeClick ? 'Use headphones to keep clicks out of your recording.' : 'No audible click. Follow the visual beat; timing feedback stays available.'}</p>
           </fieldset>
-          <RecordButton phase={recording.phase} disabled={analysis.isAnalyzing || ['preparing', 'stopping', 'saving'].includes(recording.phase)} isRecording={recording.isRecording} onToggle={handleRecordToggle} />
+          <details className="rounded-xl border border-border-subtle bg-bg-surface text-sm">
+            <summary className="min-h-[44px] cursor-pointer px-3 py-3 text-text-secondary">
+              <span className="font-semibold">Recording setup</span>
+              <span className="text-xs text-text-muted ml-2">{recordingPreferences.preparationSeconds ? `${recordingPreferences.preparationSeconds}s delay` : 'Start now'} · {recordingPreferences.takeSeconds ? takeLengthLabel(recordingPreferences.takeSeconds) : 'Manual stop'}</span>
+            </summary>
+            <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-3 disabled:opacity-60">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs font-semibold text-text-secondary">Preparation delay
+                  <select aria-label="Preparation delay" value={recordingPreferences.preparationSeconds} onChange={(event) => updateRecordingPreferences({ preparationSeconds: Number(event.target.value) })} className="mt-1 w-full min-h-[44px] rounded-lg border border-border-subtle bg-bg-primary px-2 text-sm text-text-primary">
+                    {PREPARATION_DELAYS.map((seconds) => <option key={seconds} value={seconds}>{seconds ? `${seconds} seconds` : 'None'}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-text-secondary">Take length
+                  <select aria-label="Take length" value={recordingPreferences.takeSeconds} onChange={(event) => updateRecordingPreferences({ takeSeconds: Number(event.target.value) })} className="mt-1 w-full min-h-[44px] rounded-lg border border-border-subtle bg-bg-primary px-2 text-sm text-text-primary">
+                    {TAKE_LENGTHS.map((seconds) => <option key={seconds} value={seconds}>{seconds ? takeLengthLabel(seconds) : 'Stop manually'}</option>)}
+                  </select>
+                </label>
+              </div>
+              <p className="text-xs text-text-muted">Put your phone down before you play. Take length includes any count-in set in Practice Modes. You can always stop early.</p>
+            </fieldset>
+          </details>
+          {recording.phase === 'countdown' && <p role="status" className="text-center text-xs text-text-secondary">Microphone ready. No audio is saved until the countdown ends.</p>}
+          <RecordButton phase={recording.phase} countdown={recording.countdown} disabled={analysis.isAnalyzing || ['stopping', 'saving'].includes(recording.phase)} isRecording={recording.isRecording} onToggle={handleRecordToggle} />
           <PlayButton disabled={captureBusy} />
-          <TapTempo />
+          <fieldset disabled={setupLocked} className="disabled:opacity-50 disabled:pointer-events-none">
+            <TapTempo />
+          </fieldset>
+          {setupLocked && <p className="text-center text-xs text-text-muted">{recording.phase === 'preparing' || recording.phase === 'countdown' ? 'Cancel recording setup to change tempo or setup.' : 'Stop recording to change tempo or setup.'}</p>}
         </div>
 
         <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
@@ -252,7 +292,7 @@ export function HomePage() {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <fieldset disabled={setupLocked} ref={(element) => { if (element) element.inert = setupLocked; }} className="space-y-2 disabled:opacity-50">
             <CollapsibleCard
               title="Fine Tempo"
               badge="±0.5"
@@ -308,7 +348,7 @@ export function HomePage() {
             >
               <PolyrhythmControl />
             </CollapsibleCard>
-          </div>
+          </fieldset>
         </div>
 
         <div className="h-6" />
@@ -317,8 +357,8 @@ export function HomePage() {
       <NumberInput
         isOpen={showKeypad}
         onClose={() => setShowKeypad(false)}
-        onSubmit={setBpm}
-        onLiveChange={setBpm}
+        onSubmit={(value) => { if (!setupLocked) setBpm(value); }}
+        onLiveChange={(value) => { if (!setupLocked) setBpm(value); }}
         initialValue={bpm}
         min={10}
         max={400}

@@ -4,6 +4,7 @@ import { beginCriticalActivity, isCriticalActivityActive } from './critical-acti
 
 import { validateSessions, validateProjects, validateSettings, validateEvents, validateProfiles, validatePresets, validateCustomMetadata } from './backup-validation';
 import { flushPersistence } from '../store/persistence';
+import { version as appVersion } from '../../package.json';
 
 const MAX_FULL_BACKUP_ESTIMATED_BYTES = 512 * 1024 * 1024;
 const MAX_IMPORT_FILE_BYTES = 768 * 1024 * 1024;
@@ -136,7 +137,7 @@ export async function exportBackup(
       recordingTypes,
       format: 'polypro-backup',
       createdAt: new Date().toISOString(),
-      appVersion: '2.0.0',
+      appVersion,
       includesRecordings: includeRecordings,
       counts: {
         projects: projects.length,

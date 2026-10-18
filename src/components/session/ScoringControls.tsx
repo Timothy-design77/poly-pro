@@ -24,6 +24,7 @@ export function ScoringControls({ bpm, subdivision, config, onChange }: Props) {
   const update = (partial: Partial<AnalysisConfig>) => { setSaved(false); onChange(partial); };
   return <div className="space-y-4">
     <p className="text-sm text-text-secondary">Preview timing changes while listening. Save changes to keep the score and click alignment together.</p>
+    <p className="text-xs text-text-muted">Scoring and flam windows use this take’s starting tempo ({bpm} BPM). Their millisecond widths stay fixed through tempo-trainer changes; the beat grid follows captured timing when available.</p>
     <TuneSlider label="Latency Offset" value={config.latencyOffsetMs} min={Math.min(-300, config.latencyOffsetMs)} max={Math.max(600, config.latencyOffsetMs)} step={0.5}
       format={(value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}ms`} defaultValue={defaultLatency}
       onChange={(value) => update({ latencyOffsetMs: value })}
@@ -31,11 +32,11 @@ export function ScoringControls({ bpm, subdivision, config, onChange }: Props) {
     <TuneSlider label="Scoring Window" value={config.scoringWindowPct} min={0.25} max={25} step={0.25}
       format={() => `±${(ioiMs * config.scoringWindowPct / 100).toFixed(1)}ms (${config.scoringWindowPct}%)`}
       defaultValue={settings.scoringWindowPct} onChange={(value) => update({ scoringWindowPct: value })}
-      help="How close a hit needs to be to the beat to count as perfect." />
+      help="How close a hit needs to be to the beat to count as perfect. The percentage uses the take’s starting tempo and subdivision, so the displayed millisecond window stays fixed for the whole take." />
     <TuneSlider label="Flam Merge" value={config.flamMergePct} min={5} max={80} step={1}
       format={() => `${(ioiMs * config.flamMergePct / 100).toFixed(0)}ms (${config.flamMergePct}%)`}
       defaultValue={settings.flamMergePct} onChange={(value) => update({ flamMergePct: value })}
-      help="Treat nearby hits as one flam. Lower this to separate close hits. Your saved source hits are preserved." />
+      help="Treat nearby hits as one flam. This uses a fixed millisecond window based on the take’s starting tempo and subdivision. Lower this to separate close hits. Your saved source hits are preserved." />
     <button onClick={saveDefaults} className="w-full min-h-[44px] rounded-lg border border-border-subtle text-sm text-text-secondary">{saved ? 'Defaults saved' : 'Use scoring for future takes'}</button>
     <p className="text-xs text-text-muted">Latency changes apply to this take. Set device calibration in Settings. For missed or extra hits, try Edit hits first. Detection settings and Re-detect from audio can rebuild the whole hit set.</p>
   </div>;

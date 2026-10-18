@@ -28,6 +28,10 @@ export function HelpTip({ text, children }: Props) {
     const btn = buttonRef.current;
     if (!btn) return;
     const rect = btn.getBoundingClientRect();
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
+      setOpen(false);
+      return;
+    }
     const tipW = 224; // w-56 = 14rem = 224px
     const margin = 16;
 
@@ -58,17 +62,18 @@ export function HelpTip({ text, children }: Props) {
       }
     };
 
-    // Close on scroll
-    const scrollHandler = () => setOpen(false);
-
     document.addEventListener('touchstart', handler, { passive: true });
     document.addEventListener('mousedown', handler);
-    window.addEventListener('scroll', scrollHandler, { capture: true, passive: true });
+    // Focusing a button can scroll its panel after the click. Keep help anchored
+    // instead of immediately dismissing it on narrow screens.
+    window.addEventListener('scroll', updatePosition, { capture: true, passive: true });
+    window.addEventListener('resize', updatePosition);
 
     return () => {
       document.removeEventListener('touchstart', handler);
       document.removeEventListener('mousedown', handler);
-      window.removeEventListener('scroll', scrollHandler, { capture: true });
+      window.removeEventListener('scroll', updatePosition, { capture: true });
+      window.removeEventListener('resize', updatePosition);
     };
   }, [open, updatePosition]);
 
@@ -77,6 +82,14 @@ export function HelpTip({ text, children }: Props) {
       <button
         ref={buttonRef}
         onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen(!open); }}
+        onKeyDown={(event) => {
+          if (open && event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+          }
+        }}
+        onBlur={() => setOpen(false)}
         className="w-6 h-6 rounded-full flex items-center justify-center
                    text-[9px] font-bold touch-manipulation select-none shrink-0
                    bg-[rgba(21,23,26,0.06)] text-text-muted

@@ -195,6 +195,8 @@ function InstrumentSelectView({
           return (
             <div key={name} className="relative">
             <button
+              type="button"
+              aria-pressed={isSelected}
               onClick={() => onSelect(name, !!profile)}
               className={`
                 w-full flex flex-col items-start p-3 rounded-md border transition-colors text-left
@@ -211,13 +213,13 @@ function InstrumentSelectView({
               </div>
               {profile ? (
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-text-muted text-xs">
+                  <span className="text-text-secondary text-xs">
                     {profile.samples.length} hits · {profiles.length < 2 || profile.accuracy < 0 ? 'Train another instrument' : `${Math.round(profile.accuracy * 100)}% validation`}
                   </span>
 
                 </div>
               ) : (
-                <span className="text-text-muted text-xs">Not trained</span>
+                <span className="text-text-secondary text-xs">Not trained</span>
               )}
             </button>
             {profile && <button aria-label={`Delete ${name} profile`} onClick={() => onDelete(name)} className="min-h-[44px] px-3 text-danger text-xs">Delete profile</button>}

@@ -7,6 +7,12 @@ const events: db.HitEventsRecord = { sessionId: 'take', rawOnsets: [], scoredOns
 beforeEach(async () => { await db.clearAllData(); });
 
 describe('durable sessions', () => {
+  it('patches a follow-up notice without replacing newer analysis or removed audio', async () => {
+    await db.putSession({ ...session, analysisNotice: 'Pending', score: 89, analysisRevision: 4, hasRecording: false });
+    await db.patchSession(session.id, { analysisNotice: undefined });
+    expect((await db.getAllSessions())[0]).toMatchObject({ score: 89, analysisRevision: 4, hasRecording: false });
+    expect((await db.getAllSessions())[0].analysisNotice).toBeUndefined();
+  });
   it('rejects stale analysis and preserves the latest events', async () => {
     await db.putSession(session);
     await db.putAnalysis({ ...session, analysisRevision: 1, score: 80 }, events, 0);

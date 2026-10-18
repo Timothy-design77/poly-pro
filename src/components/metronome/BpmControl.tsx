@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import {
   BPM_STEP,
@@ -60,6 +60,21 @@ export function BpmControl() {
     setActiveDir(null);
   }, []);
 
+  useEffect(() => {
+    const stopHold = () => { clearTimers(); gestureRef.current = null; resetVisuals(); };
+    const onVisibility = () => { if (document.hidden) stopHold(); };
+    window.addEventListener('blur', stopHold);
+    window.addEventListener('polypro:navigation', stopHold);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearTimers();
+      gestureRef.current = null;
+      window.removeEventListener('blur', stopHold);
+      window.removeEventListener('polypro:navigation', stopHold);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [clearTimers, resetVisuals]);
+
   const scheduleHoldTick = useCallback((direction: Direction) => {
     const tick = () => {
       const gesture = gestureRef.current;
@@ -93,6 +108,7 @@ export function BpmControl() {
   }, [adjustBpm]);
 
   const startGesture = useCallback((event: React.PointerEvent, direction: Direction) => {
+    if (!event.isPrimary || event.button !== 0) return;
     clearTimers();
 
     gestureRef.current = {
@@ -178,6 +194,7 @@ export function BpmControl() {
       <button
         type="button"
         aria-label="Decrease tempo"
+        onClick={(event) => { if (event.detail === 0) adjustBpm(-BPM_STEP); }}
         onPointerDown={(event) => startGesture(event, 'down')}
         onPointerMove={handlePointerMove}
         onPointerUp={finishGesture}
@@ -205,6 +222,7 @@ export function BpmControl() {
       <button
         type="button"
         aria-label="Increase tempo"
+        onClick={(event) => { if (event.detail === 0) adjustBpm(BPM_STEP); }}
         onPointerDown={(event) => startGesture(event, 'up')}
         onPointerMove={handlePointerMove}
         onPointerUp={finishGesture}

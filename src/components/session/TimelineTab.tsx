@@ -181,15 +181,15 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
 
       <div className="rounded-2xl border border-border-subtle overflow-hidden bg-bg-surface shadow-sm">
         <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-border-subtle overflow-x-auto">
-          <button type="button" onClick={() => setShowBass(!showBass)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showBass ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Bass</button>
-          <button type="button" onClick={() => setShowMid(!showMid)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showMid ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Mid</button>
-          <button type="button" onClick={() => setShowHigh(!showHigh)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showHigh ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>High</button>
+          <button type="button" aria-pressed={showBass} onClick={() => setShowBass(!showBass)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showBass ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Bass</button>
+          <button type="button" aria-pressed={showMid} onClick={() => setShowMid(!showMid)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showMid ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Mid</button>
+          <button type="button" aria-pressed={showHigh} onClick={() => setShowHigh(!showHigh)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showHigh ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>High</button>
           <div className="w-px h-5 bg-border-subtle mx-1 shrink-0" />
-          {ZOOM_LEVELS.map((z) => <button type="button" key={z} onClick={() => gestures.setZoomLevel(z)} className={`h-8 px-2.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap ${Math.abs(zoom - z) < 0.5 ? 'bg-accent text-bg-primary' : 'text-text-muted'}`}>{z}×</button>)}
-          <button type="button" onClick={() => playback.setFollowPlayhead(!playback.followPlayhead)} className={`ml-auto h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${playback.followPlayhead ? 'bg-accent-dim text-accent' : 'text-text-muted'}`}>Follow</button>
+          {ZOOM_LEVELS.map((z) => <button type="button" key={z} aria-pressed={Math.abs(zoom - z) < 0.5} onClick={() => gestures.setZoomLevel(z)} className={`h-8 px-2.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap ${Math.abs(zoom - z) < 0.5 ? 'bg-accent text-bg-primary' : 'text-text-muted'}`}>{z}×</button>)}
+          <button type="button" aria-pressed={playback.followPlayhead} onClick={() => playback.setFollowPlayhead(!playback.followPlayhead)} className={`ml-auto h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${playback.followPlayhead ? 'bg-accent-dim text-accent' : 'text-text-muted'}`}>Follow</button>
         </div>
 
-        <div ref={containerRef} className="overflow-hidden relative bg-bg-surface" onPointerUp={(event) => { if (event.pointerType === 'mouse') handleCanvasTap(event.clientX); }} style={{ touchAction: 'none' }} onTouchStart={gestures.handleTouchStart} onTouchMove={gestures.handleTouchMove} onTouchEnd={gestures.handleTouchEnd}>
+        <div ref={containerRef} className="overflow-hidden relative bg-bg-surface" onPointerUp={(event) => { if (event.pointerType === 'mouse') handleCanvasTap(event.clientX); }} style={{ touchAction: 'none' }} onTouchStart={gestures.handleTouchStart} onTouchMove={gestures.handleTouchMove} onTouchEnd={gestures.handleTouchEnd} onTouchCancel={gestures.handleTouchCancel}>
           <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth, position: 'relative' }}>
             <canvas aria-label="Recording waveform and detected hits" role="img" ref={canvasRef} style={{ width: totalWidth, height: CANVAS_HEIGHT }} />
             {loopEnabled && <div aria-hidden="true" style={{ position: 'absolute', left: `${loopStart * 100}%`, width: `${(loopEnd - loopStart) * 100}%`, top: 0, bottom: 0, background: 'rgba(21,23,26,0.055)', borderLeft: '2px solid rgba(21,23,26,0.65)', borderRight: '2px solid rgba(21,23,26,0.65)', pointerEvents: 'none' }} />}
@@ -216,7 +216,7 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
           <label className="flex items-center gap-3 text-xs text-text-secondary">Click volume<input aria-label="Click volume" type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(event) => playback.setClickVolume(Number(event.target.value) / 100)} className="min-w-0 flex-1" /></label>
           <div className="flex items-center justify-between gap-3">
             <div><p className="text-xs font-bold text-text-primary">Playback cleanup</p><p className="text-[10px] text-text-muted mt-0.5">Nondestructive. The stored recording stays unchanged.</p></div>
-            <button type="button" onClick={() => playback.setCleanupEnabled(!playback.cleanupEnabled)} className={`h-9 px-4 rounded-full text-[10px] font-bold ${playback.cleanupEnabled ? 'bg-accent text-bg-primary' : 'bg-bg-raised text-text-muted'}`}>{playback.cleanupEnabled ? 'On' : 'Off'}</button>
+            <button type="button" aria-label="Playback cleanup" aria-pressed={playback.cleanupEnabled} onClick={() => playback.setCleanupEnabled(!playback.cleanupEnabled)} className={`h-9 px-4 rounded-full text-[10px] font-bold ${playback.cleanupEnabled ? 'bg-accent text-bg-primary' : 'bg-bg-raised text-text-muted'}`}>{playback.cleanupEnabled ? 'On' : 'Off'}</button>
           </div>
           {playback.cleanupEnabled && <div className="grid gap-3">
             <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-[10px] text-text-muted"><span>Low cut</span><input type="range" min="20" max="800" step="10" value={playback.highPassHz} onChange={(e) => playback.setHighPassHz(Number(e.target.value))} /><span className="font-mono text-right">{playback.highPassHz}Hz</span></label>
@@ -248,6 +248,11 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
             <button type="button" onClick={() => playback.saveAudio(false)} disabled={playback.isSaving} className="min-h-[44px] rounded-xl bg-bg-raised border border-border-subtle text-text-secondary text-xs font-semibold disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'Raw recording'}</button>
             <button type="button" onClick={() => playback.saveAudio(true)} disabled={playback.isSaving} className="min-h-[44px] rounded-xl bg-accent text-bg-primary text-xs font-semibold disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'With click'}</button>
           </div>
+          {playback.isSaving && <div className="space-y-2">
+            <p role="status" className="text-xs text-text-secondary">Preparing WAV… {Math.round(playback.exportProgress * 100)}%</p>
+            <progress aria-label="Audio export progress" max={1} value={playback.exportProgress} className="w-full accent-accent" />
+            <button type="button" onClick={playback.cancelExport} className="min-h-[44px] w-full rounded-xl border border-border-subtle text-sm font-semibold">Cancel export</button>
+          </div>}
         </div>
       )}
 

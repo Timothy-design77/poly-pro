@@ -24,6 +24,7 @@ export function SubdivisionPicker() {
         {SUBDIVISIONS.map((s) => (
           <button
             key={s.value}
+            type="button" aria-pressed={subdivision === s.value}
             onClick={() => setSubdivision(s.value)}
             className={`
               h-[40px] px-3.5 rounded-xl text-xs font-bold transition-colors

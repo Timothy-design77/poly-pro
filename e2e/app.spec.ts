@@ -43,6 +43,9 @@ test('fake microphone recording reaches durable IndexedDB storage', async ({ pag
   await page.keyboard.press('Enter');
   const stop = page.getByRole('button', { name: 'Stop recording' });
   await expect(stop).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Progress', exact: true })).toBeDisabled();
+  await expect(page.getByText('Recording in progress · stop the take to change section')).toBeVisible();
   await page.waitForTimeout(1300);
   await stop.click();
 
@@ -56,6 +59,8 @@ test('fake microphone recording reaches durable IndexedDB storage', async ({ pag
   expect(captured.analyzed).toBe(true);
   expect(captured.recordingTiming.recordingEndTime - captured.recordingTiming.recordingStartTime).toBeCloseTo(captured.durationMs / 1000, 5);
   expect(captured.analysisConfig.sampleRate).toBe(captured.recordingSampleRate);
+  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeEnabled();
 });
 
 test('installed PWA shell reloads offline after service worker activation', async ({ page, context }) => {

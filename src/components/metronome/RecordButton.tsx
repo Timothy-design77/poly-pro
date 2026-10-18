@@ -2,15 +2,18 @@ interface RecordButtonProps {
   isRecording: boolean;
   phase?: string;
   disabled?: boolean;
+  countdown?: number;
   onToggle: () => void | Promise<void>;
 }
 
 /** Large full-width recording action used directly below the tempo ring. */
-export function RecordButton({ isRecording, onToggle, phase, disabled }: RecordButtonProps) {
+export function RecordButton({ isRecording, onToggle, phase, disabled, countdown }: RecordButtonProps) {
+  const settingUp = phase === 'preparing' || phase === 'countdown';
+  const saving = phase === 'stopping' || phase === 'saving';
   return (
     <button
       type="button"
-      aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+      aria-label={saving ? 'Saving recording' : settingUp ? 'Cancel recording setup' : isRecording ? 'Stop recording' : 'Start recording'}
       aria-pressed={isRecording}
       disabled={disabled}
       onClick={() => void onToggle()}
@@ -31,7 +34,7 @@ export function RecordButton({ isRecording, onToggle, phase, disabled }: RecordB
           <circle cx="12" cy="12" r="10" />
         )}
       </svg>
-      {phase === 'preparing' ? 'PREPARING MICROPHONE…' : phase === 'stopping' || phase === 'saving' ? 'SAVING RECORDING…' : isRecording ? 'STOP RECORDING' : 'RECORD'}
+      {phase === 'countdown' ? `STARTS IN ${countdown} · CANCEL` : phase === 'preparing' ? 'PREPARING MIC · CANCEL' : saving ? 'SAVING RECORDING…' : isRecording ? 'STOP RECORDING' : 'RECORD'}
     </button>
   );
 }

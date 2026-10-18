@@ -16,32 +16,41 @@ export function BackupBanner() {
   const sessions = useSessionStore((s) => s.sessions);
   const [visible, setVisible] = useState(false);
   const [sessionsSinceBackup, setSessionsSinceBackup] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const dismissed = await db.getSetting<boolean>('backupDismissed');
-      if (dismissed) return;
-
-      const count = (await db.getSetting<number>('sessionsSinceBackup')) ?? sessions.length;
-      const threshold = (await db.getSetting<number>('backupThreshold')) ?? 10;
-
-      setSessionsSinceBackup(count);
-      if (count >= threshold) {
-        setVisible(true);
-      }
-    })();
+    let cancelled = false;
+    let generation = 0;
+    const refresh = async () => {
+      const current = ++generation;
+      try {
+        const [dismissed, storedCount, storedThreshold] = await Promise.all([
+          db.getSetting<boolean>('backupDismissed'), db.getSetting<number>('sessionsSinceBackup'), db.getSetting<number>('backupThreshold'),
+        ]);
+        if (cancelled || current !== generation) return;
+        const count = storedCount ?? sessions.length;
+        setSessionsSinceBackup(count);
+        setVisible(!dismissed && count >= (storedThreshold ?? 10));
+      } catch { /* A reminder must not interrupt practice if storage is unavailable. */ }
+    };
+    void refresh();
+    const handleChange = () => { void refresh(); };
+    window.addEventListener('polypro:backup-status-changed', handleChange);
+    return () => { cancelled = true; window.removeEventListener('polypro:backup-status-changed', handleChange); };
   }, [sessions.length]);
 
   const handleRemindLater = useCallback(async () => {
-    // Push threshold by 5
-    const current = (await db.getSetting<number>('backupThreshold')) ?? 10;
-    await db.setSetting('backupThreshold', current + 5);
-    setVisible(false);
-  }, []);
+    try {
+      await db.setSetting('backupThreshold', sessionsSinceBackup + 5);
+      setVisible(false); setError(null);
+    } catch { setError('Could not save the reminder. Please try again.'); }
+  }, [sessionsSinceBackup]);
 
   const handleDismiss = useCallback(async () => {
-    await db.setSetting('backupDismissed', true);
-    setVisible(false);
+    try {
+      await db.setSetting('backupDismissed', true);
+      setVisible(false); setError(null);
+    } catch { setError('Could not save the reminder. Please try again.'); }
   }, []);
 
   if (!visible) return null;
@@ -52,8 +61,9 @@ export function BackupBanner() {
         You have {sessionsSinceBackup} sessions since your last backup.
       </p>
       <p className="text-[10px] text-text-muted mb-2">
-        Back up in Settings → Data → Export Backup.
+        Back up in Settings → Data → Full Backup.
       </p>
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
       <div className="flex gap-2">
         <button
           onClick={handleRemindLater}

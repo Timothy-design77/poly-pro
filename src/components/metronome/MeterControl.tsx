@@ -31,6 +31,7 @@ export function MeterControl() {
       <div className="text-[10px] text-text-muted uppercase tracking-wider mb-2">Time Signature</div>
       <div className="flex items-center justify-center gap-3">
         <button
+          type="button" aria-label="Previous beats per measure"
           onClick={() => cycleNum(-1)}
           className="w-[48px] h-[48px] rounded-xl bg-bg-surface border border-border-subtle
                      flex items-center justify-center text-text-secondary active:bg-bg-raised
@@ -42,6 +43,7 @@ export function MeterControl() {
         </button>
 
         <button
+          type="button" aria-label={`Time signature ${num}/${den}. Change beat unit`}
           onClick={cycleDen}
           className="w-[80px] h-[56px] rounded-xl bg-bg-surface border border-border-subtle
                      flex items-center justify-center font-mono text-2xl font-bold text-text-primary
@@ -51,6 +53,7 @@ export function MeterControl() {
         </button>
 
         <button
+          type="button" aria-label="Next beats per measure"
           onClick={() => cycleNum(1)}
           className="w-[48px] h-[48px] rounded-xl bg-bg-surface border border-border-subtle
                      flex items-center justify-center text-text-secondary active:bg-bg-raised
