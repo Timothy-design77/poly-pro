@@ -28,6 +28,11 @@ text/background colors interpolated, passing only on retry. Removed that color
 fade. Production build and ten repeated primary-screen accessibility checks pass
 after the change. CI reruns the full suite on the updated commit and main merge.
 
+Main CI follow-up: the reminder test reloaded immediately after clicking Snooze,
+before its asynchronous transaction had completed. Wait for the banner to hide
+(the application's save-completion signal) before reloading. Ten repeated backup
+checks pass; the application already waits for persistence before hiding it.
+
 Focused new capture and advanced frontend checks:
 PASS: 22 checks across both viewports before the final complete run.
 Capture confirms exactly 15,000 ms, no saved countdown audio, cancellation of
