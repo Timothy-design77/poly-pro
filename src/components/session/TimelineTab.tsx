@@ -18,6 +18,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
 import type { AnalysisConfig } from '../../analysis/types';
+import { ClickSyncControls } from './ClickSyncControls';
 import { ScoringControls } from './ScoringControls';
 import { HitEditor } from './HitEditor';
 import { useSessionAudio } from './timeline/useSessionAudio';
@@ -39,14 +40,14 @@ interface Props {
   redetectControls?: React.ReactNode;
 }
 
-type PanelId = 'audio' | 'loop' | 'edit' | 'tune' | 'export' | null;
+type PanelId = 'sync' | 'audio' | 'loop' | 'edit' | 'tune' | 'export' | null;
 
 function IconButton({ label, onClick, children, active = false, disabled = false, className = '' }: {
   label: string; onClick: () => void; children: React.ReactNode; active?: boolean; disabled?: boolean; className?: string;
 }) {
   return (
     <button type="button" aria-label={label} aria-pressed={active} onClick={onClick} disabled={disabled}
-      className={`min-h-[42px] rounded-xl border text-xs font-bold touch-manipulation disabled:opacity-30 ${active
+      className={`min-h-[44px] rounded-xl border text-xs font-semibold touch-manipulation disabled:opacity-30 ${active
         ? 'bg-accent text-bg-primary border-accent'
         : 'bg-bg-surface text-text-secondary border-border-subtle active:bg-bg-raised'} ${className}`}>
       {children}
@@ -148,47 +149,54 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
     <div className="flex flex-col gap-3 pb-4">
       <div className="flex items-end justify-between gap-3 pt-1">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.16em] font-bold text-text-muted">Playback</p>
-          <p className="text-xl font-mono font-bold text-text-primary tabular-nums mt-0.5">{formatTime(currentTimeMs)} <span className="text-sm font-medium text-text-muted">/ {formatTime(session.durationMs)}</span></p>
+
+          <p className="text-xl font-mono font-semibold text-text-primary tabular-nums mt-0.5">{formatTime(currentTimeMs)} <span className="text-sm font-medium text-text-muted">/ {formatTime(session.durationMs)}</span></p>
         </div>
         <div className="text-right">
           <p className="text-xs font-mono font-semibold text-text-secondary">{session.bpm} BPM · {session.meter}</p>
-          <p className="text-[10px] text-text-muted mt-0.5">{onsets.length} detected hits</p>
+          <p className="text-xs text-text-muted mt-0.5">{onsets.length} detected hits</p>
         </div>
       </div>
 
-      <div className="sticky top-0 z-20 rounded-[22px] border border-border-emphasis bg-bg-surface/95 backdrop-blur-xl shadow-lg p-2.5">
+      <div className="sticky top-0 z-20 rounded-2xl border border-border-subtle bg-bg-surface p-2.5">
         <div className="grid grid-cols-[46px_46px_1fr_46px_46px] items-center gap-2">
           <button type="button" aria-label="Skip back 5 seconds" onClick={() => void playback.skip(-5)} className="h-11 rounded-xl bg-bg-raised text-text-secondary font-mono text-xs">−5</button>
           <button type="button" aria-label="Previous detected hit" onClick={() => jumpToHit(-1)} className="h-11 rounded-xl text-text-muted text-lg">‹</button>
           <button type="button" aria-label={playback.isPlaying ? 'Pause playback' : 'Start playback'} onClick={() => void playback.togglePlayback()} disabled={!isReady}
-            className={`h-14 flex items-center justify-center rounded-2xl text-xl font-bold disabled:opacity-30 ${playback.isPlaying ? 'bg-text-primary text-bg-primary' : 'bg-accent text-bg-primary'}`}>
+            className={`h-14 flex items-center justify-center rounded-2xl text-xl font-semibold disabled:opacity-30 ${playback.isPlaying ? 'bg-text-primary text-bg-primary' : 'bg-accent text-bg-primary'}`}>
             <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">{playback.isPlaying ? <><rect x="5" y="4" width="5" height="16" rx="1" /><rect x="14" y="4" width="5" height="16" rx="1" /></> : <polygon points="6 3 20 12 6 21" />}</svg>
           </button>
           <button type="button" aria-label="Next detected hit" onClick={() => jumpToHit(1)} className="h-11 rounded-xl text-text-muted text-lg">›</button>
           <button type="button" aria-label="Skip forward 5 seconds" onClick={() => void playback.skip(5)} className="h-11 rounded-xl bg-bg-raised text-text-secondary font-mono text-xs">+5</button>
         </div>
-        <div className="grid grid-cols-[44px_minmax(0,1fr)_46px_44px] gap-2 items-center mt-2">
-          <button type="button" aria-label={`Playback speed ${playback.playbackSpeed}×`} onClick={() => { const idx = SPEED_OPTIONS.indexOf(playback.playbackSpeed); playback.setPlaybackSpeed(SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]); }} className="h-9 rounded-lg bg-bg-raised text-[10px] font-mono font-bold text-text-secondary">{playback.playbackSpeed}×</button>
-          <input className="min-w-0 w-full" aria-label="Playback volume" type="range" min="0" max="100" value={Math.round(playback.playbackVolume * 100)} onChange={(e) => playback.setPlaybackVolume(Number(e.target.value) / 100)} />
-          <span className="text-[10px] font-mono text-text-muted text-right">Vol {Math.round(playback.playbackVolume * 100)}</span>
-          <button type="button" aria-label="Toggle loop" aria-pressed={loopEnabled} onClick={() => setLoopEnabled((value) => !value)} className={`h-9 rounded-lg text-[10px] font-bold ${loopEnabled ? 'bg-accent-dim text-accent' : 'bg-bg-raised text-text-muted'}`}>Loop</button>
+        <div className="grid grid-cols-[60px_1fr_1fr] gap-2 mt-2">
+          <button type="button" aria-label={`Playback speed ${playback.playbackSpeed}×`} onClick={() => { const idx = SPEED_OPTIONS.indexOf(playback.playbackSpeed); playback.setPlaybackSpeed(SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]); }} className="min-h-[44px] rounded-xl bg-bg-raised text-sm tabular-nums">{playback.playbackSpeed}×</button>
+          <IconButton label="Toggle click overlay" active={playback.clickOverlay} onClick={() => playback.setClickOverlay(!playback.clickOverlay)}>Click {playback.clickOverlay ? 'on' : 'off'}</IconButton>
+          <button type="button" aria-label="Sync click" aria-expanded={panel === 'sync'} disabled={saving} onClick={() => { togglePanel('sync'); playback.setClickOverlay(true); }} className={`ui-button ${panel === 'sync' ? 'ui-button-primary' : 'ui-button-secondary'}`}>Sync</button>
         </div>
       </div>
+      {panel === 'sync' && <fieldset disabled={saving} className="ui-surface p-4">
+        <ClickSyncControls session={session} hitEvents={editableEvents ?? hitEvents} offsetMs={config.latencyOffsetMs} playheadSeconds={currentTimeMs / 1000} playing={playback.isPlaying}
+          onChange={(latencyOffsetMs) => onConfigChange({ latencyOffsetMs })} onSeek={playback.seekToFraction} />
+      </fieldset>}
+
       <label className="sr-only" htmlFor={`seek-${session.id}`}>Recording position</label>
       <input id={`seek-${session.id}`} type="range" min="0" max="1000" step="1" value={Math.round(playback.playbackPos * 1000)} onChange={(event) => playback.seekToFraction(Number(event.target.value) / 1000)} aria-valuetext={`${formatTime(currentTimeMs)} of ${formatTime(session.durationMs)}`} className="w-full accent-accent" />
-      <MiniMap spectrogramData={spectrogramData} containerWidth={containerWidth} zoom={zoom} scrollX={scrollX} totalWidth={totalWidth} playbackPos={playback.playbackPos} onSeekFraction={playback.seekToFraction} />
+      {zoom > 1 && <MiniMap spectrogramData={spectrogramData} containerWidth={containerWidth} zoom={zoom} scrollX={scrollX} totalWidth={totalWidth} playbackPos={playback.playbackPos} onSeekFraction={playback.seekToFraction} />}
 
       <div className="rounded-2xl border border-border-subtle overflow-hidden bg-bg-surface shadow-sm">
+        <details>
+        <summary className="min-h-[44px] flex items-center px-3 cursor-pointer text-xs text-text-secondary border-b border-border-subtle">Waveform view · {Math.round(zoom)}×</summary>
         <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-border-subtle overflow-x-auto">
-          <button type="button" aria-pressed={showBass} onClick={() => setShowBass(!showBass)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showBass ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Bass</button>
-          <button type="button" aria-pressed={showMid} onClick={() => setShowMid(!showMid)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showMid ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Mid</button>
-          <button type="button" aria-pressed={showHigh} onClick={() => setShowHigh(!showHigh)} className={`h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${showHigh ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>High</button>
+          <button type="button" aria-pressed={showBass} onClick={() => setShowBass(!showBass)} className={`h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap ${showBass ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Bass</button>
+          <button type="button" aria-pressed={showMid} onClick={() => setShowMid(!showMid)} className={`h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap ${showMid ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Mid</button>
+          <button type="button" aria-pressed={showHigh} onClick={() => setShowHigh(!showHigh)} className={`h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap ${showHigh ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>High</button>
           <div className="w-px h-5 bg-border-subtle mx-1 shrink-0" />
-          {ZOOM_LEVELS.map((z) => <button type="button" key={z} aria-pressed={Math.abs(zoom - z) < 0.5} onClick={() => gestures.setZoomLevel(z)} className={`h-8 px-2.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap ${Math.abs(zoom - z) < 0.5 ? 'bg-accent text-bg-primary' : 'text-text-muted'}`}>{z}×</button>)}
-          <button type="button" aria-pressed={playback.followPlayhead} onClick={() => playback.setFollowPlayhead(!playback.followPlayhead)} className={`ml-auto h-8 px-3 rounded-full text-[10px] font-bold whitespace-nowrap ${playback.followPlayhead ? 'bg-accent-dim text-accent' : 'text-text-muted'}`}>Follow</button>
+          {ZOOM_LEVELS.map((z) => <button type="button" key={z} aria-pressed={Math.abs(zoom - z) < 0.5} onClick={() => gestures.setZoomLevel(z)} className={`h-8 px-2.5 rounded-full text-xs font-mono font-semibold whitespace-nowrap ${Math.abs(zoom - z) < 0.5 ? 'bg-accent text-bg-primary' : 'text-text-muted'}`}>{z}×</button>)}
+          <button type="button" aria-pressed={playback.followPlayhead} onClick={() => playback.setFollowPlayhead(!playback.followPlayhead)} className={`ml-auto h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap ${playback.followPlayhead ? 'bg-accent-dim text-accent' : 'text-text-muted'}`}>Follow</button>
         </div>
 
+        </details>
         <div ref={containerRef} className="overflow-hidden relative bg-bg-surface" onPointerUp={(event) => { if (event.pointerType === 'mouse') handleCanvasTap(event.clientX); }} style={{ touchAction: 'none' }} onTouchStart={gestures.handleTouchStart} onTouchMove={gestures.handleTouchMove} onTouchEnd={gestures.handleTouchEnd} onTouchCancel={gestures.handleTouchCancel}>
           <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth, position: 'relative' }}>
             <canvas aria-label="Recording waveform and detected hits" role="img" ref={canvasRef} style={{ width: totalWidth, height: CANVAS_HEIGHT }} />
@@ -200,10 +208,9 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
 
       <fieldset disabled={saving} className="grid grid-cols-3 gap-2 disabled:opacity-50">
         <IconButton label="Hit correction tools" active={panel === 'edit'} onClick={() => togglePanel('edit')}>Edit hits</IconButton>
-        <IconButton label="Tune scoring" active={panel === 'tune'} onClick={() => togglePanel('tune')}>Timing</IconButton>
+        <IconButton label="Tune scoring" active={panel === 'tune'} onClick={() => togglePanel('tune')}>Scoring</IconButton>
         <IconButton label="Loop region controls" active={panel === 'loop'} onClick={() => togglePanel('loop')}>A / B loop</IconButton>
         <IconButton label="Audio cleanup controls" active={panel === 'audio'} onClick={() => togglePanel('audio')}>Sound</IconButton>
-        <IconButton label="Toggle click overlay" active={playback.clickOverlay} onClick={() => playback.setClickOverlay(!playback.clickOverlay)}>Click {playback.clickOverlay ? 'on' : 'off'}</IconButton>
         <IconButton label="Export audio" active={panel === 'export'} onClick={() => togglePanel('export')}>Export</IconButton>
       </fieldset>
       {panel === 'tune' && <fieldset disabled={saving} className="rounded-xl border border-border-subtle bg-bg-surface p-3 space-y-4">
@@ -213,15 +220,16 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
 
       {panel === 'audio' && (
         <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-3">
+          <label className="flex items-center gap-3 text-xs text-text-secondary">Recording volume<input aria-label="Playback volume" type="range" min="0" max="100" value={Math.round(playback.playbackVolume * 100)} onChange={(event) => playback.setPlaybackVolume(Number(event.target.value) / 100)} className="min-w-0 flex-1" /></label>
           <label className="flex items-center gap-3 text-xs text-text-secondary">Click volume<input aria-label="Click volume" type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(event) => playback.setClickVolume(Number(event.target.value) / 100)} className="min-w-0 flex-1" /></label>
           <div className="flex items-center justify-between gap-3">
-            <div><p className="text-xs font-bold text-text-primary">Playback cleanup</p><p className="text-[10px] text-text-muted mt-0.5">Nondestructive. The stored recording stays unchanged.</p></div>
-            <button type="button" aria-label="Playback cleanup" aria-pressed={playback.cleanupEnabled} onClick={() => playback.setCleanupEnabled(!playback.cleanupEnabled)} className={`h-9 px-4 rounded-full text-[10px] font-bold ${playback.cleanupEnabled ? 'bg-accent text-bg-primary' : 'bg-bg-raised text-text-muted'}`}>{playback.cleanupEnabled ? 'On' : 'Off'}</button>
+            <div><p className="text-xs font-semibold text-text-primary">Playback cleanup</p><p className="text-xs text-text-muted mt-0.5">Nondestructive. The stored recording stays unchanged.</p></div>
+            <button type="button" aria-label="Playback cleanup" aria-pressed={playback.cleanupEnabled} onClick={() => playback.setCleanupEnabled(!playback.cleanupEnabled)} className={`h-9 px-4 rounded-full text-xs font-semibold ${playback.cleanupEnabled ? 'bg-accent text-bg-primary' : 'bg-bg-raised text-text-muted'}`}>{playback.cleanupEnabled ? 'On' : 'Off'}</button>
           </div>
           {playback.cleanupEnabled && <div className="grid gap-3">
-            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-[10px] text-text-muted"><span>Low cut</span><input type="range" min="20" max="800" step="10" value={playback.highPassHz} onChange={(e) => playback.setHighPassHz(Number(e.target.value))} /><span className="font-mono text-right">{playback.highPassHz}Hz</span></label>
-            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-[10px] text-text-muted"><span>High cut</span><input type="range" min="3000" max="20000" step="250" value={playback.lowPassHz} onChange={(e) => playback.setLowPassHz(Number(e.target.value))} /><span className="font-mono text-right">{(playback.lowPassHz / 1000).toFixed(1)}k</span></label>
-            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-[10px] text-text-muted"><span>Presence</span><input type="range" min="-6" max="9" step="1" value={playback.presenceBoostDb} onChange={(e) => playback.setPresenceBoostDb(Number(e.target.value))} /><span className="font-mono text-right">{playback.presenceBoostDb > 0 ? '+' : ''}{playback.presenceBoostDb}dB</span></label>
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-xs text-text-muted"><span>Low cut</span><input type="range" min="20" max="800" step="10" value={playback.highPassHz} onChange={(e) => playback.setHighPassHz(Number(e.target.value))} /><span className="font-mono text-right">{playback.highPassHz}Hz</span></label>
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-xs text-text-muted"><span>High cut</span><input type="range" min="3000" max="20000" step="250" value={playback.lowPassHz} onChange={(e) => playback.setLowPassHz(Number(e.target.value))} /><span className="font-mono text-right">{(playback.lowPassHz / 1000).toFixed(1)}k</span></label>
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-xs text-text-muted"><span>Presence</span><input type="range" min="-6" max="9" step="1" value={playback.presenceBoostDb} onChange={(e) => playback.setPresenceBoostDb(Number(e.target.value))} /><span className="font-mono text-right">{playback.presenceBoostDb > 0 ? '+' : ''}{playback.presenceBoostDb}dB</span></label>
           </div>}
         </div>
       )}
@@ -234,7 +242,7 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
             <IconButton label="Enable or disable loop" active={loopEnabled} onClick={() => setLoopEnabled((value) => !value)}>{loopEnabled ? 'On' : 'Off'}</IconButton>
             <IconButton label="Clear loop" onClick={clearLoop}>Clear</IconButton>
           </div>
-          <div className="flex justify-between text-[10px] font-mono text-text-muted"><span>A {formatTime(loopStart * session.durationMs)}</span><span>{formatTime((loopEnd - loopStart) * session.durationMs)} loop</span><span>B {formatTime(loopEnd * session.durationMs)}</span></div>
+          <div className="flex justify-between text-xs font-mono text-text-muted"><span>A {formatTime(loopStart * session.durationMs)}</span><span>{formatTime((loopEnd - loopStart) * session.durationMs)} loop</span><span>B {formatTime(loopEnd * session.durationMs)}</span></div>
         </div>
       )}
 
@@ -242,8 +250,8 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
 
       {panel === 'export' && isReady && (
         <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-2">
-          <p className="text-xs font-bold text-text-primary">Export WAV</p>
-          <p className="text-[10px] text-text-muted">Exports the full-quality stored recording. Click export uses the timing preview above. Playback speed and cleanup do not change the exported recording.</p>
+          <p className="text-xs font-semibold text-text-primary">Export WAV</p>
+          <p className="text-xs text-text-muted">Exports the full-quality stored recording. Click export uses the timing preview above. Playback speed and cleanup do not change the exported recording.</p>
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button type="button" onClick={() => playback.saveAudio(false)} disabled={playback.isSaving} className="min-h-[44px] rounded-xl bg-bg-raised border border-border-subtle text-text-secondary text-xs font-semibold disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'Raw recording'}</button>
             <button type="button" onClick={() => playback.saveAudio(true)} disabled={playback.isSaving} className="min-h-[44px] rounded-xl bg-accent text-bg-primary text-xs font-semibold disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'With click'}</button>

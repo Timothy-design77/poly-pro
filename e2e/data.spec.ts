@@ -22,7 +22,7 @@ test('full backup restores audio, settings, and corrected take data after deleti
   await page.getByRole('button', { name: 'Create Project', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: /Quick Start Practice without a project/ }).click();
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Practice', exact: true }).click();
   await page.getByRole('button', { name: /Tempo .* BPM\. Open tempo keypad/i }).click();
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Backspace', exact: true }).click();
   for (const digit of ['1', '3', '5']) await page.getByRole('dialog').getByRole('button', { name: digit, exact: true }).click();
@@ -42,11 +42,11 @@ test('full backup restores audio, settings, and corrected take data after deleti
   await expect(page.getByText('Import preview', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   await expect(page.getByText(/Imported 1 projects and 1 sessions/)).toBeVisible();
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Practice', exact: true }).click();
   await expect(page.getByRole('button', { name: /Tempo 135 BPM/ })).toBeVisible();
   const restored = await readTake(page);
   expect(restored).toMatchObject({ totalScored: 20, hasRecording: true, score: 100 });
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Start playback', exact: true })).toBeEnabled();

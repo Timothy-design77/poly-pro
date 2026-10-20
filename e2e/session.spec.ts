@@ -15,7 +15,7 @@ test('saved corrections refresh every tab and survive reopening', async ({ page 
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(page.getByText('18 detected hits', { exact: true })).toBeVisible();
   await page.reload();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
   await expect(page.getByRole('tabpanel').getByText('92%', { exact: true })).toBeVisible();
 });
@@ -23,8 +23,8 @@ test('saved corrections refresh every tab and survive reopening', async ({ page 
 
 test('tuning applies durably to the saved take', async ({ page }) => {
   await seedSession(page);
-  await page.getByRole('button', { name: 'Tune scoring', exact: true }).click();
-  await page.getByRole('slider', { name: 'Latency Offset' }).focus();
+  await page.getByRole('button', { name: 'Sync click', exact: true }).click();
+  await page.getByRole('slider', { name: 'Click offset' }).focus();
   await page.keyboard.press('End');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page.getByText('Changes saved', { exact: true })).toBeVisible();
@@ -36,6 +36,7 @@ test('tuning applies durably to the saved take', async ({ page }) => {
   expect(saved.analysisConfig.sampleRate).toBe(48000);
   expect(saved.analysisConfig.latencyOffsetMs).toBe(600);
   expect(saved.score).toBeLessThan(100);
+  await page.getByRole('button', { name: 'Tune scoring' }).click();
   await page.getByRole('button', { name: 'Re-detect from audio' }).click();
   await expect(page.getByRole('alertdialog', { name: 'Replace saved corrections' })).toBeVisible();
   await page.getByRole('button', { name: 'Keep saved analysis' }).click();
@@ -54,7 +55,7 @@ test('analyzes saved audio after an interrupted analysis', async ({ page }) => {
     await new Promise<void>((resolve) => { tx.oncomplete = () => { db.close(); resolve(); }; });
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
   await page.getByRole('button', { name: 'Analyze saved recording' }).click();
   await expect(page.getByText('Fewer than 8 matched hits.', { exact: false })).toBeVisible({ timeout: 30000 });
@@ -79,7 +80,8 @@ test('playback changes the real audio rate, loops natively, and exports WAV', as
   await expect(page.getByRole('button', { name: 'Pause playback' })).toBeVisible();
   await page.getByRole('button', { name: 'Playback speed 1×', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).audioStarts.at(-1)?.rate)).toBe(1.5);
-  await page.getByRole('button', { name: 'Toggle loop', exact: true }).click();
+  await page.getByRole('button', { name: 'Loop region controls', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable or disable loop', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).audioStarts.at(-1)?.loop)).toBe(true);
   await page.getByRole('button', { name: 'Pause playback' }).click();
   await page.getByRole('button', { name: 'Start playback', exact: true }).click();
@@ -104,7 +106,7 @@ test('take comparison uses a common scoring window without changing saved scores
     await new Promise<void>((resolve) => { tx.oncomplete = () => resolve(); }); db.close();
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   const comparison = page.getByRole('region', { name: 'Compare takes' });
   await expect(comparison.getByRole('row', { name: 'Score 100% 100% 0.0 pts' })).toBeVisible();
   await comparison.getByLabel('Comparison take', { exact: true }).selectOption('second-take');

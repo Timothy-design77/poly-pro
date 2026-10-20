@@ -22,7 +22,7 @@ function TrackSoundPicker({
 
   return (
     <div>
-      <label className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 block">{label}</label>
+      <label className="text-xs text-text-muted  mb-0.5 block">{label}</label>
       <button
         type="button"
         aria-label={`${label}: ${getSoundName(currentSound)}`}
@@ -88,7 +88,7 @@ export function PolyrhythmControl() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-sm text-text-secondary">Main track:</span>
-          <span className="font-mono text-base text-text-primary font-bold">{meterNumerator} beats</span>
+          <span className="font-mono text-base text-text-primary font-semibold">{meterNumerator} beats</span>
         </div>
         {extraTracks.length > 0 && (
           <span className="font-mono text-xs text-text-muted">
@@ -113,7 +113,7 @@ export function PolyrhythmControl() {
                 aria-expanded={isExpanded}
               >
                 <span className="text-sm text-text-secondary">Track {index + 2}</span>
-                <span className="font-mono text-sm text-text-primary font-bold">{track.beats}</span>
+                <span className="font-mono text-sm text-text-primary font-semibold">{track.beats}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
                   className={`text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
@@ -126,7 +126,7 @@ export function PolyrhythmControl() {
                 aria-label={`Mute track ${index + 2}`}
                 aria-pressed={track.muted}
                 onClick={() => setTrackMuted(track.id, !track.muted)}
-                className={`h-[40px] px-3 rounded-lg text-[10px] font-bold touch-manipulation border
+                className={`h-[40px] px-3 rounded-lg text-xs font-semibold touch-manipulation border
                   ${track.muted
                     ? 'text-danger bg-danger-dim border-danger/20'
                     : 'text-text-primary bg-bg-raised border-border-subtle'}`}
@@ -166,8 +166,8 @@ export function PolyrhythmControl() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-[9px] text-text-muted uppercase tracking-wider">Swing</label>
-                    <span className="font-mono text-[10px] text-text-muted">
+                    <label className="text-xs text-text-muted ">Swing</label>
+                    <span className="font-mono text-xs text-text-muted">
                       {track.swing === 0 ? 'Straight' : `${Math.round(track.swing * 100)}%`}
                     </span>
                   </div>
@@ -185,7 +185,7 @@ export function PolyrhythmControl() {
                   />
                 </div>
 
-                <div className="text-[10px] text-text-muted">
+                <div className="text-xs text-text-muted">
                   {getSoundName(track.normalSound)} · accent: {getSoundName(track.accentSound)}
                 </div>
               </div>
@@ -201,21 +201,21 @@ export function PolyrhythmControl() {
               type="button"
               aria-label="Decrease new track beats"
               onClick={() => setNewBeats(Math.max(2, newBeats - 1))}
-              className="w-[44px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-bold"
+              className="w-[44px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-semibold"
             >−</button>
-            <span className="w-[40px] text-center font-mono text-base text-text-primary font-bold">{newBeats}</span>
+            <span className="w-[40px] text-center font-mono text-base text-text-primary font-semibold">{newBeats}</span>
             <button
               type="button"
               aria-label="Increase new track beats"
               onClick={() => setNewBeats(Math.min(16, newBeats + 1))}
-              className="w-[44px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-bold"
+              className="w-[44px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-semibold"
             >+</button>
           </div>
           <button
             type="button"
             onClick={() => addTrack(newBeats)}
             className="flex-1 h-[44px] rounded-xl border-2 border-dashed border-border-emphasis
-                       text-sm font-bold text-text-secondary active:bg-bg-raised
+                       text-sm font-semibold text-text-secondary active:bg-bg-raised
                        flex items-center justify-center gap-2 touch-manipulation"
           >
             + Add Track

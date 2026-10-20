@@ -84,20 +84,20 @@ export function SoundPickerSheet({
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-border-subtle shrink-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-bold text-text-primary">{beatLabel} Sound</span>
+            <span className="text-sm font-semibold text-text-primary">{beatLabel} Sound</span>
             <button
               onClick={onClose}
-              className="text-xs text-text-muted font-bold px-2 py-1 rounded active:bg-bg-raised"
+              className="text-xs text-text-muted font-semibold px-2 py-1 rounded active:bg-bg-raised"
             >
               Done
             </button>
           </div>
           {hasOverride ? (
-            <div className="text-[11px] text-text-muted">
+            <div className="text-xs text-text-muted">
               Custom override · Default: {inheritedName}
             </div>
           ) : (
-            <div className="text-[11px] text-text-muted">
+            <div className="text-xs text-text-muted">
               Using track default: {inheritedName}
             </div>
           )}
@@ -126,7 +126,7 @@ export function SoundPickerSheet({
             const sounds = SOUND_CATALOG.filter((s) => s.category === cat);
             return (
               <div key={cat}>
-                <div className="text-[10px] text-text-muted uppercase tracking-wider px-3 pt-3 pb-1">
+                <div className="text-xs text-text-muted  px-3 pt-3 pb-1">
                   {categoryLabels[cat]}
                 </div>
                 <div className="grid grid-cols-1 gap-1">

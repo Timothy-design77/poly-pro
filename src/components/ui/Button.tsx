@@ -13,9 +13,9 @@ const variantStyles = {
 };
 
 const sizeStyles = {
-  sm: 'h-[40px] text-xs px-3 rounded-lg',
+  sm: 'h-[44px] text-sm px-3 rounded-xl',
   md: 'h-[48px] text-sm px-4 rounded-xl',
-  lg: 'h-[54px] text-sm px-5 rounded-[14px]',
+  lg: 'h-[56px] text-sm px-5 rounded-xl',
 };
 
 export function Button({
@@ -30,7 +30,7 @@ export function Button({
     <button
       type={type}
       className={`
-        flex items-center justify-center gap-2 font-bold tracking-wider
+        flex items-center justify-center gap-2 font-semibold
         transition-all touch-manipulation select-none
         active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none
         ${variantStyles[variant]}

@@ -58,7 +58,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
 
       // Y axis labels
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText('loud', pad.left - 4, pad.top + 8);
       ctx.fillText('soft', pad.left - 4, pad.top + plotH - 2);
@@ -107,7 +107,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
         // Label
         const label = slope < -0.001 ? 'fading' : slope > 0.001 ? 'building' : 'stable';
         ctx.fillStyle = '#8B8B94';
-        ctx.font = '9px "DM Sans", sans-serif';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText(label, w - pad.right, y2 - 6);
       }
@@ -118,7 +118,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
       ctx.arc(pad.left + 8, h - 8, 3, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('accent', pad.left + 15, h - 5);
 

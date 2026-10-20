@@ -294,7 +294,7 @@ function RecordingView({
           />
         </svg>
         <div className="text-center">
-          <div className="text-text-primary text-3xl font-mono font-bold">{hitCount}</div>
+          <div className="text-text-primary text-3xl font-mono font-semibold">{hitCount}</div>
           <div className="text-text-muted text-xs">/ {minHits} min</div>
         </div>
       </div>
@@ -359,7 +359,7 @@ function DoneView({
       <div className="bg-bg-surface border border-border-subtle rounded-md p-4 w-full max-w-xs text-center">
         <div className="text-text-muted text-xs mb-1">Training validation</div>
         <div
-          className={`text-3xl font-mono font-bold ${
+          className={`text-3xl font-mono font-semibold ${
             accPct >= 80 ? 'text-success' : accPct >= 60 ? 'text-warning' : 'text-danger'
           }`}
         >

@@ -10,7 +10,7 @@ async function audit(page: Page) {
 test('primary practice and library screens meet automated accessibility checks', async ({ page }) => {
   await page.goto('./');
   await audit(page);
-  for (const name of ['Projects', 'Progress', 'Settings']) {
+  for (const name of ['Projects', 'Recordings', 'Settings']) {
     await page.getByRole('button', { name, exact: true }).click();
     await audit(page);
   }
@@ -24,8 +24,8 @@ test('review, editing, tuning and charts meet automated accessibility checks', a
   await page.getByRole('button', { name: 'Hit correction tools' }).click();
   await page.getByText('Playhead 0ms', { exact: true }).scrollIntoViewIfNeeded();
   await audit(page);
-  await page.getByRole('button', { name: 'Tune scoring' }).click();
-  await page.getByRole('slider', { name: 'Latency Offset' }).scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Sync click' }).click();
+  await page.getByRole('slider', { name: 'Click offset' }).scrollIntoViewIfNeeded();
   await audit(page);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('timing.png') });
   await page.getByRole('tab', { name: 'Charts', exact: true }).click();
@@ -48,6 +48,7 @@ test('review fits narrow and high-density unfolded screens and keeps playback re
   expect(await page.getByRole('tabpanel').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('review-320.png') });
   await page.setViewportSize({ width: 884, height: 1104 });
+  await page.getByText(/^Waveform view/).click();
   await page.getByRole('button', { name: '32×', exact: true }).click();
   expect(await page.getByRole('img', { name: 'Recording waveform and detected hits' }).evaluate((canvas) => (canvas as HTMLCanvasElement).width)).toBeLessThanOrEqual(16384);
   expect(await page.getByRole('tabpanel').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);

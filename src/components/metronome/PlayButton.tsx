@@ -37,7 +37,7 @@ export function PlayButton({ disabled = false }: { disabled?: boolean }) {
       onPointerDown={handlePointerDown}
       onClick={handleClick}
       className={`
-        w-full aspect-[4/1] rounded-[20px] text-base font-extrabold tracking-[0.14em]
+        w-full min-h-[56px] rounded-xl text-base font-semibold
         flex items-center justify-center gap-3
         touch-manipulation select-none disabled:opacity-50 border-[1.5px]
         ${playing
@@ -56,7 +56,7 @@ export function PlayButton({ disabled = false }: { disabled?: boolean }) {
           <polygon points="5 3 19 12 5 21" />
         </svg>
       )}
-      {playing ? 'STOP' : 'START'}
+      {playing ? 'Stop' : 'Start'}
     </button>
   );
 }

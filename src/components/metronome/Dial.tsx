@@ -136,7 +136,7 @@ export function Dial({ size, onTapBpm }: DialProps) {
     if (playing && currentBar > 0) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font = `600 ${Math.round(size * 0.038)}px "JetBrains Mono", monospace`;
+      ctx.font = `600 ${Math.round(size * 0.038)}px "DM Sans", sans-serif`;
       ctx.fillStyle = 'rgba(21,23,26,0.52)';
       ctx.fillText(`Bar ${currentBar}`, cx, cy - size * 0.16);
     }
@@ -144,7 +144,7 @@ export function Dial({ size, onTapBpm }: DialProps) {
     const bpmFontSize = Math.round(size * 0.22);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `800 ${bpmFontSize}px "JetBrains Mono", monospace`;
+    ctx.font = `600 ${bpmFontSize}px "DM Sans", sans-serif`;
     ctx.fillStyle = '#15171A';
     const bpmText = bpm % 1 === 0 ? String(bpm) : bpm.toFixed(1);
     ctx.fillText(bpmText, cx, cy - size * 0.02);
@@ -155,13 +155,13 @@ export function Dial({ size, onTapBpm }: DialProps) {
 
     const subLabel = subLabels[subdivision] || '';
     const meterText = `${meterNumerator}/${meterDenominator}${subLabel ? '  ·  ' + subLabel : ''}`;
-    ctx.font = `600 ${Math.round(size * 0.038)}px "JetBrains Mono", monospace`;
+    ctx.font = `600 ${Math.round(size * 0.038)}px "DM Sans", sans-serif`;
     ctx.fillStyle = 'rgba(21,23,26,0.48)';
     ctx.fillText(meterText, cx, cy + size * 0.15);
 
     if (tracks.length > 1) {
       const ratioText = tracks.map((track) => track.beats).join(':');
-      ctx.font = `700 ${Math.round(size * 0.035)}px "JetBrains Mono", monospace`;
+      ctx.font = `700 ${Math.round(size * 0.035)}px "DM Sans", sans-serif`;
       ctx.fillStyle = 'rgba(21,23,26,0.58)';
       ctx.fillText(ratioText, cx, cy + size * 0.22);
     }

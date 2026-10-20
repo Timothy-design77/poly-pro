@@ -100,7 +100,7 @@ export function renderTimeline({
         const measureNum = beat.measure + 1;
         const beatInMeasure = Math.floor(beat.beatIndex / sub) + 1;
         ctx.fillStyle = 'rgba(21,23,26,0.3)';
-        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(`${measureNum}:${beatInMeasure}`, x, 12);
       }
@@ -202,7 +202,7 @@ export function renderTimeline({
       // Deviation label at zoom ≥ 4×
       if (zoom >= 4 && onset.scored) {
         ctx.fillStyle = 'rgba(21,23,26,0.5)';
-        ctx.font = zoom >= 8 ? '10px "JetBrains Mono", monospace' : '8px "JetBrains Mono", monospace';
+        ctx.font = zoom >= 8 ? '11px "DM Sans", sans-serif' : '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         const label = `${onset.delta > 0 ? '+' : ''}${onset.delta.toFixed(1)}`;
         ctx.fillText(label, x, CANVAS_HEIGHT - 4);

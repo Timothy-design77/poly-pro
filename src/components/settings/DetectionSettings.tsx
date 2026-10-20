@@ -59,7 +59,7 @@ export function DetectionSettings() {
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-[10px] text-text-muted font-medium uppercase tracking-wider flex items-center gap-1 mb-1.5">
+        <label className="text-xs text-text-muted font-medium  flex items-center gap-1 mb-1.5">
           Detection Preset
           <HelpTip text="Presets configure the detection controls at once. Adjusting a control individually switches to Custom." />
         </label>
@@ -84,7 +84,7 @@ export function DetectionSettings() {
           )}
         </div>
         {detectionPreset !== 'Custom' && (
-          <p className="text-[10px] text-text-muted mt-1.5">
+          <p className="text-xs text-text-muted mt-1.5">
             {DETECTION_PRESETS.find((preset) => preset.name === detectionPreset)?.description}
           </p>
         )}
@@ -102,7 +102,7 @@ export function DetectionSettings() {
         format={(value) => value === 0 ? 'Off' : `${value} Hz`} onChange={setHighPassHz} />
 
       <div className="border-t border-border-subtle pt-3 mt-1 space-y-3">
-        <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">Onset Detection</p>
+        <p className="text-xs text-text-muted font-medium ">Onset Detection</p>
         <SliderRow label="Noise Floor ×" value={noiseFloorMult} min={1} max={50} step={1}
           format={(value) => `${value}×`} onChange={setNoiseFloorMult} />
         <SliderRow label="Min Onset Gap" value={minOnsetInterval} min={5} max={300} step={1}

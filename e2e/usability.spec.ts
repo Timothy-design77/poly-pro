@@ -11,8 +11,8 @@ test('practice surfaces fit phone widths and expose usable focus navigation', as
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Start playback', exact: true })).toBeEnabled();
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('playback.png') });
-  await page.getByRole('button', { name: 'Tune scoring', exact: true }).click();
-  await expect(page.getByRole('slider', { name: 'Latency Offset' })).toBeVisible();
+  await page.getByRole('button', { name: 'Sync click', exact: true }).click();
+  await expect(page.getByRole('slider', { name: 'Click offset' })).toBeVisible();
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('tune.png') });
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -30,6 +30,7 @@ test('practice surfaces fit phone widths and expose usable focus navigation', as
 test('custom click recording is bounded, saves and can be selected', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Sounds', exact: true }).click();
   await page.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Sample name' })).toBeVisible({ timeout: 12000 });
   await page.getByRole('textbox', { name: 'Sample name' }).fill('Practice click');
@@ -38,9 +39,10 @@ test('custom click recording is bounded, saves and can be selected', async ({ pa
   await page.getByRole('button', { name: 'Woodblock', exact: true }).first().click();
   await page.getByRole('button', { name: /Practice click.*ms/ }).click();
   await expect(page.getByRole('button', { name: 'Practice click', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Practice', exact: true }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Sounds', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Practice click', exact: true })).toBeVisible();
 });
 

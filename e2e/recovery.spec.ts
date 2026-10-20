@@ -14,7 +14,7 @@ test('microphone disconnection stops capture and saves the partial take', async 
   await page.evaluate(() => (window as any).lastMic.getAudioTracks()[0].dispatchEvent(new Event('ended')));
   await expect(page.getByRole('alert')).toContainText('microphone was disconnected');
   await expect(page.getByRole('button', { name: 'Start recording' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await expect(page.getByText('Needs analysis', { exact: true })).toBeVisible();
 });
 
@@ -31,7 +31,7 @@ test('storage failure stops recording and recovers previously saved chunks', asy
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Storage could not keep up', { timeout: 15000 });
   await expect(page.getByRole('button', { name: 'Start recording' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await expect(page.getByText('Needs analysis', { exact: true })).toBeVisible();
 });
 

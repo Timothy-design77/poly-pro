@@ -89,7 +89,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
           ctx.stroke();
 
           ctx.fillStyle = '#4A4A52';
-          ctx.font = '10px "JetBrains Mono", monospace';
+          ctx.font = '11px "DM Sans", sans-serif';
           ctx.textAlign = 'right';
           ctx.fillText(v.toFixed(1), pad.left - 4, y + 3);
         }
@@ -106,7 +106,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
 
       // Label "straight"
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('straight', pad.left + 2, y1 - 4);
 
@@ -124,7 +124,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
 
       // Label average
       ctx.fillStyle = 'rgba(21,23,26,0.7)';
-      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(`avg ${avgRatio.toFixed(2)}`, w - pad.right, yAvg - 4);
 
@@ -168,7 +168,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
 
       // X axis label
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '10px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Beat pair →', w / 2, h - 3);
     },

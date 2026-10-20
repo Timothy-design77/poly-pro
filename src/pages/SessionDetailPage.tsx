@@ -4,6 +4,7 @@ import type { SessionRecord, HitEventsRecord } from '../store/db';
 import * as db from '../store/db';
 import { useSessionStore } from '../store/session-store';
 import { ScoreTab } from '../components/session/ScoreTab';
+import { ClickSyncControls } from '../components/session/ClickSyncControls';
 import { ScoringControls } from '../components/session/ScoringControls';
 import { TimelineTab } from '../components/session/TimelineTab';
 import { ChartsTab } from '../components/session/ChartsTab';
@@ -91,7 +92,7 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
     className="fixed inset-0 z-50 flex flex-col bg-bg-primary outline-none">
     <header className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border-subtle bg-bg-surface shrink-0">
       <button onClick={requestClose} disabled={busy} className="min-h-[44px] text-sm font-semibold disabled:opacity-50">← Back</button>
-      <div className="text-center"><h1 className="text-sm font-bold text-text-primary">Review take</h1><p className="text-xs text-text-muted">{new Date(session.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p></div>
+      <div className="text-center"><h1 className="text-sm font-semibold text-text-primary">Review take</h1><p className="text-xs text-text-muted">{new Date(session.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p></div>
       <button aria-label="Delete session" disabled={busy} onClick={() => setConfirmDelete(true)} className="min-h-[44px] min-w-[44px] text-danger disabled:opacity-50">Delete</button>
     </header>
     <div role="tablist" aria-label="Session detail views" className="grid grid-cols-2 gap-2 px-4 py-2 shrink-0">
@@ -100,21 +101,24 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
           if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault(); const next = event.key === 'Home' ? 'review' : event.key === 'End' ? 'charts' : activeTab === 'review' ? 'charts' : 'review';
           setActiveTab(next); document.getElementById(`${tabsId}-${next}`)?.focus();
-        }} className={`min-h-[44px] rounded-xl border text-sm font-bold ${activeTab === tab ? 'bg-accent text-white border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>{tab === 'review' ? 'Review' : 'Charts'}</button>)}
+        }} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${activeTab === tab ? 'bg-accent text-white border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>{tab === 'review' ? 'Review' : 'Charts'}</button>)}
     </div>
     <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pb-5">
       {error && <p role="alert" className="text-sm text-danger py-3">{error}</p>}
       <section role="tabpanel" id={`${tabsId}-review-panel`} aria-labelledby={`${tabsId}-review`} hidden={activeTab !== 'review'} className="space-y-3 max-w-4xl mx-auto">
         {take.analyzed && <div className="rounded-xl border border-border-subtle bg-bg-surface p-3">
           <div className="flex justify-between items-center gap-3">
-            <div><p className="text-xs text-text-muted">{draft.dirty ? 'Unsaved preview' : 'Saved on this device'}</p><p className="text-3xl font-bold font-mono text-text-primary">{reliable ? `${Math.round(take.score ?? 0)}%` : 'Insufficient hits'}</p></div>
+            <div><p className="text-xs text-text-muted">{draft.dirty ? 'Preview score' : 'Score'}</p><p className="text-3xl font-semibold font-mono text-text-primary">{reliable ? `${Math.round(take.score ?? 0)}%` : 'Insufficient hits'}</p></div>
             <div className="text-right text-xs text-text-secondary"><p>{take.totalScored ?? take.totalHits}/{take.totalExpected ?? 0} matched beats</p><p>Timing spread {take.sigma?.toFixed(1) ?? '—'} ms</p></div>
           </div>
           {!reliable && <p role="status" className="text-xs text-text-secondary mt-2">Fewer than 8 matched hits. Check detection below or record a longer take for useful timing feedback.</p>}
           {take.analysisNotice && <p role="status" className="text-xs text-text-secondary mt-2">{take.analysisNotice}</p>}
         </div>}
         {!session.analyzed && analysisControls}
-        {!session.hasRecording && draft.hitEvents && session.analyzed && <ScoringControls bpm={take.bpm} subdivision={take.subdivision} config={draft.config} onChange={draft.updateConfig} />}
+        {!session.hasRecording && draft.hitEvents && session.analyzed && <>
+          <ClickSyncControls session={take} hitEvents={draft.hitEvents} offsetMs={draft.config.latencyOffsetMs} onChange={(latencyOffsetMs) => draft.updateConfig({ latencyOffsetMs })} />
+          <ScoringControls bpm={take.bpm} subdivision={take.subdivision} config={draft.config} onChange={draft.updateConfig} />
+        </>}
         {loading ? <p role="status" className="text-sm py-6">Loading analysis…</p> : <TimelineTab session={take} hitEvents={draft.hitEvents} editableEvents={draft.editableEvents} config={draft.config}
           active={activeTab === 'review' && !analysis.isAnalyzing && !confirmClose && !confirmDelete && !confirmRedetect} saving={draft.saving}
           onConfigChange={draft.updateConfig} onEventsChange={draft.updateEvents} redetectControls={analysisControls} />}
@@ -154,5 +158,5 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
 function ReviewConfirmation({ label, children, onCancel, cancelLabel = 'Keep reviewing', cancelDisabled = false }: { label: string; children: React.ReactNode; onCancel: () => void; cancelLabel?: string; cancelDisabled?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useDialogFocus(ref, true, onCancel);
-  return <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"><div ref={ref} role="alertdialog" aria-modal="true" aria-label={label} tabIndex={-1} className="w-full max-w-md bg-bg-surface p-5 rounded-2xl space-y-3 outline-none text-text-primary"><h2 className="font-bold">{label}</h2>{children}<button onClick={onCancel} disabled={cancelDisabled} className="min-h-[44px] w-full rounded-lg border border-border-subtle disabled:opacity-50">{cancelLabel}</button></div></div>;
+  return <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"><div ref={ref} role="alertdialog" aria-modal="true" aria-label={label} tabIndex={-1} className="w-full max-w-md bg-bg-surface p-5 rounded-2xl space-y-3 outline-none text-text-primary"><h2 className="font-semibold">{label}</h2>{children}<button onClick={onCancel} disabled={cancelDisabled} className="min-h-[44px] w-full rounded-lg border border-border-subtle disabled:opacity-50">{cancelLabel}</button></div></div>;
 }

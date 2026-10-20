@@ -93,10 +93,10 @@ export function ProjectCreateSheet({
       >
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-border-subtle shrink-0 flex items-center justify-between">
-          <span className="text-base font-bold text-text-primary">
+          <span className="text-base font-semibold text-text-primary">
             {isEdit ? 'Edit Project' : 'New Project'}
           </span>
-          <button onClick={onClose} className="text-xs text-text-muted font-bold px-2 py-1 rounded active:bg-bg-raised">
+          <button onClick={onClose} className="text-xs text-text-muted font-semibold px-2 py-1 rounded active:bg-bg-raised">
             Cancel
           </button>
         </div>
@@ -111,7 +111,7 @@ export function ProjectCreateSheet({
               <p className="text-sm font-semibold text-text-primary truncate">
                 {name || 'Project Name'}
               </p>
-              <p className="text-[11px] font-mono text-text-secondary mt-0.5">
+              <p className="text-xs font-mono text-text-secondary mt-0.5">
                 {startBpm} → {goalBpm} BPM
               </p>
             </div>
@@ -119,7 +119,7 @@ export function ProjectCreateSheet({
 
           {/* Emoji picker */}
           <div>
-            <label className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5 block">Icon</label>
+            <label className="text-xs text-text-muted  mb-1.5 block">Icon</label>
             <button
               onClick={() => setShowEmojiGrid(!showEmojiGrid)}
               className="w-[56px] h-[56px] rounded-xl bg-bg-primary border border-border-subtle
@@ -146,7 +146,7 @@ export function ProjectCreateSheet({
 
           {/* Name */}
           <div>
-            <label className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5 block">Name</label>
+            <label className="text-xs text-text-muted  mb-1.5 block">Name</label>
             <input
               aria-label="Project name" ref={nameRef}
               type="text"
@@ -163,7 +163,7 @@ export function ProjectCreateSheet({
           {/* BPM range */}
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5 block">Start BPM</label>
+              <label className="text-xs text-text-muted  mb-1.5 block">Start BPM</label>
               <input
                 type="number"
                 aria-label="Start BPM" min={10} max={400} step={0.5}
@@ -181,7 +181,7 @@ export function ProjectCreateSheet({
               <polyline points="12 5 19 12 12 19" />
             </svg>
             <div className="flex-1">
-              <label className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5 block">Goal BPM</label>
+              <label className="text-xs text-text-muted  mb-1.5 block">Goal BPM</label>
               <input
                 type="number"
                 aria-label="Goal BPM" min={10} max={400} step={0.5}
@@ -211,7 +211,7 @@ export function ProjectCreateSheet({
           <button
             onClick={handleSubmit}
             disabled={!isValid || saving}
-            className={`w-full h-[50px] rounded-xl text-sm font-bold touch-manipulation
+            className={`w-full h-[50px] rounded-xl text-sm font-semibold touch-manipulation
               ${isValid
                 ? 'bg-[rgba(21,23,26,0.85)] text-bg-primary active:bg-[rgba(21,23,26,0.95)]'
                 : 'bg-bg-raised text-text-muted cursor-not-allowed'
@@ -222,7 +222,7 @@ export function ProjectCreateSheet({
           {isEdit && onDelete && (
             <button
               onClick={onDelete}
-              className="w-full h-[44px] rounded-xl text-sm font-bold touch-manipulation
+              className="w-full h-[44px] rounded-xl text-sm font-semibold touch-manipulation
                          text-danger border border-danger/20 active:bg-danger-dim"
             >
               Delete Project

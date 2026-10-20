@@ -9,6 +9,7 @@ import { useProjectStore } from './store/project-store';
 import { useSessionStore } from './store/session-store';
 import { useInstrumentStore } from './store/instrument-store';
 import { hydrateStores, startPersistence } from './store/persistence';
+import { audioEngine } from './audio';
 import * as db from './store/db';
 
 export function App() {
@@ -35,6 +36,7 @@ export function App() {
         setRecoveredCount(recovered);
         startPersistence();
         setReady(true);
+        void audioEngine.prepare().catch((error) => console.warn('Sound preparation failed:', error));
         navigator.storage?.persist?.().catch(() => {});
         delayedRecoveryTimer = window.setTimeout(async () => {
           try {
@@ -77,13 +79,13 @@ export function App() {
           <span className="w-2.5 h-2.5 rounded-full bg-[rgba(21,23,26,0.85)] animate-splash-pulse" />
           <span className="text-lg font-bold tracking-wide text-text-primary">Poly Pro</span>
         </div>
-        <span className="text-[11px] text-text-muted tracking-wider uppercase">Loading your setup</span>
+        <span className="text-xs text-text-muted">Loading your setup</span>
       </div>
     );
   }
 
   return (
-    <div className="h-full animate-app-enter">
+    <div className="h-full">
       <UpdateBanner />
       {recoveredCount > 0 && (
         <div className="fixed top-0 left-0 right-0 z-[9998] bg-warning/95 px-4 py-2 text-center" role="status">
@@ -91,9 +93,9 @@ export function App() {
         </div>
       )}
       <SwipeNavigation
-        pages={[<ProjectsPage />, <HomePage />, <ProgressPage />]}
-        pageLabels={['Projects', 'Home', 'Progress']}
-        initialPage={1}
+        pages={[<HomePage />, <ProgressPage />, <ProjectsPage />]}
+        pageLabels={['Practice', 'Recordings', 'Projects']}
+        initialPage={0}
         settingsContent={<Suspense fallback={<p role="status" className="p-4 text-sm text-text-secondary">Loading settings…</p>}><SettingsContent /></Suspense>}
       />
     </div>

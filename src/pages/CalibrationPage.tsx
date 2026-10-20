@@ -107,7 +107,7 @@ function SetupStep({ onStart }: { onStart: () => void }) {
 
       <button
         onClick={onStart}
-        className="w-full h-[48px] rounded-xl font-bold text-sm tracking-wide
+        className="w-full h-[48px] rounded-xl font-semibold text-sm tracking-wide
                    touch-manipulation select-none
                    bg-[rgba(21,23,26,0.85)] text-white
                    active:bg-[rgba(21,23,26,0.95)]"
@@ -214,7 +214,7 @@ function ResultsStep({
       <div className="bg-bg-surface rounded-xl border border-border-subtle p-4 mb-4">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs text-text-muted">System Latency</span>
-          <span className="text-base font-mono font-bold text-text-primary">{offsetMs.toFixed(1)}ms</span>
+          <span className="text-base font-mono font-semibold text-text-primary">{offsetMs.toFixed(1)}ms</span>
         </div>
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs text-text-muted">Consistency</span>
@@ -240,7 +240,7 @@ function ResultsStep({
 
       <button
         onClick={onAccept}
-        className="w-full h-[48px] rounded-xl font-bold text-sm tracking-wide mb-2
+        className="w-full h-[48px] rounded-xl font-semibold text-sm tracking-wide mb-2
                    touch-manipulation select-none
                    bg-[rgba(21,23,26,0.85)] text-white
                    active:bg-[rgba(21,23,26,0.95)]"
@@ -295,7 +295,7 @@ function FailedStep({
 
       <button
         onClick={onRetry}
-        className="w-full h-[48px] rounded-xl font-bold text-sm tracking-wide mb-2
+        className="w-full h-[48px] rounded-xl font-semibold text-sm tracking-wide mb-2
                    touch-manipulation select-none
                    bg-[rgba(21,23,26,0.85)] text-white
                    active:bg-[rgba(21,23,26,0.95)]"

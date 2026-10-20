@@ -16,17 +16,17 @@ test('advanced practice controls expose names, selections and usable narrow layo
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('./');
-  for (const name of ['Fine Tempo', 'Meter & Subdivision', 'Pattern', 'Practice Modes', 'Trainer', 'Polyrhythm']) {
+  for (const name of ['Fine tempo', 'Meter & subdivision', 'Pattern', 'Practice modes', 'Trainer', 'Polyrhythm']) {
     const section = page.getByRole('button', { name: new RegExp(`^${name}`) });
     await section.click();
-    if (name === 'Meter & Subdivision') {
+    if (name === 'Meter & subdivision') {
       await page.getByRole('button', { name: 'Next beats per measure' }).click();
       await expect(page.getByRole('button', { name: 'Time signature 5/4. Change beat unit' })).toBeVisible();
       const eighths = page.getByRole('button', { name: '8ths', exact: true });
       await eighths.click();
       await expect(eighths).toHaveAttribute('aria-pressed', 'true');
     }
-    if (name === 'Practice Modes') {
+    if (name === 'Practice modes') {
       for (const label of ['Play / Mute Cycle', 'Gap Click', 'Random Mute']) await page.getByRole('switch', { name: label, exact: true }).click();
       await page.getByRole('slider', { name: 'Gap click mute probability' }).press('Home');
       await expect(page.getByRole('slider', { name: 'Gap click mute probability' })).toHaveValue('5');
@@ -68,7 +68,7 @@ test('advanced practice controls expose names, selections and usable narrow layo
 
 test('fine tempo responds to keyboard and ends held adjustment when its panel closes', async ({ page }) => {
   await page.goto('./');
-  const section = page.getByRole('button', { name: /^Fine Tempo/ });
+  const section = page.getByRole('button', { name: /^Fine tempo/ });
   await section.click();
   const increase = page.getByRole('button', { name: 'Increase tempo', exact: true });
   const decrease = page.getByRole('button', { name: 'Decrease tempo', exact: true });
@@ -96,8 +96,7 @@ test('expanded settings remain accessible and vibration controls survive reload'
   test.setTimeout(90_000);
   await page.goto('./');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Sounds', exact: true }).click();
-  for (const name of ['Recording', 'Detection', 'Vibration', 'Calibration', 'Instruments', 'Data', 'Cloud Enhancement']) {
+  for (const name of ['Sounds', 'Recording', 'Detection', 'Vibration', 'Calibration', 'Instruments', 'Data']) {
     const section = page.getByRole('button', { name, exact: true });
     await section.click();
     await section.scrollIntoViewIfNeeded();
@@ -162,7 +161,7 @@ test('cancelled slider gestures preserve values and exact entry keeps keyboard f
 
 test('help and exact-value Escape close the local control before the review dialog', async ({ page }, testInfo) => {
   await seedSession(page);
-  await page.getByRole('button', { name: 'Tune scoring', exact: true }).click();
+  await page.getByRole('button', { name: 'Sync click', exact: true }).click();
   const review = page.getByRole('dialog', { name: 'Review take', exact: true });
   const help = review.getByRole('button', { name: 'Help', exact: true }).first();
   await help.click();
@@ -171,13 +170,13 @@ test('help and exact-value Escape close the local control before the review dial
   await help.press('Escape');
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(review).toBeVisible();
-  const edit = page.getByRole('button', { name: 'Edit Latency Offset', exact: true });
+  const edit = page.getByRole('button', { name: 'Edit Click offset', exact: true });
   await edit.click();
-  const input = page.getByRole('spinbutton', { name: 'Latency Offset' });
+  const input = page.getByRole('spinbutton', { name: 'Click offset' });
   await input.fill('150');
   await input.press('Escape');
   await expect(edit).toBeFocused();
-  await expect(page.getByRole('slider', { name: 'Latency Offset' })).toHaveAttribute('aria-valuenow', '0');
+  await expect(page.getByRole('slider', { name: 'Click offset' })).toHaveAttribute('aria-valuenow', '0');
   await expect(review).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(review).toHaveCount(0);

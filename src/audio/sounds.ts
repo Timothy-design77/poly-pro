@@ -23,6 +23,7 @@ export const SOUND_CATALOG: SoundEntry[] = [
 
 /** Map of sound ID → loaded AudioBuffer */
 const bufferCache = new Map<string, AudioBuffer>();
+const pendingLoads = new Map<string, Promise<AudioBuffer | null>>();
 
 /** Count-in sound files (not shown in user picker) */
 const COUNT_SOUNDS = [
@@ -168,10 +169,17 @@ function tightGateWoodblock(ctx: AudioContext, source: AudioBuffer): AudioBuffer
 /**
  * Load a single sound into an AudioBuffer.
  */
-export async function loadSound(
-  ctx: AudioContext,
-  soundId: string
-): Promise<AudioBuffer | null> {
+export function loadSound(ctx: AudioContext, soundId: string): Promise<AudioBuffer | null> {
+  const cached = bufferCache.get(soundId);
+  if (cached) return Promise.resolve(cached);
+  const pending = pendingLoads.get(soundId);
+  if (pending) return pending;
+  const request = loadUncachedSound(ctx, soundId).finally(() => pendingLoads.delete(soundId));
+  pendingLoads.set(soundId, request);
+  return request;
+}
+
+async function loadUncachedSound(ctx: AudioContext, soundId: string): Promise<AudioBuffer | null> {
   // Check cache first
   const cached = bufferCache.get(soundId);
   if (cached) return cached;
@@ -181,7 +189,7 @@ export async function loadSound(
     return loadCustomSample(ctx, soundId);
   }
 
-  const entry = SOUND_CATALOG.find((s) => s.id === soundId);
+  const entry = SOUND_CATALOG.find((s) => s.id === soundId) ?? COUNT_SOUNDS.find((s) => s.id === soundId);
   if (!entry) {
     console.warn(`Sound not found: ${soundId}`);
     return null;
@@ -233,50 +241,6 @@ async function loadCustomSample(
  */
 export function registerCustomBuffer(soundId: string, buffer: AudioBuffer): void {
   bufferCache.set(soundId, buffer);
-}
-
-/**
- * Load a sound by filename (for non-catalog sounds like count-in).
- */
-async function loadSoundFile(
-  ctx: AudioContext,
-  id: string,
-  filename: string
-): Promise<AudioBuffer | null> {
-  if (bufferCache.has(id)) return bufferCache.get(id)!;
-
-  try {
-    const url = `${getSoundBasePath()}${filename}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-    bufferCache.set(id, audioBuffer);
-    return audioBuffer;
-  } catch (err) {
-    console.error(`Failed to load sound ${id}:`, err);
-    return null;
-  }
-}
-
-/**
- * Preload all sounds in the catalog + count-in sounds.
- */
-export async function loadAllSounds(ctx: AudioContext): Promise<void> {
-  const catalogPromises = SOUND_CATALOG.map((entry) => loadSound(ctx, entry.id));
-  const countPromises = COUNT_SOUNDS.map((entry) =>
-    loadSoundFile(ctx, entry.id, entry.file)
-  );
-
-  // Also load any custom samples from IDB
-  let customPromises: Promise<AudioBuffer | null>[] = [];
-  try {
-    const customSamples = await db.getAllCustomSamples();
-    customPromises = customSamples.map((s) => loadCustomSample(ctx, s.id));
-  } catch { /* IDB may not be ready yet */ }
-
-  await Promise.allSettled([...catalogPromises, ...countPromises, ...customPromises]);
-  console.log(`Loaded ${bufferCache.size} sounds (${SOUND_CATALOG.length} built-in + custom)`);
 }
 
 /**

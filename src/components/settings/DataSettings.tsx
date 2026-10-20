@@ -198,7 +198,7 @@ export function DataSettings() {
         <button type="button" disabled={state !== 'idle'} onClick={() => void runExport(true)} className="min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Full Backup</button>
         <button type="button" disabled={state !== 'idle'} onClick={() => void runExport(false)} className="min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Data-only Backup</button>
       </div>
-      <p className="text-[10px] text-text-muted">Data-only backup includes projects, sessions, settings, hit data, instrument profiles, and custom samples, but omits large recording audio.</p>
+      <p className="text-xs text-text-muted">Data-only backup includes projects, sessions, settings, hit data, instrument profiles, and custom samples, but omits large recording audio.</p>
 
       <button type="button" disabled={state !== 'idle'} onClick={() => fileInputRef.current?.click()} className="w-full min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Import Backup</button>
       <input ref={fileInputRef} type="file" accept=".polypro" className="hidden" onChange={handleFileSelect} />
@@ -206,8 +206,8 @@ export function DataSettings() {
       {state === 'preview' && importPreview && (
         <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 space-y-2">
           <p className="text-xs font-semibold text-text-primary">Import preview</p>
-          <p className="text-[11px] text-text-secondary">{importPreview.newProjects} new projects · {importPreview.newSessions} new sessions</p>
-          <p className="text-[10px] text-text-muted">{importPreview.duplicateProjects + importPreview.duplicateSessions} duplicates will be skipped. Existing IDs are never overwritten.</p>
+          <p className="text-xs text-text-secondary">{importPreview.newProjects} new projects · {importPreview.newSessions} new sessions</p>
+          <p className="text-xs text-text-muted">{importPreview.duplicateProjects + importPreview.duplicateSessions} duplicates will be skipped. Existing IDs are never overwritten.</p>
           <label className="flex items-center gap-2 min-h-[44px] text-xs text-text-primary"><input type="checkbox" checked={restoreSettings} onChange={(event) => setRestoreSettings(event.target.checked)} />Restore backed-up settings and active project</label>
           <div className="flex gap-2">
             <button type="button" className="flex-1 min-h-[42px] rounded-lg border border-border-subtle text-xs text-text-secondary" onClick={() => { setState('idle'); setImportPreview(null); setImportFile(null); }}>Cancel</button>
@@ -217,7 +217,7 @@ export function DataSettings() {
       )}
 
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Recording storage</p>
+        <p className="text-xs  text-text-muted mb-1">Recording storage</p>
         <div className="space-y-1">
           {sessionGroups.map((group) => (
             <div key={group.id} className="rounded-lg border border-border-subtle bg-bg-surface">
@@ -227,7 +227,7 @@ export function DataSettings() {
               {expandedProject === group.id && (
                 <div className="border-t border-border-subtle px-2 py-1 space-y-1">
                   {group.sessions.map((session) => (
-                    <div key={session.id} className="flex items-center gap-2 min-h-[36px] text-[10px] text-text-muted">
+                    <div key={session.id} className="flex items-center gap-2 min-h-[36px] text-xs text-text-muted">
                       <span className="flex-1 truncate">{new Date(session.date).toLocaleDateString()} · {session.bpm} BPM</span>
                       {session.hasRecording ? <button type="button" onClick={() => void handleDeleteAudio(session.id)} className="min-h-[32px] px-2 text-warning">Delete audio</button> : <span>No audio</span>}
                     </div>
@@ -242,7 +242,7 @@ export function DataSettings() {
       {showDeleteConfirm ? (
         <div role="alertdialog" aria-label="Delete all Poly Pro data" className="rounded-lg border border-danger/30 bg-danger-dim p-3 space-y-2">
           <p className="text-xs font-semibold text-danger">Delete all local Poly Pro data?</p>
-          <p className="text-[10px] text-danger/80">This clears settings, projects, sessions, recording chunks, hit data, presets, custom samples, profiles, and cloud-consent/cache records. It cannot be undone.</p>
+          <p className="text-xs text-danger/80">This clears settings, projects, sessions, recording chunks, hit data, presets, custom samples, profiles, and cloud-consent/cache records. It cannot be undone.</p>
           <div className="flex gap-2">
             <button type="button" className="flex-1 min-h-[42px] rounded-lg border border-border-subtle text-xs text-text-secondary" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
             <button type="button" disabled={state === 'deleting'} className="flex-1 min-h-[42px] rounded-lg bg-danger text-xs font-semibold text-white" onClick={() => void handleDeleteAll()}>{state === 'deleting' ? 'Deleting…' : 'Delete Everything'}</button>
@@ -256,5 +256,5 @@ export function DataSettings() {
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-lg border border-border-subtle bg-bg-surface p-2"><p className="text-[9px] text-text-muted">{label}</p><p className="font-mono text-sm text-text-primary">{value}</p></div>;
+  return <div className="rounded-lg border border-border-subtle bg-bg-surface p-2"><p className="text-xs text-text-muted">{label}</p><p className="font-mono text-sm text-text-primary">{value}</p></div>;
 }

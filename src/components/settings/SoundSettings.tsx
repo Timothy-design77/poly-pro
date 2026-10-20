@@ -84,7 +84,7 @@ export function SoundSettings() {
           <div className="mt-1 bg-bg-surface border border-border-subtle rounded-lg overflow-hidden max-h-[320px] overflow-y-auto shadow-sm">
             {customSamples.length > 0 && (
               <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-wider px-3 pt-2 pb-1">My Samples</div>
+                <div className="text-xs text-text-muted  px-3 pt-2 pb-1">My Samples</div>
                 {customSamples.map((sample) => (
                   <button
                     type="button"
@@ -95,7 +95,7 @@ export function SoundSettings() {
                   >
                     {sample.id === current && <span aria-hidden="true">✓</span>}
                     <span className={sample.id === current ? '' : 'pl-[18px]'}>
-                      {sample.name}<span className="text-text-muted text-[10px] ml-1">{sample.durationMs}ms</span>
+                      {sample.name}<span className="text-text-muted text-xs ml-1">{sample.durationMs}ms</span>
                     </span>
                   </button>
                 ))}
@@ -104,7 +104,7 @@ export function SoundSettings() {
 
             {categories.map((category) => (
               <div key={category}>
-                <div className="text-[10px] text-text-muted uppercase tracking-wider px-3 pt-2 pb-1">
+                <div className="text-xs text-text-muted  px-3 pt-2 pb-1">
                   {categoryLabels[category]}
                 </div>
                 {SOUND_CATALOG.filter((sound) => sound.category === category).map((sound) => (
@@ -140,18 +140,18 @@ export function SoundSettings() {
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-xs text-text-muted uppercase tracking-wider mb-1.5 block">Click Sound</label>
+        <label className="text-xs text-text-muted  mb-1.5 block">Click Sound</label>
         {renderPicker(clickSound, setClickSound, 'click')}
       </div>
 
       <div>
-        <label className="text-xs text-text-muted uppercase tracking-wider mb-1.5 block">Accent Sound</label>
+        <label className="text-xs text-text-muted  mb-1.5 block">Accent Sound</label>
         {renderPicker(accentSound, setAccentSound, 'accent')}
       </div>
 
       <div>
-        <label className="text-xs text-text-muted uppercase tracking-wider mb-1.5 block">Accent Sound Plays At</label>
-        <div className="text-[11px] text-text-muted mb-2">Levels at or above this use the accent sound</div>
+        <label className="text-xs text-text-muted  mb-1.5 block">Accent Sound Plays At</label>
+        <div className="text-xs text-text-muted mb-2">Levels at or above this use the accent sound</div>
         <div className="flex gap-1">
           {([
             { state: VolumeState.GHOST, label: 'Ghost' },
@@ -167,7 +167,7 @@ export function SoundSettings() {
                 type="button"
                 key={state}
                 onClick={() => setAccentSoundThreshold(state)}
-                className={`flex-1 min-h-[42px] rounded-lg text-[10px] font-bold touch-manipulation border
+                className={`flex-1 min-h-[42px] rounded-lg text-xs font-semibold touch-manipulation border
                   ${isActive
                     ? 'bg-accent text-bg-primary border-accent'
                     : isAbove
@@ -183,7 +183,7 @@ export function SoundSettings() {
 
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-text-muted uppercase tracking-wider">Click Volume</label>
+          <label className="text-xs text-text-muted ">Click Volume</label>
           <span className="font-mono text-xs text-text-secondary">{Math.round(clickVolume * 100)}%</span>
         </div>
         <input aria-label="Click volume"
@@ -204,7 +204,7 @@ export function SoundSettings() {
           type="button"
           onClick={() => audioEngine.previewSound(previewSoundId)}
           className="min-h-[44px] rounded-lg border border-border-subtle bg-bg-surface
-                     text-text-primary text-xs font-bold active:bg-bg-raised"
+                     text-text-primary text-xs font-semibold active:bg-bg-raised"
         >
           {previewLabel}
         </button>
@@ -212,7 +212,7 @@ export function SoundSettings() {
           type="button"
           onClick={resetSounds}
           className="min-h-[44px] rounded-lg border border-border-subtle bg-bg-surface
-                     text-text-secondary text-xs font-bold active:bg-bg-raised"
+                     text-text-secondary text-xs font-semibold active:bg-bg-raised"
         >
           Reset Sounds
         </button>

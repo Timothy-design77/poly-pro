@@ -19,7 +19,7 @@ export function VibrationSettings() {
         <div>
           <div className="text-sm text-text-primary">Haptic Feedback</div>
           {!hasVibration && (
-            <div className="text-[10px] text-text-muted mt-0.5">Not supported on this device</div>
+            <div className="text-xs text-text-muted mt-0.5">Not supported on this device</div>
           )}
         </div>
         <button
@@ -47,7 +47,7 @@ export function VibrationSettings() {
       {hapticEnabled && hasVibration && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs text-text-muted uppercase tracking-wider">Intensity</label>
+            <label className="text-xs text-text-muted ">Intensity</label>
             <span className="font-mono text-xs text-text-secondary">{Math.round(vibrationIntensity * 100)}%</span>
           </div>
           <input
@@ -66,7 +66,7 @@ export function VibrationSettings() {
             type="button"
             onClick={() => navigator.vibrate?.(Math.round(20 * vibrationIntensity))}
             className="mt-2 w-full min-h-[40px] rounded-lg border border-border-subtle bg-bg-surface
-                       text-text-primary text-xs font-bold active:bg-bg-raised"
+                       text-text-primary text-xs font-semibold active:bg-bg-raised"
           >
             Test Vibration
           </button>

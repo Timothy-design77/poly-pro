@@ -47,14 +47,14 @@ The development app is served at `/poly-pro/`. Browser tests start a local produ
 
 ## Current release
 
-The 2.3 upgrade adds an optional recording countdown and automatic stop, undo/redo for review edits, cancellable WAV export, and stronger audio lifecycle and data recovery. Silent recording retains the captured timing grid. One Review preview and one atomic save keep scores, charts, click playback and WAV exports synchronized. Audio and practice data remain local; no account or cloud service is required.
+The 2.4 upgrade simplifies Practice and Review, establishes a local DM Sans visual system, removes unrelated sound loading from metronome startup, and puts precise click sync directly beside playback. Navigation is Practice, Recordings, Projects and Settings. Recording countdown/automatic stop, undo/redo, cancellable exports and local data recovery remain available. One Review preview and one atomic save keep scores, charts, click playback and WAV exports synchronized. Audio and practice data remain local; no account or cloud service is required.
 
 See [WORK_QUEUE.md](WORK_QUEUE.md) for the plan/test/simplify iteration record, [production readiness](docs/PRODUCTION_READINESS.md) for the audit outcome and physical-device acceptance checklist, and [verification results](docs/release/verification.txt) for the final automated checks. Physical Galaxy Z Fold 7 microphone, Bluetooth and long-session acceptance remains a release gate.
 
-For a first practice session: set tempo on Home, choose With click or Silent, and optionally open Recording setup for a preparation delay and take length. Record a take; Review opens after analysis. Listen, correct hits or adjust Timing, undo mistakes, then Save changes. Full re-detection asks before replacing corrections. Settings contains calibration, instrument training and backups. Export a Full Backup regularly to keep a portable copy of recordings and settings.
+For a first practice session: set tempo on Practice and tap Start or Record. Recording setup contains With click/Silent, preparation delay and take length. Review opens after recording analysis. Use Sync beside the playback click toggle to move clicks earlier/later or align an intended reference click to a recorded hit; listen, then Save changes. Scoring, hit editing, loops, sound and export are secondary tools. Recordings shows all takes with an optional project filter. Settings contains calibration, instrument training and backups. Export a Full Backup regularly to keep a portable copy of recordings and settings.
 
 ## Source of truth
 
 The current release status is in the readiness report above. The historical implementation and architecture plan are maintained in [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md). Historical repositories are retained for reference only and must not receive new product development.
 
-The latest user-flow audit and regression evidence are in [Practice flow audit](docs/PRACTICE_FLOW_AUDIT.md), following the [2.2 Practice and Review audit](docs/PRACTICE_REVIEW_AUDIT.md).
+See the [2.4 interface and sync audit](docs/INTERFACE_AND_SYNC_AUDIT.md) and [style guide](docs/STYLE_GUIDE.md). Earlier findings remain in the [2.3 practice flow audit](docs/PRACTICE_FLOW_AUDIT.md) and [2.2 Practice and Review audit](docs/PRACTICE_REVIEW_AUDIT.md).

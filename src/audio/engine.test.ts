@@ -3,8 +3,8 @@ import { AudioEngine } from './engine';
 import type { EngineHost, EngineMetronomeConfig } from './engine-host';
 import { VolumeState } from './types';
 
-const { loadAllSounds } = vi.hoisted(() => ({ loadAllSounds: vi.fn() }));
-vi.mock('./sounds', () => ({ loadAllSounds, getBuffer: () => ({ duration: 0.1 }) }));
+const { loadSound } = vi.hoisted(() => ({ loadSound: vi.fn() }));
+vi.mock('./sounds', () => ({ loadSound, getBuffer: () => ({ duration: 0.1 }) }));
 
 function createSource() {
   return { buffer: null, connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn(), onended: null as (() => void) | null };
@@ -50,9 +50,38 @@ describe('audio engine lifecycle', () => {
     vi.useFakeTimers();
     vi.stubGlobal('AudioContext', FakeAudioContext);
     vi.stubGlobal('navigator', { vibrate: vi.fn() });
-    loadAllSounds.mockReset().mockResolvedValue(undefined);
+    loadSound.mockReset().mockResolvedValue({ duration: 0.1 });
   });
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it('prepares only selected sounds without starting transport, then starts synchronously', async () => {
+    const host = createHost();
+    const engine = new AudioEngine(host);
+    await engine.prepare();
+    expect(loadSound.mock.calls.map((call) => call[1])).toEqual(['woodblock']);
+    expect(engine.running).toBe(false);
+    expect(host.onPlayStart).not.toHaveBeenCalled();
+    expect((engine.getContext() as unknown as FakeAudioContext).sources).toHaveLength(0);
+    expect(engine.startSync()).toBe(true);
+    expect(host.onPlayStart).toHaveBeenCalledOnce();
+    engine.stop();
+  });
+
+  it('loads count-in and changed track sounds before starting the selected setup', async () => {
+    const host = createHost();
+    const engine = new AudioEngine(host);
+    await engine.prepare();
+    const config = host.getMetronome();
+    config.countInBars = 1;
+    config.tracks[0].soundOverrides[2] = 'custom:my-click';
+    expect(engine.startSync()).toBe(false);
+    await engine.start();
+    const ids = loadSound.mock.calls.map((call) => call[1]);
+    expect(ids).toEqual(expect.arrayContaining(['count-1', 'count-2', 'count-3', 'count-4', 'custom:my-click']));
+    expect(ids).not.toContain('kick');
+    expect(engine.running).toBe(true);
+    engine.stop();
+  });
 
   it('cancels queued and active haptics when playback stops', async () => {
     const engine = new AudioEngine(createHost());
@@ -87,7 +116,7 @@ describe('audio engine lifecycle', () => {
 
   it('does not restart after Stop while sounds are still loading', async () => {
     let finishLoading!: () => void;
-    loadAllSounds.mockImplementation(() => new Promise<void>((resolve) => { finishLoading = resolve; }));
+    loadSound.mockImplementation(() => new Promise<void>((resolve) => { finishLoading = resolve; }));
     const host = createHost();
     const engine = new AudioEngine(host);
     const starting = engine.start();
@@ -129,7 +158,7 @@ describe('audio engine lifecycle', () => {
 
   it('ignores initialization failures for a start that was already cancelled', async () => {
     let failLoading!: (error: Error) => void;
-    loadAllSounds.mockImplementation(() => new Promise<void>((_, reject) => { failLoading = reject; }));
+    loadSound.mockImplementation(() => new Promise<void>((_, reject) => { failLoading = reject; }));
     const engine = new AudioEngine(createHost());
     const starting = engine.start();
     engine.stop();
@@ -139,7 +168,7 @@ describe('audio engine lifecycle', () => {
   });
 
   it('reports initialization failures for the current start request', async () => {
-    loadAllSounds.mockRejectedValue(new Error('Audio unavailable'));
+    loadSound.mockRejectedValue(new Error('Audio unavailable'));
     const engine = new AudioEngine(createHost());
     await expect(engine.start()).rejects.toThrow('Audio unavailable');
     expect(engine.running).toBe(false);

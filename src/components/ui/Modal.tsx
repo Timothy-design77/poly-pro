@@ -71,16 +71,16 @@ export function Modal({ isOpen, onClose, title, children, confirmLabel, confirmD
         tabIndex={-1}
         className="w-full max-w-[340px] bg-bg-surface rounded-2xl p-5 animate-modal-pop outline-none"
       >
-        <h3 id={titleId} className="text-base font-bold text-text-primary mb-2">{title}</h3>
+        <h3 id={titleId} className="text-base font-semibold text-text-primary mb-2">{title}</h3>
         <div className="text-sm text-text-secondary mb-5">{children}</div>
         {error && <p role="alert" className="text-sm text-danger mb-2">{error}</p>}
         <div className="flex gap-2">
-          <button type="button" onClick={onClose} className="flex-1 h-[44px] rounded-xl bg-bg-raised text-text-secondary text-sm font-bold active:bg-bg-surface">Cancel</button>
+          <button type="button" onClick={onClose} className="flex-1 h-[44px] rounded-xl bg-bg-raised text-text-secondary text-sm font-semibold active:bg-bg-surface">Cancel</button>
           {onConfirm && (
             <button
               type="button"
               disabled={busy} onClick={async () => { setBusy(true); setError(null); try { await onConfirm(); onClose(); } catch (error) { setError(error instanceof Error ? error.message : 'Could not complete the action.'); } finally { setBusy(false); } }}
-              className={`flex-1 h-[44px] rounded-xl text-sm font-bold ${confirmDanger ? 'bg-danger text-white active:bg-danger/80' : 'bg-accent text-bg-primary active:opacity-90'}`}
+              className={`flex-1 h-[44px] rounded-xl text-sm font-semibold ${confirmDanger ? 'bg-danger text-white active:bg-danger/80' : 'bg-accent text-bg-primary active:opacity-90'}`}
             >
               {confirmLabel || 'Confirm'}
             </button>

@@ -74,7 +74,7 @@ export function PushPullChart({ hitEvents, width, height }: Props) {
 
     // Zero label
     ctx.fillStyle = '#4A4A52';
-    ctx.font = '9px "JetBrains Mono", monospace';
+    ctx.font = '11px "DM Sans", sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText('0ms', padL - 4, zeroY + 3);
 
@@ -84,7 +84,7 @@ export function PushPullChart({ hitEvents, width, height }: Props) {
 
     // "Early"/"Late" labels
     ctx.fillStyle = '#4A4A52';
-    ctx.font = '8px "DM Sans", sans-serif';
+    ctx.font = '11px "DM Sans", sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('early', padL + 2, padT + 8);
     ctx.fillText('late', padL + 2, padT + chartH);
@@ -106,7 +106,7 @@ export function PushPullChart({ hitEvents, width, height }: Props) {
 
       // Beat label
       ctx.fillStyle = '#8B8B94';
-      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(String(index + 1), x + barW / 2, height - 6);
     }

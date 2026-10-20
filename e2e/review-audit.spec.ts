@@ -4,15 +4,16 @@ import { seedSession } from './helpers';
 test('tuning slider arrows do not seek the recording', async ({ page }) => {
   await seedSession(page);
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
-  await page.getByRole('button', { name: 'Tune scoring', exact: true }).click();
-  await page.getByRole('slider', { name: 'Latency Offset' }).focus();
+  await page.getByRole('button', { name: 'Sync click', exact: true }).click();
+  await page.getByRole('slider', { name: 'Click offset' }).focus();
   await page.keyboard.press('ArrowRight');
   await page.getByRole('button', { name: 'Hit correction tools' }).click();
   await expect(page.getByText('Playhead 0ms', { exact: true })).toBeVisible();
 });
 
-test('silent recording is available beside record', async ({ page }) => {
+test('silent recording is available in recording setup', async ({ page }) => {
   await page.goto('./');
+  await page.getByText('Recording setup', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Record without click', exact: true })).toBeVisible();
 });
 
@@ -26,6 +27,7 @@ test('silent capture silences a running metronome, stores its grid, and restores
     };
   });
   await page.goto('./');
+  await page.getByText('Recording setup', { exact: true }).click();
   await page.getByRole('button', { name: 'Record without click', exact: true }).click();
   const start = page.getByRole('button', { name: 'Start metronome', exact: true });
   await start.focus(); await page.keyboard.press('Enter');
@@ -52,6 +54,7 @@ test('silent capture silences a running metronome, stores its grid, and restores
   await expect.poll(() => page.evaluate(() => (window as any).clickStarts)).toBeGreaterThan(before);
   await page.getByRole('button', { name: 'Stop metronome', exact: true }).click();
   await page.reload();
+  await page.getByText('Recording setup', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Record without click', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -97,11 +100,11 @@ test('playback and WAV export follow the captured grid plus the same timing prev
     await new Promise<void>((resolve) => { tx.oncomplete = () => resolve(); }); db.close();
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
-  await page.getByRole('button', { name: 'Tune scoring' }).click();
-  await page.getByRole('slider', { name: 'Latency Offset' }).focus(); await page.keyboard.press('End');
-  await page.getByRole('button', { name: 'Toggle click overlay' }).click();
+  await page.getByRole('button', { name: 'Sync click' }).click();
+  await page.getByRole('slider', { name: 'Click offset' }).focus(); await page.keyboard.press('End');
+  await expect(page.getByRole('button', { name: 'Toggle click overlay' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Start playback', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).starts.filter((s: any) => !s.offline && s.duration < 1).length)).toBeGreaterThan(0);
   const scheduled = await page.evaluate(() => (window as any).starts.filter((s: any) => !s.offline));
@@ -118,10 +121,10 @@ test('playback and WAV export follow the captured grid plus the same timing prev
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('Changes saved', { exact: true })).toBeVisible();
   await page.reload();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
-  await page.getByRole('button', { name: 'Tune scoring' }).click();
-  await expect(page.getByRole('slider', { name: 'Latency Offset' })).toHaveAttribute('aria-valuenow', '600');
+  await page.getByRole('button', { name: 'Sync click' }).click();
+  await expect(page.getByRole('slider', { name: 'Click offset' })).toHaveAttribute('aria-valuenow', '600');
 });
 
 test('failed correction save keeps the draft and saved data intact until retry', async ({ page }) => {
@@ -149,7 +152,7 @@ test('failed correction save keeps the draft and saved data intact until retry',
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(errors).toEqual([]);
   await page.reload();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
   await expect(page.getByText('19 detected hits', { exact: true })).toBeVisible();
 });

@@ -24,7 +24,7 @@ export function GroupingPicker() {
 
   return (
     <div>
-      <div className="text-[10px] text-text-muted uppercase tracking-wider mb-2">
+      <div className="text-xs text-text-muted  mb-2">
         Beat Grouping
       </div>
       <div className="flex gap-1.5 flex-wrap">
@@ -39,7 +39,7 @@ export function GroupingPicker() {
               type="button" aria-pressed={isActive}
               onClick={() => setGrouping(grouping)}
               className={`
-                h-[40px] px-3 rounded-xl text-xs font-bold font-mono
+                h-[40px] px-3 rounded-xl text-xs font-semibold font-mono
                 transition-colors touch-manipulation select-none
                 ${isActive
                   ? 'bg-[rgba(21,23,26,0.15)] text-text-primary border border-[rgba(21,23,26,0.15)]'

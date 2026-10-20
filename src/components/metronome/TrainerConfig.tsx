@@ -27,7 +27,7 @@ export function TrainerConfig() {
           {/* Start → End BPM */}
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="text-[10px] text-text-muted uppercase mb-1 block">Start BPM</label>
+              <label className="text-xs text-text-muted mb-1 block">Start BPM</label>
               <input
                 type="number"
                 aria-label="Trainer start BPM" min={10} max={400} step={0.5}
@@ -45,7 +45,7 @@ export function TrainerConfig() {
               <polyline points="12 5 19 12 12 19" />
             </svg>
             <div className="flex-1">
-              <label className="text-[10px] text-text-muted uppercase mb-1 block">End BPM</label>
+              <label className="text-xs text-text-muted mb-1 block">End BPM</label>
               <input
                 type="number"
                 aria-label="Trainer end BPM" min={10} max={400} step={0.5}
@@ -61,38 +61,38 @@ export function TrainerConfig() {
           {/* Step + Bars — large stepper buttons */}
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-[10px] text-text-muted uppercase mb-1 block">BPM Step</label>
+              <label className="text-xs text-text-muted mb-1 block">BPM Step</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button
                   type="button" aria-label="Decrease trainer BPM step"
                   onClick={() => setConfig({ trainerBpmStep: Math.max(1, step - 1) })}
                   className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
-                             active:bg-bg-raised text-lg font-bold touch-manipulation"
+                             active:bg-bg-raised text-lg font-semibold touch-manipulation"
                 >−</button>
-                <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{step}</span>
+                <span className="flex-1 text-center font-mono text-base text-text-primary font-semibold">{step}</span>
                 <button
                   type="button" aria-label="Increase trainer BPM step"
                   onClick={() => setConfig({ trainerBpmStep: Math.min(20, step + 1) })}
                   className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
-                             active:bg-bg-raised text-lg font-bold touch-manipulation"
+                             active:bg-bg-raised text-lg font-semibold touch-manipulation"
                 >+</button>
               </div>
             </div>
             <div className="flex-1">
-              <label className="text-[10px] text-text-muted uppercase mb-1 block">Every N Bars</label>
+              <label className="text-xs text-text-muted mb-1 block">Every N Bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button
                   type="button" aria-label="Decrease trainer bars per step"
                   onClick={() => setConfig({ trainerBarsPerStep: Math.max(1, bars - 1) })}
                   className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
-                             active:bg-bg-raised text-lg font-bold touch-manipulation"
+                             active:bg-bg-raised text-lg font-semibold touch-manipulation"
                 >−</button>
-                <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{bars}</span>
+                <span className="flex-1 text-center font-mono text-base text-text-primary font-semibold">{bars}</span>
                 <button
                   type="button" aria-label="Increase trainer bars per step"
                   onClick={() => setConfig({ trainerBarsPerStep: Math.min(16, bars + 1) })}
                   className="w-[44px] h-[44px] flex items-center justify-center text-text-secondary
-                             active:bg-bg-raised text-lg font-bold touch-manipulation"
+                             active:bg-bg-raised text-lg font-semibold touch-manipulation"
                 >+</button>
               </div>
             </div>

@@ -77,7 +77,7 @@ export function InstrumentChart({ hitEvents, width, height }: Props) {
 
         // Y labels
         ctx.fillStyle = '#4A4A52';
-        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText(`${v.toFixed(0)}ms`, pad.left - 4, y + 3);
       }
@@ -104,13 +104,13 @@ export function InstrumentChart({ hitEvents, width, height }: Props) {
 
         // Instrument label
         ctx.fillStyle = '#8B8B94';
-        ctx.font = '9px "DM Sans", sans-serif';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(m.name, groupCenter, h - pad.bottom + 14);
 
         // Hit count
         ctx.fillStyle = '#4A4A52';
-        ctx.font = '8px "JetBrains Mono", monospace';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.fillText(`${m.hitCount}`, groupCenter, h - pad.bottom + 24);
       }
 
@@ -119,7 +119,7 @@ export function InstrumentChart({ hitEvents, width, height }: Props) {
       ctx.fillStyle = 'rgba(21,23,26,0.6)';
       ctx.fillRect(pad.left, legendY, 8, 8);
       ctx.fillStyle = '#8B8B94';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('σ', pad.left + 12, legendY + 7);
 

@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 
 export async function seedSession(page: Page) {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Home', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Practice', exact: true }).waitFor();
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('polypro');
@@ -23,7 +23,7 @@ export async function seedSession(page: Page) {
     db.close();
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
 }
 

@@ -39,7 +39,7 @@ function SubVolumeControl({ track, subdivision }: { track: { accents: VolumeStat
 
   return (
     <div className="flex items-center gap-1.5 mt-1.5 mb-0.5">
-      <span className="text-[9px] text-text-muted uppercase tracking-wider shrink-0">Sub</span>
+      <span className="text-xs text-text-muted  shrink-0">Sub</span>
       <div className="flex gap-0.5 flex-1">
         {VOL_LEVELS.map(({ state, label }) => {
           const isActive = allSame && currentVol === state;
@@ -51,7 +51,7 @@ function SubVolumeControl({ track, subdivision }: { track: { accents: VolumeStat
               type="button" aria-label={`Set subdivisions to ${label}`} aria-pressed={isActive}
               onClick={() => setAllSubVol(state)}
               className={`
-                flex-1 h-[36px] rounded-md text-[10px] font-bold
+                flex-1 h-[36px] rounded-md text-xs font-semibold
                 touch-manipulation select-none relative overflow-hidden
                 border transition-colors
                 ${isActive
@@ -155,7 +155,7 @@ export function BeatGrid() {
           return (
             <div key={track.id}>
               {!isMainTrack && (
-                <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                <div className="text-xs text-text-muted  mb-0.5 flex items-center gap-1">
                   <span>Track {trackIdx + 1}</span>
                   <span className="font-mono">({track.beats})</span>
                 </div>
@@ -201,7 +201,7 @@ export function BeatGrid() {
                         style={{ height: `${fillPct}%`, backgroundColor: fillCol }}
                       />
                       <span
-                        className="relative z-10 font-mono text-xs font-bold text-text-primary"
+                        className="relative z-10 font-mono text-xs font-semibold text-text-primary"
                       >
                         {beatNum}
                       </span>
@@ -257,7 +257,7 @@ export function BeatGrid() {
                           className="absolute bottom-0 left-0 right-0 rounded-b-sm transition-all duration-100"
                           style={{ height: `${fillPct}%`, backgroundColor: fillCol }}
                         />
-                        <span aria-hidden="true" className="relative z-10 text-[9px] font-mono text-text-primary">{Math.floor(i / subdivision) + 1}.{i % subdivision + 1}</span>
+                        <span aria-hidden="true" className="relative z-10 text-xs font-mono text-text-primary">{Math.floor(i / subdivision) + 1}.{i % subdivision + 1}</span>
                         {hasOverride && (
                           <div className="absolute top-0.5 right-0.5 w-[3px] h-[3px] rounded-full bg-[rgba(45,212,191,0.6)]" />
                         )}
