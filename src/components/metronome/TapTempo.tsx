@@ -62,16 +62,16 @@ export function TapTempo() {
       type="button"
       onPointerDown={handlePointerDown}
       onClick={handleClick}
-      className="w-full min-h-[72px] flex items-center justify-center gap-2 rounded-[18px]
+      className="w-full min-h-[44px] flex items-center justify-center gap-2 rounded-xl
                  border-[1.5px] border-border-subtle bg-bg-surface
-                 text-text-primary text-sm font-extrabold tracking-[0.10em]
+                 text-text-primary text-sm font-semibold
                  active:bg-bg-raised transition-colors duration-75
                  touch-manipulation select-none relative"
     >
-      ♩ TAP TEMPO
+      Tap tempo
       {tapCount >= 2 && (
         <span className="absolute top-2 right-2 min-w-6 h-6 px-1.5 rounded-full
-                         bg-accent-dim text-[10px] font-mono font-bold
+                         bg-accent-dim text-xs font-mono font-semibold
                          flex items-center justify-center text-text-primary border border-border-subtle">
           {tapCount}
         </span>

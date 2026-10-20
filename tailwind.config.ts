@@ -42,7 +42,7 @@ export default {
       },
       fontFamily: {
         sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        mono: ['"DM Sans"', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         sm: '8px',

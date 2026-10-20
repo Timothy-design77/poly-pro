@@ -12,6 +12,7 @@ import { RecordButton } from '../components/metronome/RecordButton';
 import { WaveformDisplay } from '../components/metronome/WaveformDisplay';
 import { useRecording, type RecordingResult } from '../hooks/useRecording';
 import { useAnalysis } from '../hooks/useAnalysis';
+import { PageHeader } from '../components/ui/PageHeader';
 import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
 import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
@@ -40,7 +41,7 @@ export function HomePage() {
 
   const [showKeypad, setShowKeypad] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
-  const [dialSize, setDialSize] = useState(320);
+  const [dialSize, setDialSize] = useState(280);
 
   const recording = useRecording();
   const analysis = useAnalysis();
@@ -109,8 +110,8 @@ export function HomePage() {
     const measure = () => {
       const el = dialContainerRef.current;
       if (!el) return;
-      const size = Math.round(el.clientWidth * 0.96);
-      setDialSize(Math.max(280, Math.min(520, size)));
+      const size = Math.round(el.clientWidth * 0.82);
+      setDialSize(Math.max(240, Math.min(340, size)));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -174,39 +175,34 @@ export function HomePage() {
     <div className="h-full overflow-y-auto bg-bg-primary">
       <BackupBanner />
       <div className="w-full max-w-xl mx-auto px-4 pb-8">
-        <div className="min-h-[34px] flex items-center justify-center gap-2 py-1 text-center" aria-live="polite">
+        <PageHeader title="Practice"><div className="flex items-center gap-2 text-sm" aria-live="polite">
           {recording.phase === 'countdown' ? (
             <span className="text-sm font-semibold text-accent">Get ready · {recording.countdown}s</span>
           ) : recording.isRecording ? (
             <>
               <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
-              <span className="text-sm font-bold text-danger">RECORDING</span>
+              <span className="text-sm font-semibold text-danger">Recording</span>
               <span className="font-mono text-xs text-text-secondary">
                 {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
                 {recording.takeSeconds > 0 && ` / ${Math.floor(recording.takeSeconds / 60)}:${String(recording.takeSeconds % 60).padStart(2, '0')}`}
               </span>
-              {recording.warning && <span className="text-[10px] text-warning">{recording.warning}</span>}
+              {recording.warning && <span className="text-xs text-warning">{recording.warning}</span>}
             </>
           ) : (
             <>
-              <span className="text-base">{activeProject?.icon || '⚡'}</span>
-              <span className="text-sm font-semibold text-text-primary truncate">
-                {activeProject?.name || 'Quick Start'}
-              </span>
+              {activeProject && <span className="text-sm text-text-secondary truncate max-w-[150px]">{activeProject.name}</span>}
               {playing && elapsed > 0 ? (
                 <span className="font-mono text-xs text-text-muted">
                   {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
                 </span>
               ) : activeProject ? (
-                <span className="text-[11px] font-mono text-text-muted">
+                <span className="text-xs font-mono text-text-muted">
                   {activeProject.currentBpm} / {activeProject.goalBpm}
                 </span>
-              ) : (
-                <span className="text-[11px] text-text-muted">untracked</span>
-              )}
+              ) : null}
             </>
           )}
-        </div>
+        </div></PageHeader>
 
         {/* The BPM ring itself is the only keypad entry control on the primary surface. */}
         <div
@@ -220,19 +216,27 @@ export function HomePage() {
 
         {/* Primary practice stack: large, full-width, low-cognitive-load controls. */}
         <div className="space-y-3">
-          <fieldset disabled={captureBusy || analysis.isAnalyzing} className="space-y-2 disabled:opacity-60">
-            <legend className="text-xs font-semibold text-text-secondary mb-2">Recording sound</legend>
+          <div className="grid grid-cols-2 gap-3">
+            <PlayButton disabled={captureBusy} />
+            <RecordButton phase={recording.phase} countdown={recording.countdown} disabled={analysis.isAnalyzing || ['stopping', 'saving'].includes(recording.phase)} isRecording={recording.isRecording} onToggle={handleRecordToggle} />
+
+          </div>
+          <fieldset disabled={setupLocked} className="disabled:opacity-50 disabled:pointer-events-none">
+            <TapTempo />
+          </fieldset>
+          <details className="rounded-xl border border-border-subtle bg-bg-surface text-sm">
+            <summary className="min-h-[44px] cursor-pointer px-3 py-3 text-text-secondary">
+              <span className="font-semibold">Recording setup</span>
+              <span className="text-xs text-text-muted ml-2">{includeClick ? 'Click' : 'Silent'} · {recordingPreferences.preparationSeconds ? `${recordingPreferences.preparationSeconds}s delay` : 'No delay'} · {recordingPreferences.takeSeconds ? takeLengthLabel(recordingPreferences.takeSeconds) : 'Manual stop'}</span>
+            </summary>
+          <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-2 disabled:opacity-60">
+            <legend className="text-xs font-semibold text-text-secondary mb-2">Click during recording</legend>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" aria-pressed={includeClick} aria-label="Record with click" onClick={() => setIncludeClick(true)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>With click</button>
               <button type="button" aria-pressed={!includeClick} aria-label="Record without click" onClick={() => setIncludeClick(false)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${!includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>Silent</button>
             </div>
             <p className="text-xs text-text-muted">{includeClick ? 'Use headphones to keep clicks out of your recording.' : 'No audible click. Follow the visual beat; timing feedback stays available.'}</p>
           </fieldset>
-          <details className="rounded-xl border border-border-subtle bg-bg-surface text-sm">
-            <summary className="min-h-[44px] cursor-pointer px-3 py-3 text-text-secondary">
-              <span className="font-semibold">Recording setup</span>
-              <span className="text-xs text-text-muted ml-2">{recordingPreferences.preparationSeconds ? `${recordingPreferences.preparationSeconds}s delay` : 'Start now'} · {recordingPreferences.takeSeconds ? takeLengthLabel(recordingPreferences.takeSeconds) : 'Manual stop'}</span>
-            </summary>
             <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-3 disabled:opacity-60">
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs font-semibold text-text-secondary">Preparation delay
@@ -246,15 +250,10 @@ export function HomePage() {
                   </select>
                 </label>
               </div>
-              <p className="text-xs text-text-muted">Put your phone down before you play. Take length includes any count-in set in Practice Modes. You can always stop early.</p>
+              <p className="text-xs text-text-muted">Take length includes count-in. You can stop early.</p>
             </fieldset>
           </details>
           {recording.phase === 'countdown' && <p role="status" className="text-center text-xs text-text-secondary">Microphone ready. No audio is saved until the countdown ends.</p>}
-          <RecordButton phase={recording.phase} countdown={recording.countdown} disabled={analysis.isAnalyzing || ['stopping', 'saving'].includes(recording.phase)} isRecording={recording.isRecording} onToggle={handleRecordToggle} />
-          <PlayButton disabled={captureBusy} />
-          <fieldset disabled={setupLocked} className="disabled:opacity-50 disabled:pointer-events-none">
-            <TapTempo />
-          </fieldset>
           {setupLocked && <p className="text-center text-xs text-text-muted">{recording.phase === 'preparing' || recording.phase === 'countdown' ? 'Cancel recording setup to change tempo or setup.' : 'Stop recording to change tempo or setup.'}</p>}
         </div>
 
@@ -270,7 +269,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={recording.clearError}
-              className="text-danger text-[11px] font-semibold mt-2 min-h-[32px] px-3"
+              className="text-danger text-xs font-semibold mt-2 min-h-[32px] px-3"
             >
               Dismiss
             </button>
@@ -278,23 +277,21 @@ export function HomePage() {
         )}
 
         {recording.btTip && (
-          <div className="text-[11px] text-warning bg-warning-dim border border-warning/20 rounded-lg px-3 py-2 mt-2 text-center">
+          <div className="text-xs text-warning bg-warning-dim border border-warning/20 rounded-lg px-3 py-2 mt-2 text-center">
             {recording.btTip}
           </div>
         )}
 
         {/* Everything non-essential to immediate playing lives lower in the scroll. */}
-        <div className="mt-10 pt-6 border-t border-border-subtle">
+        <div className="mt-6">
           <div className="mb-3 px-1">
             <h2 className="text-sm font-semibold text-text-primary">Advanced controls</h2>
-            <p className="text-[11px] text-text-muted mt-0.5">
-              Fine tempo adjustment, meter, patterns, practice modes, trainer, and polyrhythms
-            </p>
+
           </div>
 
           <fieldset disabled={setupLocked} ref={(element) => { if (element) element.inert = setupLocked; }} className="space-y-2 disabled:opacity-50">
             <CollapsibleCard
-              title="Fine Tempo"
+              title="Fine tempo"
               badge="±0.5"
               help="Use the large buttons for precise 0.5 BPM changes or hold them for accelerated changes."
             >
@@ -302,7 +299,7 @@ export function HomePage() {
             </CollapsibleCard>
 
             <CollapsibleCard
-              title="Meter & Subdivision"
+              title="Meter & subdivision"
               badge={meterBadge}
               onReset={resetMeterSection}
               help="Set the time signature and subdivision. Reset returns this section to 4/4 with no subdivision."
@@ -323,7 +320,7 @@ export function HomePage() {
             </CollapsibleCard>
 
             <CollapsibleCard
-              title="Practice Modes"
+              title="Practice modes"
               badge={practiceBadge}
               onReset={resetPracticeSection}
               help="Count-in, swing, gap click, random mute, and play/mute cycles. Reset disables all practice modes and restores their default probabilities."

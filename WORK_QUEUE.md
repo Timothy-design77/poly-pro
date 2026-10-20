@@ -95,3 +95,18 @@ Physical Fold 7, acoustic accuracy and long-session thermal acceptance remain op
 - Delivery follows the standing merge/deploy authorization and existing verified-artifact workflow; final live build evidence is reported with the release. Physical acceptance remains open.
 - CI feedback loop: an intermittent contrast failure exposed low-contrast intermediate navigation colors. Removed the color fade; production build and ten repeated primary-screen accessibility checks pass. Full CI runs again before merge and deployment.
 - Deployment test follow-up: synchronize the reminder reload check with its save-completion signal. Ten repeated checks pass; this changes the test only. Live 2.3 build `1d6e0ac` passes countdown cancellation, silent capture, direct Review, playback and offline reload without page errors.
+
+## User feedback: clarity, response and sync — 2026-10-20
+
+The user reports excessive text/visual clutter, delayed first click, inaccurate and hard-to-find recorded-playback sync, and inconsistent navigation. Passing regression checks did not establish a good everyday experience. This iteration is driven by those reports.
+
+- [x] U1 Define and apply one offline font, spacing/type/control system and navigation pattern. Keep the practice actions visible and move explanations into contextual help.
+- [x] U2 Remove unrelated sound loads from the Start path. Measure first-source timing on cold/warm starts and with a slow unused sound; preserve cancellation and selected sounds.
+- [x] U3 Put Sync directly beside playback. Provide precise earlier/later controls and explicit reference-beat alignment to a recorded hit; retain one preview/save across waveform, click, score and export.
+- [x] U4 Verify the actual tasks on narrow/wide layouts with screenshots, keyboard/touch and focused audio/data regressions. Run the local release gates.
+
+U4 evidence: 127 unit/regression tests, 112 browser checks, type-check/production build, zero dependency vulnerabilities and diff checks pass. The startup probe fell from 1,672 ms to 9.3 ms; this is software scheduling only. A 137.5 ms reference alignment matches native click scheduling and survives save/reload. Full capture/filter/delete testing found and fixed the hidden active-project Delete action. See [interface and sync audit](docs/INTERFACE_AND_SYNC_AUDIT.md), [style guide](docs/STYLE_GUIDE.md) and [verification](docs/release/verification.txt).
+
+Delivery follows the standing merge/deploy authorization. CI repeats the release gates; the final report records the deployed build and fresh-profile/existing-data update checks. Physical acceptance remains open.
+
+Acceptance: Start and Record visible without scrolling at 412×915; one shared local font; no instructional paragraphs on idle Home; primary destinations consistently labelled; playback sync adjustable without visiting Settings; no hidden automatic timing correction or changed source audio.

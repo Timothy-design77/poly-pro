@@ -18,11 +18,11 @@ export function RecordButton({ isRecording, onToggle, phase, disabled, countdown
       disabled={disabled}
       onClick={() => void onToggle()}
       className={`
-        w-full min-h-[72px] flex items-center justify-center gap-2.5 rounded-[18px]
-        border-[1.5px] text-sm font-extrabold tracking-[0.10em]
+        w-full min-h-[56px] flex items-center justify-center gap-2.5 rounded-xl
+        border-[1.5px] text-sm font-semibold
         touch-manipulation select-none disabled:opacity-60
         ${isRecording
-          ? 'border-danger bg-danger text-white animate-pulse'
+          ? 'border-danger bg-danger text-white'
           : 'border-danger/40 bg-bg-surface text-danger active:bg-danger-dim'
         }
       `}
@@ -34,7 +34,7 @@ export function RecordButton({ isRecording, onToggle, phase, disabled, countdown
           <circle cx="12" cy="12" r="10" />
         )}
       </svg>
-      {phase === 'countdown' ? `STARTS IN ${countdown} · CANCEL` : phase === 'preparing' ? 'PREPARING MIC · CANCEL' : saving ? 'SAVING RECORDING…' : isRecording ? 'STOP RECORDING' : 'RECORD'}
+      {phase === 'countdown' ? `${countdown}s · Cancel` : phase === 'preparing' ? 'Cancel setup' : saving ? 'Saving…' : isRecording ? 'Stop recording' : 'Record'}
     </button>
   );
 }

@@ -313,7 +313,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1">
-        <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">
+        <p className="text-xs text-text-muted font-medium ">
           My Samples
         </p>
         <HelpTip text="Record from your kit or import audio files. Trim tight and compress to keep samples small. Custom samples appear in the click/accent picker." />
@@ -342,7 +342,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
             </div>
           )}
           {samples.length === 0 && (
-            <p className="text-[10px] text-text-muted py-1">
+            <p className="text-xs text-text-muted py-1">
               No custom samples yet.
             </p>
           )}
@@ -381,7 +381,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
           <span className="font-mono text-2xl text-text-primary">
             {(recordingDuration / 1000).toFixed(1)}s
           </span>
-          <p className="text-[10px] text-text-muted">
+          <p className="text-xs text-text-muted">
             Play a single hit. You'll trim it next.
           </p>
           <div className="flex gap-3">
@@ -410,7 +410,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
 
           {/* Trim info + preview */}
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-text-muted font-mono">
+            <span className="text-xs text-text-muted font-mono">
               {trimmedDurationMs.toFixed(0)}ms · ~{formatBytes(estimatedBytes)}
             </span>
             <button onClick={previewTrimmed}
@@ -424,7 +424,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
 
           {/* Quality picker */}
           <div>
-            <label className="text-[10px] text-text-muted uppercase tracking-wider block mb-1">
+            <label className="text-xs text-text-muted  block mb-1">
               Quality
             </label>
             <div className="flex gap-1">
@@ -432,7 +432,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
                 <button
                   key={opt.rate}
                   onClick={() => setQuality(opt.rate)}
-                  className={`flex-1 py-1.5 rounded-md text-[10px] min-h-[36px] transition-colors ${
+                  className={`flex-1 py-1.5 rounded-md text-xs min-h-[36px] transition-colors ${
                     quality === opt.rate
                       ? 'bg-[rgba(21,23,26,0.12)] text-text-primary'
                       : 'bg-bg-raised text-text-muted'
@@ -447,7 +447,7 @@ export function CustomSampleManager({ onSamplesChanged }: Props) {
 
           {/* Name */}
           <div>
-            <label className="text-[10px] text-text-muted block mb-1">Name</label>
+            <label className="text-xs text-text-muted block mb-1">Name</label>
             <input
               type="text"
               aria-label="Sample name"
@@ -657,17 +657,17 @@ function SampleRow({
       </button>
       <div className="flex-1 min-w-0">
         <span className="text-xs text-text-primary truncate block">{sample.name}</span>
-        <span className="text-[9px] text-text-muted font-mono">
+        <span className="text-xs text-text-muted font-mono">
           {sample.durationMs}ms · {formatBytes(sample.blob.size)}
         </span>
       </div>
       {showConfirm ? (
         <div className="flex gap-1">
-          <button onClick={() => setShowConfirm(false)} className="text-text-muted text-[9px] min-h-[32px] px-1">Keep</button>
-          <button onClick={onDelete} className="text-danger text-[9px] min-h-[32px] px-1">Delete</button>
+          <button onClick={() => setShowConfirm(false)} className="text-text-muted text-xs min-h-[32px] px-1">Keep</button>
+          <button onClick={onDelete} className="text-danger text-xs min-h-[32px] px-1">Delete</button>
         </div>
       ) : (
-        <button onClick={() => setShowConfirm(true)} className="text-text-muted text-[10px] min-h-[32px] px-1">×</button>
+        <button onClick={() => setShowConfirm(true)} className="text-text-muted text-xs min-h-[32px] px-1">×</button>
       )}
     </div>
   );

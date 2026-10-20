@@ -213,7 +213,7 @@ export function BpmControl() {
 
       {speedLabel && (
         <div className="absolute left-1/2 -translate-x-1/2 -top-6 pointer-events-none">
-          <span className="font-mono text-[10px] font-bold text-text-muted">
+          <span className="font-mono text-xs font-semibold text-text-muted">
             {speedLabel}
           </span>
         </div>

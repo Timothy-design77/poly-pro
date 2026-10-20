@@ -6,6 +6,7 @@ interface CollapsibleCardProps {
   badge?: string;
   defaultOpen?: boolean;
   help?: string;
+  icon?: ReactNode;
   onReset?: () => void;
   resetLabel?: string;
   children: ReactNode;
@@ -25,6 +26,7 @@ export function CollapsibleCard({
   badge,
   defaultOpen = false,
   help,
+  icon,
   onReset,
   resetLabel = 'Reset',
   children,
@@ -64,11 +66,12 @@ export function CollapsibleCard({
         aria-controls={contentId}
         className="flex-1 min-w-0 min-h-[48px] flex items-center gap-3 px-4 py-3 active:bg-bg-raised transition-colors duration-75 text-left"
       >
-        <span className="text-xs font-bold text-text-secondary uppercase tracking-wider flex-1 flex items-center gap-1.5 min-w-0">
+        {icon && <span aria-hidden="true" className="text-text-muted">{icon}</span>}
+        <span className="text-sm font-semibold text-text-primary flex-1 flex items-center gap-1.5 min-w-0">
           <span className="truncate">{title}</span>
         </span>
         {badge && (
-          <span className="font-mono text-[11px] text-text-muted shrink-0">
+          <span className="font-mono text-xs text-text-muted shrink-0">
             {badge}
           </span>
         )}
@@ -80,19 +83,19 @@ export function CollapsibleCard({
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      {help && <div className="pr-4"><HelpTip text={help} /></div>}
       </div>
 
       {isOpen && (
         <div id={contentId} className="border-t border-border-subtle bg-bg-primary">
           {renderContent && (
             <div className="px-4 py-3">
+              {help && <div className="flex justify-end"><HelpTip text={help} /></div>}
               {onReset && (
                 <div className="flex justify-end mb-2">
                   <button
                     type="button"
                     onClick={onReset}
-                    className="min-h-[32px] rounded-md px-2.5 text-[10px] font-semibold text-text-muted active:bg-bg-raised active:text-text-primary"
+                    className="min-h-[32px] rounded-md px-2.5 text-xs font-semibold text-text-muted active:bg-bg-raised active:text-text-primary"
                     aria-label={`${resetLabel} ${title}`}
                   >
                     {resetLabel}

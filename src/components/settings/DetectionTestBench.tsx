@@ -370,14 +370,14 @@ export function DetectionTestBench({ visible, onClose }: Props) {
 
       // Peak label
       ctx.fillStyle = '#8B8B94';
-      ctx.font = '8px "JetBrains Mono", monospace';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(d.peak.toFixed(2), x, h - 2);
     }
 
     // Detection count label
     ctx.fillStyle = 'rgba(21,23,26,0.5)';
-    ctx.font = '10px "DM Sans", sans-serif';
+    ctx.font = '11px "DM Sans", sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(`${detections.length} detected`, w - 4, 14);
 
@@ -404,7 +404,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {/* Score */}
           <div className="text-center py-4">
-            <span className={`text-4xl font-bold font-mono ${passed === total ? 'text-success' : passed >= total * 0.7 ? 'text-warning' : 'text-danger'}`}>
+            <span className={`text-4xl font-semibold font-mono ${passed === total ? 'text-success' : passed >= total * 0.7 ? 'text-warning' : 'text-danger'}`}>
               {passed}/{total}
             </span>
             <p className="text-text-muted text-xs mt-1">tests passed</p>
@@ -416,8 +416,8 @@ export function DetectionTestBench({ visible, onClose }: Props) {
               <span className="text-lg">{r.pattern.icon}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-text-primary font-medium">{r.pattern.name}</p>
-                <p className="text-[10px] text-text-secondary">{r.result.label}</p>
-                <p className="text-[9px] text-text-muted">{r.result.detail}</p>
+                <p className="text-xs text-text-secondary">{r.result.label}</p>
+                <p className="text-xs text-text-muted">{r.result.detail}</p>
               </div>
             </div>
           ))}
@@ -425,7 +425,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
           {/* Suggestions */}
           {suggestions.size > 0 && (
             <div className="bg-bg-surface border border-border-subtle rounded-xl p-3 space-y-1.5">
-              <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">Recommended Adjustments</p>
+              <p className="text-xs text-text-muted font-medium ">Recommended Adjustments</p>
               {Array.from(suggestions).map((s, i) => (
                 <p key={i} className="text-xs text-text-secondary">→ {s}</p>
               ))}
@@ -496,7 +496,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
         {/* Countdown */}
         {state.phase === 'countdown' && (
           <div className="text-center">
-            <span className="text-6xl font-bold font-mono text-accent">{state.countdown}</span>
+            <span className="text-6xl font-semibold font-mono text-accent">{state.countdown}</span>
             <p className="text-text-muted text-xs mt-2">Get ready…</p>
           </div>
         )}
@@ -530,7 +530,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
               <p className={`text-sm font-medium mt-1 ${state.result.pass ? 'text-success' : 'text-danger'}`}>
                 {state.result.label}
               </p>
-              <p className="text-[10px] text-text-muted mt-0.5">{state.result.detail}</p>
+              <p className="text-xs text-text-muted mt-0.5">{state.result.detail}</p>
             </div>
 
             {/* Suggestion */}
@@ -547,7 +547,7 @@ export function DetectionTestBench({ visible, onClose }: Props) {
 
             {/* Detection details */}
             {state.detections && state.detections.length > 0 && (
-              <div className="text-[10px] text-text-muted space-y-0.5 font-mono">
+              <div className="text-xs text-text-muted space-y-0.5 font-mono">
                 {state.detections.map((d, i) => (
                   <div key={i} className="flex gap-2">
                     <span>{d.time.toFixed(3)}s</span>

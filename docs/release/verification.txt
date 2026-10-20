@@ -1,3 +1,67 @@
+Poly Pro 2.4 — Interface and playback sync verification
+Date: 2026-10-20 UTC
+Baseline: 44e5f0e (deployed 2.3)
+Branch: improve/clear-practice-and-sync
+
+npm run test:run
+PASS: 127 unit/regression tests in 22 files.
+Selected-sound preparation is covered along with existing audio lifecycle,
+capture, analysis, persistence and export regressions.
+
+npm run build
+PASS: TypeScript and Vite production/PWA build.
+Initial JavaScript approximately 340 kB / 105 kB gzip.
+PWA precaches 33 assets, approximately 970 KiB, including local DM Sans.
+
+PLAYWRIGHT_BROWSERS_PATH=/tmp/poly-pro-browsers npx playwright test --workers=2
+PASS: 112 browser checks (56 workflows x 2 viewports), 2.6 minutes.
+No skips, disabled tests or retries in the local final run.
+412x915 mobile/touch and 884x1104, plus 320px and 3x density checks.
+
+Startup evidence:
+Baseline pointer-to-first-AudioBufferSource.start: 1,672 ms when an unused
+kick sample response was delayed by 1.6 seconds. After: 9.3 ms in the same
+probe. Cold/warm regressions require under 200/100 ms and no unused sample
+request. This measures software scheduling, not audible hardware latency.
+
+Recorded sync evidence:
+Known synthetic transients at 137.5 ms after the reference grid. Explicit
+beat/hit alignment, 1 ms nudge, undo, native source scheduling, save and
+reload all agree. Existing captured-grid playback/WAV export checks pass.
+This is uniform reference alignment, not automatic fitting or independent
+acoustic latency measurement.
+
+Frontend and user-task evidence:
+Local font request, loaded font, above-fold Start/Record, consistent four-tab
+navigation, all-recordings/project filters and active-project deletion with
+recording retention pass. Updated screenshots reviewed for Practice, Settings,
+Review, Sync and Charts, including 320px Review. Existing accessibility,
+keyboard/touch, permission/storage failure and offline workflows pass.
+Full-flow testing exposed the hidden active-project Delete action; fixed and
+verified. Tests were updated to follow the new disclosure/control locations.
+
+npm audit --audit-level=moderate
+PASS: found 0 vulnerabilities.
+
+git diff --check
+PASS.
+
+Delivery verification:
+PR CI and main deployment repeat the complete release gate and deploy its
+verified artifact. The pre-upgrade live profile contains a real fake-microphone
+take saved in 2.3 build 44e5f0e with a 0.5 ms offset. Post-deployment checks
+compare saved metadata/configuration, exercise update blocking during practice,
+then adjust, play, save and reopen offline. A separate fresh profile covers
+cancelled countdown, capture, direct Sync and offline persistence. Live build
+and final CI outcomes are reported with delivery.
+
+Physical limits:
+No physical Galaxy Z Fold 7, speaker/microphone latency, Bluetooth route,
+real-percussion accuracy or sustained thermal acceptance was performed.
+See PRODUCTION_READINESS.md for the outstanding physical-device checklist.
+
+--- Historical 2.3 evidence ---
+
 Poly Pro 2.3 — Practice flow verification
 Date: 2026-10-18 UTC
 Baseline: 8d36c1a (deployed 2.2)

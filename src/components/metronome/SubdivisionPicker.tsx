@@ -19,7 +19,7 @@ export function SubdivisionPicker() {
 
   return (
     <div>
-      <div className="text-[10px] text-text-muted uppercase tracking-wider mb-2">Subdivision</div>
+      <div className="text-xs text-text-muted  mb-2">Subdivision</div>
       <div className="flex gap-1.5 flex-wrap">
         {SUBDIVISIONS.map((s) => (
           <button
@@ -27,7 +27,7 @@ export function SubdivisionPicker() {
             type="button" aria-pressed={subdivision === s.value}
             onClick={() => setSubdivision(s.value)}
             className={`
-              h-[40px] px-3.5 rounded-xl text-xs font-bold transition-colors
+              h-[40px] px-3.5 rounded-xl text-xs font-semibold transition-colors
               touch-manipulation select-none min-w-[52px]
               ${subdivision === s.value
                 ? 'bg-[rgba(21,23,26,0.15)] text-text-primary border border-[rgba(21,23,26,0.15)]'

@@ -14,9 +14,9 @@ export function CloudSettings() {
           Enhanced Analysis
           <HelpTip text="Cloud stem separation is not enabled in this build. Core recording and analysis remain fully local." />
         </span>
-        <span className="rounded-full border border-border-subtle px-2 py-1 text-[10px] text-text-muted">Unavailable</span>
+        <span className="rounded-full border border-border-subtle px-2 py-1 text-xs text-text-muted">Unavailable</span>
       </div>
-      <p className="text-[10px] text-text-muted leading-relaxed">Cloud analysis is planned for a future release. Your recordings and analysis stay on this device.</p>
+      <p className="text-xs text-text-muted leading-relaxed">Cloud analysis is planned for a future release. Your recordings and analysis stay on this device.</p>
     </div>
   );
 }

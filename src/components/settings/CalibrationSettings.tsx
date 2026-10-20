@@ -35,7 +35,7 @@ export function CalibrationSettings() {
           Effective Offset
           <HelpTip text="Total latency compensation applied during analysis: calibrated base plus fine-tune adjustment." />
         </span>
-        <span className="text-sm font-mono font-bold text-text-primary">
+        <span className="text-sm font-mono font-semibold text-text-primary">
           {`${effectiveOffset.toFixed(1)}ms`}
         </span>
       </div>
@@ -62,7 +62,7 @@ export function CalibrationSettings() {
       <button
         type="button"
         onClick={() => setShowCalibration(true)}
-        className="w-full min-h-[44px] rounded-xl font-bold text-sm tracking-wide
+        className="w-full min-h-[44px] rounded-xl font-semibold text-sm tracking-wide
                    touch-manipulation select-none bg-accent text-bg-primary active:bg-accent-hover"
       >
         {lastCalibratedAt ? 'Recalibrate' : 'Run Calibration'}
@@ -78,7 +78,7 @@ export function CalibrationSettings() {
             <button
               type="button"
               onClick={() => setManualAdjustment(0)}
-              className="text-[10px] font-semibold text-text-muted min-h-[28px] px-2 rounded active:bg-bg-raised"
+              className="text-xs font-semibold text-text-muted min-h-[28px] px-2 rounded active:bg-bg-raised"
             >
               Reset
             </button>
@@ -96,9 +96,9 @@ export function CalibrationSettings() {
           unit="ms"
         />
         <div className="flex justify-between mt-0.5">
-          <span className="text-[9px] text-text-muted">-300ms</span>
-          <span className="text-[9px] text-text-muted">0</span>
-          <span className="text-[9px] text-text-muted">+300ms</span>
+          <span className="text-xs text-text-muted">-300ms</span>
+          <span className="text-xs text-text-muted">0</span>
+          <span className="text-xs text-text-muted">+300ms</span>
         </div>
       </div>
 

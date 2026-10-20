@@ -65,7 +65,7 @@ test('bounded click export preserves tails and global normalization across segme
     await new Promise<void>((resolve) => { tx.oncomplete = () => resolve(); }); db.close();
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();
   await page.getByRole('button', { name: 'Export audio' }).click();
   const download = page.waitForEvent('download');

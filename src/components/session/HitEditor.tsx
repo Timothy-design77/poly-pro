@@ -56,7 +56,7 @@ export function HitEditor({ session, hitEvents, playheadFraction, onChange }: Pr
   return (
     <div className="rounded-lg border border-border-subtle bg-bg-raised/40 p-2 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <div><p className="text-xs font-bold text-text-secondary">Edit hits</p><p className="text-xs text-text-muted">Seek to a hit to move or remove it, or add a missed hit at the playhead. Undo reverses a correction. Save changes keeps your edits.</p></div>
+        <div><p className="text-xs font-semibold text-text-secondary">Edit hits</p><p className="text-xs text-text-muted">Seek to a hit to move or remove it, or add a missed hit at the playhead. Undo reverses a correction. Save changes keeps your edits.</p></div>
         <span className="text-xs font-mono text-text-muted">{hitEvents.rawOnsets.length} hits</span>
       </div>
       <div className="flex items-center justify-between rounded bg-bg-surface px-2 py-1.5">

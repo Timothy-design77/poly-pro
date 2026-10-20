@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 
 test('backup reminders snooze from the current count and clear immediately after a backup', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Home', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Practice', exact: true }).waitFor();
   await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve) => { const request = indexedDB.open('polypro'); request.onsuccess = () => resolve(request.result); });
     const tx = database.transaction('settings', 'readwrite');
@@ -21,7 +21,7 @@ test('backup reminders snooze from the current count and clear immediately after
   // Hiding the reminder acknowledges the completed IndexedDB transaction.
   await expect(page.getByText(/sessions since your last backup/)).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Home', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Practice', exact: true })).toBeVisible();
   await expect(page.getByText(/sessions since your last backup/)).toHaveCount(0);
   await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve) => { const request = indexedDB.open('polypro'); request.onsuccess = () => resolve(request.result); });
@@ -40,7 +40,7 @@ test('backup reminders snooze from the current count and clear immediately after
   const archive = await JSZip.loadAsync(await readFile((await file.path())!));
   expect(JSON.parse(await archive.file('manifest.json')!.async('string')).appVersion).toBe(version);
   await expect(page.getByText('Full backup created.', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Practice', exact: true }).click();
   await expect(page.getByText(/sessions since your last backup/)).toHaveCount(0);
   const threshold = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve) => { const request = indexedDB.open('polypro'); request.onsuccess = () => resolve(request.result); });
@@ -78,7 +78,7 @@ test('failed instrument deletion keeps profiles visible and can be retried', asy
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('./');
-  await page.getByRole('button', { name: 'Home', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Practice', exact: true }).waitFor();
   await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve) => { const request = indexedDB.open('polypro'); request.onsuccess = () => resolve(request.result); });
     const tx = database.transaction('instrumentProfiles', 'readwrite');

@@ -171,7 +171,7 @@ export function PrecisionSlider({
     <div data-no-swipe className={`space-y-1 ${className}`}>
       {(label || showValue) && (
         <div className="flex items-center justify-between gap-2">
-          {label && <span className="text-xs text-text-muted uppercase tracking-wider">{label}</span>}
+          {label && <span className="text-xs text-text-muted ">{label}</span>}
           {showValue && !isEditing && (
             <button
               ref={valueButtonRef}

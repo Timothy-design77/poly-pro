@@ -99,7 +99,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
       <div className="flex flex-col items-center py-4">
         <div className="flex items-center gap-2">
           <span
-            className="text-5xl font-bold font-mono"
+            className="text-5xl font-semibold font-mono"
             style={{ color: scoreColor }}
           >
             {Math.round(score)}%
@@ -177,7 +177,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
       {/* Phase 9: Groove & Dynamics stats */}
       {(hasSwing || grooveConsistency != null || accentAdherence != null || dynamicRange != null) && (
         <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
-          <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider mb-2">
+          <p className="text-xs text-text-muted font-medium  mb-2">
             Groove & Dynamics
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -218,7 +218,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
       {instrumentMetrics.length > 0 && (
         <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
           <div className="flex items-center gap-1 mb-2">
-            <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">
+            <p className="text-xs text-text-muted font-medium ">
               Per Instrument
             </p>
             <HelpTip text="Timing breakdown by instrument. Only instruments with ≥10 high-confidence hits (≥75% classification confidence) get their own row." />
@@ -244,7 +244,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
       {interLimbCorrelations.length > 0 && (
         <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
           <div className="flex items-center gap-1 mb-2">
-            <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">
+            <p className="text-xs text-text-muted font-medium ">
               Inter-Limb Correlation
             </p>
             <HelpTip text="Pearson r between timing deviations of instruments that hit simultaneously. High positive = limbs rush/drag together. Negative = one rushes when the other drags." />
@@ -255,7 +255,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
               const infoB = INSTRUMENT_INFO[c.instrumentB as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
               const rColor = Math.abs(c.correlation) > 0.5 ? '#A45108' : '#4A4A52';
               return (
-                <div key={i} className="flex items-center gap-2 py-1 px-1 text-[10px]">
+                <div key={i} className="flex items-center gap-2 py-1 px-1 text-xs">
                   <span>{infoA.icon} {c.instrumentA}</span>
                   <span className="text-text-muted">↔</span>
                   <span>{infoB.icon} {c.instrumentB}</span>
@@ -300,7 +300,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
           )}
           <p>
             <span className="text-text-muted">Final:</span>{' '}
-            <span className="font-mono font-bold" style={{ color: scoreColor }}>{Math.round(score)}%</span>
+            <span className="font-mono font-semibold" style={{ color: scoreColor }}>{Math.round(score)}%</span>
           </p>
           <hr className="border-border-subtle" />
           <p className="text-text-muted leading-relaxed">
@@ -319,7 +319,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center">
-      <p className="text-[10px] text-text-muted">{label}</p>
+      <p className="text-xs text-text-muted">{label}</p>
       <p className="text-xs font-mono font-semibold text-text-primary">{value}</p>
     </div>
   );
@@ -328,12 +328,12 @@ function MetaItem({ label, value }: { label: string; value: string }) {
 function StatRow({ label, value, sub, help }: { label: string; value: string; sub?: string; help?: string }) {
   return (
     <div role="group" aria-label={label} className="px-2 py-1.5">
-      <p className="text-[10px] text-text-muted flex items-center gap-1">
+      <p className="text-xs text-text-muted flex items-center gap-1">
         {label}
         {help && <HelpTip text={help} />}
       </p>
       <p className="text-sm font-mono font-semibold text-text-primary">{value}</p>
-      {sub && <p className="text-[9px] text-text-muted">{sub}</p>}
+      {sub && <p className="text-xs text-text-muted">{sub}</p>}
     </div>
   );
 }
@@ -372,18 +372,18 @@ function InstrumentRow({
         <span className="text-text-primary text-xs flex-shrink-0 w-14">{metrics.name}</span>
 
         {/* Hit count */}
-        <span className="text-text-muted text-[10px] font-mono w-10 text-right">
+        <span className="text-text-muted text-xs font-mono w-10 text-right">
           {metrics.hitCount}
         </span>
 
         {/* Mean offset */}
-        <span className="text-text-secondary text-[10px] font-mono w-16 text-right">
+        <span className="text-text-secondary text-xs font-mono w-16 text-right">
           {metrics.meanOffset > 0 ? '+' : ''}
           {metrics.meanOffset.toFixed(1)}ms
         </span>
 
         {/* σ */}
-        <span className="text-text-primary text-[10px] font-mono w-16 text-right font-semibold">
+        <span className="text-text-primary text-xs font-mono w-16 text-right font-semibold">
           σ {metrics.sigma.toFixed(1)}
         </span>
 
@@ -395,7 +395,7 @@ function InstrumentRow({
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="ml-8 mt-1 mb-2 text-[10px] text-text-muted space-y-0.5 pl-1 border-l border-border-subtle">
+        <div className="ml-8 mt-1 mb-2 text-xs text-text-muted space-y-0.5 pl-1 border-l border-border-subtle">
           <p>Hits: {metrics.hitCount}</p>
           <p>Mean: {metrics.meanOffset > 0 ? '+' : ''}{metrics.meanOffset.toFixed(2)}ms</p>
           <p>σ: {metrics.sigma.toFixed(2)}ms</p>

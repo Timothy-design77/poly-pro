@@ -91,7 +91,7 @@ export function HelpTip({ text, children }: Props) {
         }}
         onBlur={() => setOpen(false)}
         className="w-6 h-6 rounded-full flex items-center justify-center
-                   text-[9px] font-bold touch-manipulation select-none shrink-0
+                   text-xs font-semibold touch-manipulation select-none shrink-0
                    bg-[rgba(21,23,26,0.06)] text-text-muted
                    active:bg-[rgba(21,23,26,0.12)]"
         aria-label="Help"
@@ -113,11 +113,11 @@ export function HelpTip({ text, children }: Props) {
             bottom: pos.above ? `${window.innerHeight - pos.y}px` : undefined,
           }}
         >
-          <p className="text-[11px] text-text-secondary leading-relaxed">
+          <p className="text-xs text-text-secondary leading-relaxed">
             {text}
           </p>
           {children && (
-            <div className="mt-1.5 text-[10px] text-text-muted leading-relaxed">
+            <div className="mt-1.5 text-xs text-text-muted leading-relaxed">
               {children}
             </div>
           )}

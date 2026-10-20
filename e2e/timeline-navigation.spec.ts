@@ -4,6 +4,7 @@ import { seedSession } from './helpers';
 test('folding the display keeps a zoomed waveform inside its scroll bounds', async ({ page }) => {
   await page.setViewportSize({ width: 884, height: 1104 });
   await seedSession(page);
+  await page.getByText(/^Waveform view/).click();
   await page.getByRole('button', { name: '32×', exact: true }).click();
   const position = page.getByRole('slider', { name: 'Recording position', exact: true });
   await position.fill('900');

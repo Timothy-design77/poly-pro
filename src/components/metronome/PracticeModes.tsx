@@ -23,7 +23,7 @@ export function PracticeModes() {
   const playMuteCycleMuteBars = useMetronomeStore((s) => s.playMuteCycleMuteBars);
   const setPlayMuteCycle = useMetronomeStore((s) => s.setPlayMuteCycle);
 
-  const stepperButton = 'w-[48px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-bold touch-manipulation';
+  const stepperButton = 'w-[48px] h-[44px] flex items-center justify-center text-text-primary active:bg-bg-raised text-lg font-semibold touch-manipulation';
 
   return (
     <div className="space-y-5">
@@ -33,7 +33,7 @@ export function PracticeModes() {
         </div>
         <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
           <button type="button" aria-label="Decrease count-in bars" onClick={() => setCountInBars(Math.max(0, countInBars - 1))} className={stepperButton}>−</button>
-          <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">
+          <span className="flex-1 text-center font-mono text-base text-text-primary font-semibold">
             {countInBars === 0 ? 'Off' : countInBars}
           </span>
           <button type="button" aria-label="Increase count-in bars" onClick={() => setCountInBars(Math.min(8, countInBars + 1))} className={stepperButton}>+</button>
@@ -57,7 +57,7 @@ export function PracticeModes() {
           className={sliderClass}
         />
         {swing > 0 && subdivision <= 1 && (
-          <div className="text-[11px] text-warning mt-1.5">
+          <div className="text-xs text-warning mt-1.5">
             Swing requires a subdivision (8ths, triplets, etc.)
           </div>
         )}
@@ -71,18 +71,18 @@ export function PracticeModes() {
         {playMuteCycleEnabled && (
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-[10px] text-text-muted uppercase mb-1 block">Play Bars</label>
+              <label className="text-xs text-text-muted mb-1 block">Play Bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button type="button" aria-label="Decrease play bars" onClick={() => setPlayMuteCycle(true, Math.max(1, playMuteCyclePlayBars - 1))} className={stepperButton}>−</button>
-                <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{playMuteCyclePlayBars}</span>
+                <span className="flex-1 text-center font-mono text-base text-text-primary font-semibold">{playMuteCyclePlayBars}</span>
                 <button type="button" aria-label="Increase play bars" onClick={() => setPlayMuteCycle(true, Math.min(16, playMuteCyclePlayBars + 1))} className={stepperButton}>+</button>
               </div>
             </div>
             <div className="flex-1">
-              <label className="text-[10px] text-text-muted uppercase mb-1 block">Mute Bars</label>
+              <label className="text-xs text-text-muted mb-1 block">Mute Bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button type="button" aria-label="Decrease mute bars" onClick={() => setPlayMuteCycle(true, undefined, Math.max(1, playMuteCycleMuteBars - 1))} className={stepperButton}>−</button>
-                <span className="flex-1 text-center font-mono text-base text-text-primary font-bold">{playMuteCycleMuteBars}</span>
+                <span className="flex-1 text-center font-mono text-base text-text-primary font-semibold">{playMuteCycleMuteBars}</span>
                 <button type="button" aria-label="Increase mute bars" onClick={() => setPlayMuteCycle(true, undefined, Math.min(16, playMuteCycleMuteBars + 1))} className={stepperButton}>+</button>
               </div>
             </div>

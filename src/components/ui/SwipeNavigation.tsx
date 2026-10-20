@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavStore } from '../../store/nav-store';
+import { PageHeader } from './PageHeader';
 
 interface SwipeNavigationProps {
   pages: ReactNode[];
@@ -26,7 +27,7 @@ const DIRECTION_LOCK = 12;
 export function SwipeNavigation({
   pages,
   pageLabels,
-  initialPage = 1,
+  initialPage = 0,
   settingsContent,
 }: SwipeNavigationProps) {
   const settingsIndex = pages.length;
@@ -149,7 +150,7 @@ export function SwipeNavigation({
 
   return (
     <div className="relative h-full w-full overflow-hidden flex flex-col bg-bg-primary">
-      <main className="flex-1 min-h-0 overflow-hidden" aria-live="polite">
+      <main className="flex-1 min-h-0 overflow-hidden">
         {pages.map((page, index) => (
           <section
             key={pageLabels[index] ?? index}
@@ -163,10 +164,7 @@ export function SwipeNavigation({
         {currentPage === settingsIndex && (
           <section className="h-full overflow-y-auto overscroll-contain bg-bg-primary" aria-label="Settings">
             <div className="w-full max-w-xl mx-auto pb-8">
-              <div className="px-4 pt-4 pb-2">
-                <h1 className="text-lg font-semibold text-text-primary">Settings</h1>
-                <p className="text-xs text-text-muted mt-0.5">App, recording, analysis, and data controls</p>
-              </div>
+              <div className="px-4"><PageHeader title="Settings" /></div>
               {settingsContent || (
                 <div className="flex items-center justify-center h-40 text-text-muted text-sm">
                   No settings available
@@ -179,7 +177,7 @@ export function SwipeNavigation({
 
       <nav
         className="shrink-0 border-t border-border-subtle bg-bg-surface px-2 pt-2 pb-safe select-none"
-        aria-label="Primary navigation. Swipe left or right on this bar to change section."
+        aria-label="Primary navigation"
         style={{ touchAction: 'pan-y' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -191,7 +189,7 @@ export function SwipeNavigation({
           event.stopPropagation();
         }}
       >
-        {isRecording && <p role="status" className="pb-2 text-center text-xs font-semibold text-danger">{capturePhase === 'recording' ? 'Recording in progress · stop the take to change section' : 'Saving your take…'}</p>}
+        {isRecording && <p role="status" className="pb-2 text-center text-xs font-semibold text-danger">{capturePhase === 'recording' ? 'Recording in progress' : 'Saving your take…'}</p>}
         <div className="grid grid-cols-4 gap-1.5 max-w-lg mx-auto">
           {destinationLabels.map((label, index) => {
             const active = index === currentPage;
@@ -202,15 +200,18 @@ export function SwipeNavigation({
                 onClick={() => navigateTo(index)}
                 disabled={isRecording && !active}
                 aria-current={active ? 'page' : undefined}
-                className={`min-h-[50px] rounded-md px-2 py-2 text-xs font-semibold disabled:opacity-40 ${
+                className={`min-h-[52px] flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-xs font-semibold disabled:opacity-40 ${
                   active
-                    ? 'bg-accent text-bg-primary'
-                    : 'bg-bg-raised text-text-secondary active:bg-accent-dim active:text-text-primary'
+                    ? 'bg-accent-dim text-text-primary'
+                    : 'text-text-muted active:bg-bg-raised'
                 }`}
                 style={active && navDragX !== 0
                   ? { transform: `translateX(${navDragX / 12}px)` }
                   : undefined}
               >
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  {index === 0 ? <><path d="M8 3h8l4 18H4L8 3Z"/><path d="m12 16 5-10M9 17h6"/></> : index === 1 ? <><path d="M4 8v8m4-12v16m4-13v10m4-14v18m4-13v8"/></> : index === 2 ? <><path d="M3 7V5h6l2 2h10v13H3V7Z"/><path d="M8 12h8m-8 4h5"/></> : <><circle cx="12" cy="12" r="3"/><path d="m9 3 6 0 1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1 1-3Z"/></>}
+                </svg>
                 {label}
               </button>
             );

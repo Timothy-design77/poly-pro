@@ -43,14 +43,14 @@ test('preparation delay saves no audio and cancellation releases the microphone'
 
 test('a delayed silent take stops itself at the exact duration and opens saved review', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Record without click' }).click();
   await page.getByText('Recording setup', { exact: true }).click();
+  await page.getByRole('button', { name: 'Record without click' }).click();
   await page.getByRole('combobox', { name: 'Preparation delay' }).selectOption('3');
   await page.getByRole('combobox', { name: 'Take length' }).selectOption('15');
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('No audio is saved until the countdown ends');
   await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /TAP TEMPO/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Tap tempo/ })).toBeDisabled();
   await expect(page.getByRole('button', { name: /Open tempo keypad/ })).toHaveCount(0);
   await expect(page.getByText('Stop recording to change tempo or setup.')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Review take' })).toBeVisible({ timeout: 25000 });
@@ -80,10 +80,10 @@ test('leaving during countdown cancels it before any audio is saved', async ({ p
   await page.getByRole('combobox', { name: 'Preparation delay' }).selectOption('3');
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('No audio is saved until the countdown ends');
-  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await page.waitForTimeout(3300);
   expect(await savedCaptureCounts(page)).toEqual([0, 0, 0]);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Practice', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Start recording', exact: true })).toBeEnabled();
 });
 
@@ -119,6 +119,7 @@ test('recording with Trainer saves the same starting tempo as the captured beat 
   await page.getByRole('spinbutton', { name: 'Trainer start BPM' }).fill('80');
   await page.getByRole('spinbutton', { name: 'Trainer start BPM' }).blur();
   await expect(page.getByRole('spinbutton', { name: 'Trainer start BPM' })).toHaveValue('80');
+  await page.getByText('Recording setup', { exact: true }).click();
   await page.getByRole('button', { name: 'Record without click' }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();

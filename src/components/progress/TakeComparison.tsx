@@ -48,7 +48,7 @@ export function TakeComparison({ sessions }: { sessions: SessionRecord[] }) {
         <tr><th scope="row" className="py-2 font-medium">Timing spread σ</th><td>{comparison.a.sigma.toFixed(1)}ms</td><td>{comparison.b.sigma.toFixed(1)}ms</td><td>{delta(comparison.b.sigma - comparison.a.sigma, 'ms')}</td></tr>
         <tr><th scope="row" className="py-2 font-medium">Hit rate</th><td>{Math.round(comparison.a.hitRate * 100)}%</td><td>{Math.round(comparison.b.hitRate * 100)}%</td><td>{delta((comparison.b.hitRate - comparison.a.hitRate) * 100, ' pts')}</td></tr>
       </tbody></table>
-      <p className="text-[11px] text-text-muted">Preview with the same scoring window ({comparison.window}% IOI) and flam merge ({comparison.flam}%); each take keeps its calibration. Lower σ means tighter timing. Saved scores stay unchanged.</p>
+      <p className="text-xs text-text-muted">Preview with the same scoring window ({comparison.window}% IOI) and flam merge ({comparison.flam}%); each take keeps its calibration. Lower σ means tighter timing. Saved scores stay unchanged.</p>
       {(!compatible || !sameDetection) && <p className="text-xs text-warning">{!compatible ? 'Tempo or pattern differs. ' : ''}{!sameDetection ? 'Detection settings differ or are unknown. Re-detect both takes with the same settings for a fair comparison.' : 'Compare the same tempo and pattern to assess improvement.'}</p>}
     </>}
   </section>;

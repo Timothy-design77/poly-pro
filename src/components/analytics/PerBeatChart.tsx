@@ -75,7 +75,7 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
 
         // Beat label
         ctx.fillStyle = '#4A4A52';
-        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(String(s.beatIndex + 1), x + barW / 2, h - 8);
       }
@@ -92,7 +92,7 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
 
       // Legend
       ctx.fillStyle = '#8B8B94';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('bars = σ, dots = mean offset', pad.left, pad.top - 6);
     },
