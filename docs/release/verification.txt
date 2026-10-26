@@ -1,14 +1,15 @@
 Poly Pro 2.5.0 — 2026-10-26
 Branch: improve/circular-practice-refinement
+Follow-up: fix/capture-engine-load-feedback
 Baseline: 8de05e8 (2.4)
 
 npm run typecheck: PASS
 npm run test:run: PASS — 127 tests across 22 files, Vitest 4.1.12
-npm run build: PASS — initial JS 337.70 kB / 104.44 kB gzip
+npm run build: PASS — initial JS 337.83 kB / 104.49 kB gzip
 npm audit --audit-level=moderate: PASS — 0 vulnerabilities
 git diff --check: PASS
 PLAYWRIGHT_BROWSERS_PATH=/tmp/poly-pro-browsers npm run test:e2e:
-  PASS — 122 tests, 2.8 minutes, no retries, none disabled
+  PASS — 124 tests, 2.7 minutes, no retries, none disabled
   Chromium 412×915 touch/mobile and 884×1104; additional 320 px and 3× density checks
 
 Focused failures and fixes:
@@ -16,6 +17,9 @@ Focused failures and fixes:
 - Four-track decimal labels failed the inner-ring geometry check; final sizing passes.
 - Meter follows synthetic capture levels of 25%, silence and clipping.
 - Fold changes preserve playback and keep tempo/transport reachable.
+- Engine-load failure regression failed on the misleading microphone message.
+  The fix passes six repeated checks across both layouts: clear error, released
+  microphone tracks, successful retry, measured input and saved Review.
 
 Full workflow coverage:
 - Click startup cold/warm, including a slow unavailable unused sound.
@@ -26,10 +30,20 @@ Full workflow coverage:
 - Projects, progression, samples, training, detection, permissions and offline reload.
 - Automated accessibility checks plus screenshots of meaningful states.
 
-Release: merge/deployment runs the same gates via GitHub Actions and deploys its verified artifact.
+Release: PR #21 merged as 93bfb17 and deployed successfully:
+https://github.com/Timothy-design77/poly-pro/actions/runs/40403072678
+The first runner stalled installing Chromium; the restarted job passed all gates.
+The engine-load feedback follow-up uses the same CI/deployment gates.
 Live upgrade fixture: seeded take on build 8de05e8, audio present, 1 ms sync saved.
+Live 93bfb17: existing audio, offset and playback preserved after upgrade.
+Fresh profile: navigation, metronome, synthetic delayed silent capture, exact
+15-second auto-stop, analysis, 1 ms sync, save and reload pass without page errors.
+All 35 referenced hosted HTML/script/style/font/sound/icon/PWA resources return 200.
 Direct live-browser TLS is limited by this environment's shared certificate store.
 Automatic approval review rejected changing that shared trust store; it remains untouched.
 Live browser checks use TLS-verified proxy request routing, with service workers blocked.
+Native worklet fetching bypasses that routing, so the capture harness retrieves
+the deployed worklet with verified TLS and loads its unchanged bytes as a Blob.
+Capture uses synthetic audio; native hosted worklet fetching is not established here.
 Offline/service-worker activation is verified against the local production build.
 Physical Fold 7, acoustic accuracy, real microphone/Bluetooth routing and thermal testing remain unverified.

@@ -130,10 +130,13 @@ Acceptance: preserve the circular tempo/rhythm display; Start and Record visible
 - [x] A2 Refine the circular dial, readable typography and rhythm states; expose precise tempo adjustment; simplify Practice grouping and folded/unfolded layout.
 - [x] A3 Standardize navigation, settings, recording lists, project surfaces and Review controls. Exercise complete workflows and repair concrete usability failures.
 - [x] A4 Run focused interaction/accessibility checks, inspect screenshots, simplify, retest; then pass full unit/browser/build/dependency gates.
-- [ ] A5 Update documentation, commit/push, merge through CI, deploy and verify live fresh/existing-data/offline workflows.
+- [x] A5 Update documentation, commit/push, merge through CI, deploy and verify live fresh/existing-data workflows. Verify offline/service-worker behavior against the production build; distinguish hosted-browser and physical-device limitations.
 
 Completion is a verified usable release, not a claim of mathematical perfection. Physical Fold 7, microphone/Bluetooth latency and acoustic accuracy require real hardware and remain explicitly distinguished from automated evidence.
 
 - A1–A3: implementation applies the research without removing the circle. A focused failing keypad regression led to draft-only entry with true cancellation. Capture now shows measured levels. Manual four-track inspection exposed crowded labels; the corrected geometry passes at 320 px.
 
-- A4 final evidence: 127 unit/regression tests, 122 browser checks across both main viewports, type-check/build, zero dependency vulnerabilities and diff checks pass. Screenshots include idle/playing/recording, unfolded Practice and four-ring geometry at 320 px.
+- A4 final evidence: 127 unit/regression tests, 124 browser checks across both main viewports (including the recording-engine recovery follow-up), type-check/build, zero dependency vulnerabilities and diff checks pass. Screenshots include idle/playing/recording, unfolded Practice and four-ring geometry at 320 px.
+
+- A5 delivery: [PR #21](https://github.com/Timothy-design77/poly-pro/pull/21) merged as `93bfb17`; [deployment](https://github.com/Timothy-design77/poly-pro/actions/runs/40403072678) passed after restarting a runner stalled during browser installation. Hosted checks preserve a take created on 2.4, including its audio and saved 1 ms offset; playback works. A fresh profile completes a synthetic 15-second silent take, analysis, sync/save and reload. All 35 referenced deployed resources return 200. Hosted worklet loading uses TLS-verified bytes in the harness; offline activation is verified locally. See the verification record for exact scope.
+- Final feedback loop: hosted testing exposed a misleading microphone error for recording-engine download failures. The focused regression failed before the fix and now repeatedly verifies the correct message, released microphone tracks and a successful retry with measured audio. This follow-up retains the same release gates.

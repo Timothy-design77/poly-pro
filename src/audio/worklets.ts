@@ -10,6 +10,9 @@ export async function ensurePcmCaptureWorklet(ctx: AudioContext): Promise<void> 
   const basePath = (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL || '/poly-pro/';
   const promise = ctx.audioWorklet.addModule(`${basePath}worklets/pcm-capture.js`)
     .then(() => { loaded.add(ctx); })
+    .catch((cause: unknown) => {
+      throw Object.assign(new Error('The recording engine could not load. Check your connection and try again.'), { cause });
+    })
     .finally(() => { loading.delete(ctx); });
   loading.set(ctx, promise);
   return promise;

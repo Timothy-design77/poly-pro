@@ -1,10 +1,10 @@
 # Poly Pro 2.5 release readiness
 
-Updated 2026-10-26. Current iteration: `improve/circular-practice-refinement`, based on deployed `8de05e8`. The original 2.1 audit below started at `c90e2d8`.
+Updated 2026-10-26. The circular refinement merged as `93bfb17` in [PR #21](https://github.com/Timothy-design77/poly-pro/pull/21), based on deployed `8de05e8`. The original 2.1 audit below started at `c90e2d8`.
 
 ## Release decision
 
-The 2.5 release passes 127 unit/regression tests and 122 browser checks, type-checking, production build and a clean dependency audit. Release verification is recorded in [release/verification.txt](release/verification.txt). Target-device acceptance remains open below. Physical Galaxy Z Fold 7 acceptance is required before calling the release fully production-validated.
+The 2.5 release passes 127 unit/regression tests and 124 browser checks, type-checking, production build and a clean dependency audit. Release verification is recorded in [release/verification.txt](release/verification.txt). Target-device acceptance remains open below. Physical Galaxy Z Fold 7 acceptance is required before calling the release fully production-validated.
 
 The 2.5 [circular refinement audit](CIRCULAR_REFINEMENT_AUDIT.md) records the research, circular dial, direct tempo controls, draft keypad fix, measured microphone levels, adaptive layout and consistent secondary screens. The user delegated design and release decisions on October 26.
 
