@@ -46,9 +46,9 @@ export function ProjectsPage() {
   const quickStartSessions = sessions.filter((session) => session.projectId === null);
 
   return (
-    <div className="h-full flex flex-col px-4 pb-4 overflow-y-auto bg-bg-primary">
-      <div className="w-full max-w-xl mx-auto flex flex-col min-h-full">
-        <PageHeader title="Projects" />
+    <div className="h-full overflow-y-auto bg-bg-primary">
+      <div className="app-page">
+        <PageHeader title="Projects"><button type="button" onClick={() => setShowCreate(true)} className="ui-button ui-button-primary">+ New Project</button></PageHeader>
 
         {error && <p role="alert" className="text-sm text-danger my-3">{error}</p>}
         <div className="flex flex-col gap-2">
@@ -63,7 +63,7 @@ export function ProjectsPage() {
                 : 'bg-bg-surface border-border-subtle active:bg-bg-raised'
               }`}
           >
-            <span className="text-2xl shrink-0" aria-hidden="true">⚡</span>
+            <span className="shrink-0 text-text-secondary" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z" /></svg></span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-text-primary">Quick Start</p>
               <p className="text-xs text-text-muted mt-0.5">
@@ -152,18 +152,6 @@ export function ProjectsPage() {
             );
           })}
         </div>
-
-        <div className="flex-1 min-h-4" />
-
-        <button
-          type="button"
-          onClick={() => setShowCreate(true)}
-          className="w-full py-3 rounded-xl border-[1.5px] border-dashed border-border-emphasis
-                     bg-bg-surface text-text-primary text-sm font-semibold
-                     active:bg-bg-raised transition-colors min-h-[50px] mt-3 touch-manipulation"
-        >
-          + New Project
-        </button>
 
         <ProjectCreateSheet
           isOpen={showCreate}

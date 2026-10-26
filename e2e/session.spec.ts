@@ -107,6 +107,7 @@ test('take comparison uses a common scoring window without changing saved scores
   });
   await page.reload();
   await page.getByRole('button', { name: 'Recordings', exact: true }).click();
+  await page.getByText('Practice progress', { exact: true }).click();
   const comparison = page.getByRole('region', { name: 'Compare takes' });
   await expect(comparison.getByRole('row', { name: 'Score 100% 100% 0.0 pts' })).toBeVisible();
   await comparison.getByLabel('Comparison take', { exact: true }).selectOption('second-take');

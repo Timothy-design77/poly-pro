@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { createPortal } from 'react-dom';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 interface NumberInputProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (value: number) => void;
-  onLiveChange?: (value: number) => void;
   initialValue: number;
   min?: number;
   max?: number;
@@ -13,74 +13,40 @@ interface NumberInputProps {
   label?: string;
 }
 
-const FOCUSABLE = 'button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-export function NumberInput({ isOpen, onClose, onSubmit, onLiveChange, initialValue, min = 10, max = 400, step = 0.5, label = 'BPM' }: NumberInputProps) {
+export function NumberInput({ isOpen, onClose, onSubmit, initialValue, min = 10, max = 400, step = 0.5, label = 'BPM' }: NumberInputProps) {
   const [input, setInput] = useState('');
-  const [hasDecimal, setHasDecimal] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const replaceOnType = useRef(true);
+  const initialValueRef = useRef(initialValue);
+  initialValueRef.current = initialValue;
   const labelId = useId();
+
+  useDialogFocus(dialogRef, isOpen, onClose);
 
   useEffect(() => {
     if (!isOpen) return;
-    setInput(String(initialValue));
-    setHasDecimal(String(initialValue).includes('.'));
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frame = requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>('button[data-key="1"]')?.focus());
-    return () => {
-      cancelAnimationFrame(frame);
-      previousFocusRef.current?.focus();
-    };
-  }, [isOpen, initialValue]);
-
-  useEffect(() => {
-    if (!isOpen || !onLiveChange) return;
-    const parsed = parseFloat(input);
-    if (!Number.isNaN(parsed) && parsed >= min && parsed <= max) onLiveChange(Math.round(parsed / step) * step);
-  }, [input, isOpen, onLiveChange, min, max, step]);
+    setInput(String(initialValueRef.current));
+    replaceOnType.current = true;
+  }, [isOpen]);
 
   const handleKey = useCallback((key: string) => {
-    if (key === 'backspace') {
-      setInput((previous) => {
-        const next = previous.slice(0, -1);
-        setHasDecimal(next.includes('.'));
-        return next;
-      });
-    } else if (key === '.') {
-      if (!hasDecimal) {
-        setInput((previous) => previous + '.');
-        setHasDecimal(true);
-      }
-    } else {
-      setInput((previous) => previous.length >= 6 ? previous : previous + key);
-    }
-  }, [hasDecimal]);
+    const replace = replaceOnType.current;
+    replaceOnType.current = false;
+    setInput((previous) => {
+      if (key === 'backspace') return previous.slice(0, -1);
+      const value = replace ? '' : previous;
+      if (key === '.') return value.includes('.') ? value : (value || '0') + '.';
+      return value.length >= 6 ? value : value + key;
+    });
+  }, []);
 
   const handleSubmit = useCallback(() => {
     const value = parseFloat(input);
-    if (Number.isNaN(value)) return;
+    if (!Number.isFinite(value) || value < min || value > max) return;
     const stepped = Math.round(Math.max(min, Math.min(max, value)) / step) * step;
     onSubmit(stepped);
     onClose();
   }, [input, min, max, step, onSubmit, onClose]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
-      if (event.key === 'Enter') { event.preventDefault(); handleSubmit(); return; }
-      if (event.key !== 'Tab' || !dialogRef.current) return;
-      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, onClose, handleSubmit]);
 
   if (!isOpen) return null;
   const parsed = parseFloat(input);
@@ -89,7 +55,16 @@ export function NumberInput({ isOpen, onClose, onSubmit, onLiveChange, initialVa
 
   return createPortal(
     <div data-no-swipe className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 animate-fade-in" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={labelId} tabIndex={-1} className="w-full max-w-[400px] bg-bg-surface rounded-t-2xl p-4 pb-safe animate-slide-up outline-none">
+      <div ref={dialogRef} onKeyDown={(event) => {
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        if (/^[0-9.]$/.test(event.key) || event.key === 'Backspace') {
+          event.preventDefault(); event.stopPropagation();
+          dialogRef.current?.focus();
+          handleKey(event.key === 'Backspace' ? 'backspace' : event.key);
+        } else if (event.key === 'Enter' && event.target === dialogRef.current) {
+          event.preventDefault(); handleSubmit();
+        }
+      }} role="dialog" aria-modal="true" aria-labelledby={labelId} tabIndex={-1} className="w-full max-w-[400px] bg-bg-surface rounded-t-2xl p-4 pb-safe animate-slide-up outline-none">
         <div className="text-center mb-4">
           <div id={labelId} className="text-text-muted text-xs tracking-wider mb-2">{label}</div>
           <div className="font-mono text-4xl font-semibold text-text-primary min-h-[48px]" aria-live="polite">{input || '—'}</div>

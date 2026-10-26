@@ -1,142 +1,35 @@
-Poly Pro 2.4 — Interface and playback sync verification
-Date: 2026-10-20 UTC
-Baseline: 44e5f0e (deployed 2.3)
-Branch: improve/clear-practice-and-sync
+Poly Pro 2.5.0 — 2026-10-26
+Branch: improve/circular-practice-refinement
+Baseline: 8de05e8 (2.4)
 
-npm run test:run
-PASS: 127 unit/regression tests in 22 files.
-Selected-sound preparation is covered along with existing audio lifecycle,
-capture, analysis, persistence and export regressions.
+npm run typecheck: PASS
+npm run test:run: PASS — 127 tests across 22 files, Vitest 4.1.12
+npm run build: PASS — initial JS 337.70 kB / 104.44 kB gzip
+npm audit --audit-level=moderate: PASS — 0 vulnerabilities
+git diff --check: PASS
+PLAYWRIGHT_BROWSERS_PATH=/tmp/poly-pro-browsers npm run test:e2e:
+  PASS — 122 tests, 2.8 minutes, no retries, none disabled
+  Chromium 412×915 touch/mobile and 884×1104; additional 320 px and 3× density checks
 
-npm run build
-PASS: TypeScript and Vite production/PWA build.
-Initial JavaScript approximately 340 kB / 105 kB gzip.
-PWA precaches 33 assets, approximately 970 KiB, including local DM Sans.
+Focused failures and fixes:
+- Keypad regression failed before draft replacement/cancellation fix; now passes.
+- Four-track decimal labels failed the inner-ring geometry check; final sizing passes.
+- Meter follows synthetic capture levels of 25%, silence and clipping.
+- Fold changes preserve playback and keep tempo/transport reachable.
 
-PLAYWRIGHT_BROWSERS_PATH=/tmp/poly-pro-browsers npx playwright test --workers=2
-PASS: 112 browser checks (56 workflows x 2 viewports), 2.6 minutes.
-No skips, disabled tests or retries in the local final run.
-412x915 mobile/touch and 884x1104, plus 320px and 3x density checks.
+Full workflow coverage:
+- Click startup cold/warm, including a slow unavailable unused sound.
+- Delayed silent recording, exact auto-stop, cancellation, saved analysis and retry.
+- Reference hit aligns click at 137.5 ms; scheduling, undo, save and reload agree.
+- One review draft, hit correction, timing, charts, history, failed-save recovery.
+- Playback rates, loops, captured-grid export, cancellation, data backup/restore.
+- Projects, progression, samples, training, detection, permissions and offline reload.
+- Automated accessibility checks plus screenshots of meaningful states.
 
-Startup evidence:
-Baseline pointer-to-first-AudioBufferSource.start: 1,672 ms when an unused
-kick sample response was delayed by 1.6 seconds. After: 9.3 ms in the same
-probe. Cold/warm regressions require under 200/100 ms and no unused sample
-request. This measures software scheduling, not audible hardware latency.
-
-Recorded sync evidence:
-Known synthetic transients at 137.5 ms after the reference grid. Explicit
-beat/hit alignment, 1 ms nudge, undo, native source scheduling, save and
-reload all agree. Existing captured-grid playback/WAV export checks pass.
-This is uniform reference alignment, not automatic fitting or independent
-acoustic latency measurement.
-
-Frontend and user-task evidence:
-Local font request, loaded font, above-fold Start/Record, consistent four-tab
-navigation, all-recordings/project filters and active-project deletion with
-recording retention pass. Updated screenshots reviewed for Practice, Settings,
-Review, Sync and Charts, including 320px Review. Existing accessibility,
-keyboard/touch, permission/storage failure and offline workflows pass.
-Full-flow testing exposed the hidden active-project Delete action; fixed and
-verified. Tests were updated to follow the new disclosure/control locations.
-
-npm audit --audit-level=moderate
-PASS: found 0 vulnerabilities.
-
-git diff --check
-PASS.
-
-Delivery verification:
-PR CI and main deployment repeat the complete release gate and deploy its
-verified artifact. The pre-upgrade live profile contains a real fake-microphone
-take saved in 2.3 build 44e5f0e with a 0.5 ms offset. Post-deployment checks
-compare saved metadata/configuration, exercise update blocking during practice,
-then adjust, play, save and reopen offline. A separate fresh profile covers
-cancelled countdown, capture, direct Sync and offline persistence. Live build
-and final CI outcomes are reported with delivery.
-
-Physical limits:
-No physical Galaxy Z Fold 7, speaker/microphone latency, Bluetooth route,
-real-percussion accuracy or sustained thermal acceptance was performed.
-See PRODUCTION_READINESS.md for the outstanding physical-device checklist.
-
---- Historical 2.3 evidence ---
-
-Poly Pro 2.3 — Practice flow verification
-Date: 2026-10-18 UTC
-Baseline: 8d36c1a (deployed 2.2)
-Branch: improve/practice-flow-polish
-
-npm run typecheck
-PASS.
-
-npm run test:run
-PASS: 125 unit/regression tests in 22 files.
-Includes pending audio start cancellation, queued haptics, scheduler stalls,
-wake-lock ownership, exact sample capture limits, durable analysis success,
-project progression notices, real measure grouping and a 16,000-hit groove test.
-
-npm run build
-PASS: TypeScript and Vite production/PWA build.
-Initial JS approximately 340 kB / 105 kB gzip; Review and Settings lazy-loaded.
-PWA precaches 32 assets, approximately 934 KiB.
-
-PLAYWRIGHT_BROWSERS_PATH=/tmp/poly-pro-browsers npm run test:e2e
-PASS: 104 browser checks (52 workflows x 2 viewports), 2.4 minutes.
-Fold cover: 412x915 touch/mobile. Wide: 884x1104.
-Additional 320px and 3x pixel-density checks; folded/unfolded resizing.
-No tests skipped or disabled. Final source build passed the complete suite.
-
-CI follow-up: initial PR CI exposed transient low contrast while bottom-navigation
-text/background colors interpolated, passing only on retry. Removed that color
-fade. Production build and ten repeated primary-screen accessibility checks pass
-after the change. CI reruns the full suite on the updated commit and main merge.
-
-Main CI follow-up: the reminder test reloaded immediately after clicking Snooze,
-before its asynchronous transaction had completed. Wait for the banner to hide
-(the application's save-completion signal) before reloading. Ten repeated backup
-checks pass; the application already waits for persistence before hiding it.
-
-Focused new capture and advanced frontend checks:
-PASS: 22 checks across both viewports before the final complete run.
-Capture confirms exactly 15,000 ms, no saved countdown audio, cancellation of
-late microphone requests, frozen setup, and matching Trainer BPM/beat spacing.
-
-Export reference verification:
-Raw PCM agrees with the encoded WAV; raw exports allocate no offline render.
-Click mixes use at most 10-second renders and agree with whole-buffer native
-rendering within one 16-bit PCM unit, including 10/20-second boundary tails.
-Cancel, close, duplicate-start and retry workflows pass.
-
-Frontend coverage:
-Automated WCAG A/AA checks cover primary screens, Review, expanded Home/Settings,
-project creation, training, detection and sound-picker dialogs. Manual screenshot
-review covers recording setup, narrow Review, pattern, trainer and polyrhythm.
-Keyboard activation, focus return, tooltip dismissal, cancelled slider gestures,
-held tempo cleanup and undo/redo histories are exercised.
-
-npm audit --audit-level=moderate
-PASS: found 0 vulnerabilities.
-
-git diff --check
-PASS.
-
-Reproduced baseline defects include:
-- Fold resizing leaves a zoomed waveform beyond its scroll bounds.
-- Cancelled pointer input changes a slider value (5 -> 20).
-- Pending start can revive after Stop; queued vibration survives stop/silence.
-- Scheduler stalls replay missed clicks in a burst (41 immediate sources).
-- Groove groups all repeated measures into measure zero.
-- Mobile tooltip closes immediately after focus-induced scrolling.
-
-Release process:
-PR CI repeats all checks; main deployment reruns the reusable verification
-workflow and publishes its exact tested artifact. The live check validates
-expected build ID, countdown cancellation, silent capture -> Review -> playback,
-offline reload, and absence of page errors in an isolated synthetic-data profile.
-The live-check procedure passed locally on the final production build.
-
-Physical limits:
-No actual Galaxy Z Fold 7, real percussion accuracy, Bluetooth/audio-route,
-vibration hardware, or sustained 30-minute thermal test was performed.
-See PRODUCTION_READINESS.md for the device acceptance checklist.
+Release: merge/deployment runs the same gates via GitHub Actions and deploys its verified artifact.
+Live upgrade fixture: seeded take on build 8de05e8, audio present, 1 ms sync saved.
+Direct live-browser TLS is limited by this environment's shared certificate store.
+Automatic approval review rejected changing that shared trust store; it remains untouched.
+Live browser checks use TLS-verified proxy request routing, with service workers blocked.
+Offline/service-worker activation is verified against the local production build.
+Physical Fold 7, acoustic accuracy, real microphone/Bluetooth routing and thermal testing remain unverified.

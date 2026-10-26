@@ -6,6 +6,7 @@ import { DetectionSettings } from './DetectionSettings';
 import { CalibrationSettings } from './CalibrationSettings';
 import { InstrumentSettings } from './InstrumentSettings';
 import { DataSettings } from './DataSettings';
+import { Toggle } from '../ui/Toggle';
 import { HelpTip } from '../ui/HelpTip';
 
 function RecordingSettings() {
@@ -22,9 +23,7 @@ function RecordingSettings() {
           <p className="text-xs text-text-secondary">Click while recording</p>
           <p className="text-xs text-text-muted mt-0.5">Turn off for silent recording with visual beats and timing feedback. Available in Recording setup on Practice.</p>
         </div>
-        <button type="button" role="switch" aria-label="Click while recording" aria-checked={includeClick} onClick={() => setIncludeClick(!includeClick)} className={`w-11 h-7 rounded-full border shrink-0 ${includeClick ? 'bg-accent border-accent' : 'bg-bg-raised border-border-subtle'}`}>
-          <span className={`block w-5 h-5 rounded-full bg-white mx-1 transition-transform ${includeClick ? 'translate-x-4' : ''}`} />
-        </button>
+        <Toggle label="Click while recording" enabled={includeClick} onChange={setIncludeClick} />
       </div>
 
       <div>
@@ -43,7 +42,7 @@ function RecordingSettings() {
 
 export function SettingsContent() {
   return (
-    <div className="px-4 space-y-2">
+    <div className="settings-list">
       <CollapsibleSection title="Sounds" help="Choose click and accent sounds and manage custom samples." icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>}><SoundSettings /></CollapsibleSection>
       <CollapsibleSection title="Recording" help="Raw capture behavior and analysis-only input gain." icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /></svg>}><RecordingSettings /></CollapsibleSection>
       <CollapsibleSection title="Detection" help="Onset detection profiles and full re-detection settings." icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>}><DetectionSettings /></CollapsibleSection>

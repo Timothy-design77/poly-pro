@@ -40,6 +40,7 @@ export function HomePage() {
   );
 
   const [showKeypad, setShowKeypad] = useState(false);
+  const openKeypad = useCallback(() => setShowKeypad(true), []);
   const dialContainerRef = useRef<HTMLDivElement>(null);
   const [dialSize, setDialSize] = useState(280);
 
@@ -110,12 +111,13 @@ export function HomePage() {
     const measure = () => {
       const el = dialContainerRef.current;
       if (!el) return;
-      const size = Math.round(el.clientWidth * 0.82);
+      const size = Math.round(el.clientWidth);
       setDialSize(Math.max(240, Math.min(340, size)));
     };
     measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    const observer = new ResizeObserver(measure);
+    if (dialContainerRef.current) observer.observe(dialContainerRef.current);
+    return () => observer.disconnect();
   }, []);
 
   const resetMeterSection = useCallback(() => {
@@ -174,7 +176,7 @@ export function HomePage() {
   return (
     <div className="h-full overflow-y-auto bg-bg-primary">
       <BackupBanner />
-      <div className="w-full max-w-xl mx-auto px-4 pb-8">
+      <div className="app-page app-page-wide">
         <PageHeader title="Practice"><div className="flex items-center gap-2 text-sm" aria-live="polite">
           {recording.phase === 'countdown' ? (
             <span className="text-sm font-semibold text-accent">Get ready · {recording.countdown}s</span>
@@ -204,30 +206,30 @@ export function HomePage() {
           )}
         </div></PageHeader>
 
-        {/* The BPM ring itself is the only keypad entry control on the primary surface. */}
+        <div className="practice-layout">
+        <section className="practice-instrument" aria-label="Metronome">
         <div
           ref={dialContainerRef}
-          className="-mx-4 w-[calc(100%+2rem)] flex items-center justify-center relative pb-3"
+          className="dial-container"
           role={setupLocked ? 'img' : undefined}
           aria-label={setupLocked ? `Tempo ${bpm} BPM` : undefined}
         >
-          <Dial size={dialSize} onTapBpm={setupLocked ? undefined : () => setShowKeypad(true)} />
+          <Dial size={dialSize} onTapBpm={setupLocked ? undefined : openKeypad} />
         </div>
 
-        {/* Primary practice stack: large, full-width, low-cognitive-load controls. */}
+        <fieldset disabled={setupLocked} className="tempo-controls disabled:opacity-50">
+          <BpmControl disabled={setupLocked}><TapTempo /></BpmControl>
+        </fieldset>
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="practice-transport grid grid-cols-2 gap-3">
             <PlayButton disabled={captureBusy} />
             <RecordButton phase={recording.phase} countdown={recording.countdown} disabled={analysis.isAnalyzing || ['stopping', 'saving'].includes(recording.phase)} isRecording={recording.isRecording} onToggle={handleRecordToggle} />
 
           </div>
-          <fieldset disabled={setupLocked} className="disabled:opacity-50 disabled:pointer-events-none">
-            <TapTempo />
-          </fieldset>
-          <details className="rounded-xl border border-border-subtle bg-bg-surface text-sm">
-            <summary className="min-h-[44px] cursor-pointer px-3 py-3 text-text-secondary">
+          <details className="recording-setup text-sm">
+            <summary className="min-h-[56px] cursor-pointer py-3 text-text-secondary">
               <span className="font-semibold">Recording setup</span>
-              <span className="text-xs text-text-muted ml-2">{includeClick ? 'Click' : 'Silent'} · {recordingPreferences.preparationSeconds ? `${recordingPreferences.preparationSeconds}s delay` : 'No delay'} · {recordingPreferences.takeSeconds ? takeLengthLabel(recordingPreferences.takeSeconds) : 'Manual stop'}</span>
+              <span className="block text-xs text-text-muted mt-1">{includeClick ? 'Click' : 'Silent'} · {recordingPreferences.preparationSeconds ? `${recordingPreferences.preparationSeconds}s delay` : 'No delay'} · {recordingPreferences.takeSeconds ? takeLengthLabel(recordingPreferences.takeSeconds) : 'Manual stop'}</span>
             </summary>
           <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-2 disabled:opacity-60">
             <legend className="text-xs font-semibold text-text-secondary mb-2">Click during recording</legend>
@@ -254,7 +256,6 @@ export function HomePage() {
             </fieldset>
           </details>
           {recording.phase === 'countdown' && <p role="status" className="text-center text-xs text-text-secondary">Microphone ready. No audio is saved until the countdown ends.</p>}
-          {setupLocked && <p className="text-center text-xs text-text-muted">{recording.phase === 'preparing' || recording.phase === 'countdown' ? 'Cancel recording setup to change tempo or setup.' : 'Stop recording to change tempo or setup.'}</p>}
         </div>
 
         <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
@@ -282,21 +283,10 @@ export function HomePage() {
           </div>
         )}
 
-        {/* Everything non-essential to immediate playing lives lower in the scroll. */}
-        <div className="mt-6">
-          <div className="mb-3 px-1">
-            <h2 className="text-sm font-semibold text-text-primary">Advanced controls</h2>
-
-          </div>
-
-          <fieldset disabled={setupLocked} ref={(element) => { if (element) element.inert = setupLocked; }} className="space-y-2 disabled:opacity-50">
-            <CollapsibleCard
-              title="Fine tempo"
-              badge="±0.5"
-              help="Use the large buttons for precise 0.5 BPM changes or hold them for accelerated changes."
-            >
-              <BpmControl />
-            </CollapsibleCard>
+        </section>
+        <aside className="practice-settings" aria-label="Practice settings" hidden={captureBusy}>
+          <h2 className="section-heading">Practice settings</h2>
+          <fieldset disabled={setupLocked} ref={(element) => { if (element) element.inert = setupLocked; }} className="settings-list disabled:opacity-50">
 
             <CollapsibleCard
               title="Meter & subdivision"
@@ -346,16 +336,14 @@ export function HomePage() {
               <PolyrhythmControl />
             </CollapsibleCard>
           </fieldset>
+        </aside>
         </div>
-
-        <div className="h-6" />
       </div>
 
       <NumberInput
         isOpen={showKeypad}
         onClose={() => setShowKeypad(false)}
         onSubmit={(value) => { if (!setupLocked) setBpm(value); }}
-        onLiveChange={(value) => { if (!setupLocked) setBpm(value); }}
         initialValue={bpm}
         min={10}
         max={400}

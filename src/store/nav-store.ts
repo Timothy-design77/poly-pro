@@ -13,6 +13,6 @@ export const useNavStore = create<NavState>((set) => ({
 }));
 
 // Page indices
-export const PAGE_PROJECTS = 0;
-export const PAGE_HOME = 1;
-export const PAGE_PROGRESS = 2;
+export const PAGE_PROJECTS = 2;
+export const PAGE_HOME = 0;
+export const PAGE_PROGRESS = 1;

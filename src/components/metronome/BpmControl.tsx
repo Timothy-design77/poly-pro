@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, type ReactNode } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import {
   BPM_STEP,
@@ -36,7 +36,7 @@ interface PointerGesture {
  * - If the finger moves far enough to become a scroll gesture, all changes
  *   from that press are cancelled and BPM is restored to its starting value.
  */
-export function BpmControl() {
+export function BpmControl({ children, disabled = false }: { children?: ReactNode; disabled?: boolean }) {
   const bpm = useMetronomeStore((s) => s.bpm);
   const setBpm = useMetronomeStore((s) => s.setBpm);
   const adjustBpm = useMetronomeStore((s) => s.adjustBpm);
@@ -59,6 +59,10 @@ export function BpmControl() {
     setHoldPhase(0);
     setActiveDir(null);
   }, []);
+
+  useEffect(() => {
+    if (disabled) { clearTimers(); gestureRef.current = null; resetVisuals(); }
+  }, [disabled, clearTimers, resetVisuals]);
 
   useEffect(() => {
     const stopHold = () => { clearTimers(); gestureRef.current = null; resetVisuals(); };
@@ -108,7 +112,7 @@ export function BpmControl() {
   }, [adjustBpm]);
 
   const startGesture = useCallback((event: React.PointerEvent, direction: Direction) => {
-    if (!event.isPrimary || event.button !== 0) return;
+    if (disabled || !event.isPrimary || event.button !== 0) return;
     clearTimers();
 
     gestureRef.current = {
@@ -132,7 +136,7 @@ export function BpmControl() {
       setHoldPhase(1);
       scheduleHoldTick(direction);
     }, HOLD_START_DELAY);
-  }, [bpm, clearTimers, scheduleHoldTick]);
+  }, [bpm, clearTimers, scheduleHoldTick, disabled]);
 
   const cancelForScroll = useCallback(() => {
     const gesture = gestureRef.current;
@@ -181,18 +185,19 @@ export function BpmControl() {
   const speedLabel = holdPhase === 3 ? '×10' : holdPhase === 2 ? '×5' : holdPhase === 1 ? '×1' : null;
 
   const buttonClass = (direction: Direction) => `
-    flex-1 flex items-center justify-center rounded-[14px] border-[1.5px]
-    transition-colors h-[52px] touch-pan-y select-none
+    tempo-step flex items-center justify-center rounded-full
+    h-[48px] w-[48px] shrink-0 touch-pan-y select-none disabled:opacity-40
     ${activeDir === direction
-      ? 'border-border-emphasis bg-bg-raised'
-      : 'border-border-subtle bg-bg-surface active:bg-bg-raised active:border-border-emphasis'
+      ? 'bg-bg-raised'
+      : 'bg-bg-surface active:bg-bg-raised'
     }
   `;
 
   return (
-    <div className="flex gap-2 relative" aria-label="Tempo adjustment">
+    <div className="flex items-center justify-center gap-4 relative" aria-label="Tempo adjustment">
       <button
         type="button"
+        disabled={disabled}
         aria-label="Decrease tempo"
         onClick={(event) => { if (event.detail === 0) adjustBpm(-BPM_STEP); }}
         onPointerDown={(event) => startGesture(event, 'down')}
@@ -211,6 +216,8 @@ export function BpmControl() {
         </svg>
       </button>
 
+      {children}
+
       {speedLabel && (
         <div className="absolute left-1/2 -translate-x-1/2 -top-6 pointer-events-none">
           <span className="font-mono text-xs font-semibold text-text-muted">
@@ -221,6 +228,7 @@ export function BpmControl() {
 
       <button
         type="button"
+        disabled={disabled}
         aria-label="Increase tempo"
         onClick={(event) => { if (event.detail === 0) adjustBpm(BPM_STEP); }}
         onPointerDown={(event) => startGesture(event, 'up')}

@@ -3,9 +3,7 @@ import { useMetronomeStore } from '../../store/metronome-store';
 import { useMetronome } from '../../hooks/useMetronome';
 
 /**
- * Oversized full-width START/STOP button.
- *
- * Uses a true 4:1 width-to-height ratio and fires on pointer-down so the
+ * Fires on primary pointer-down so the
  * transport responds at finger contact rather than release.
  */
 export function PlayButton({ disabled = false }: { disabled?: boolean }) {
@@ -14,17 +12,18 @@ export function PlayButton({ disabled = false }: { disabled?: boolean }) {
   const firedRef = useRef(false);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (disabled) return;
+    if (disabled || !e.isPrimary || e.button !== 0) return;
     e.preventDefault();
     firedRef.current = true;
     togglePlay();
   }, [togglePlay, disabled]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (firedRef.current) {
+    if (firedRef.current && e.detail !== 0) {
       e.preventDefault();
       firedRef.current = false;
     } else if (!disabled) {
+      firedRef.current = false;
       togglePlay();
     }
   }, [togglePlay, disabled]);
@@ -36,6 +35,7 @@ export function PlayButton({ disabled = false }: { disabled?: boolean }) {
       aria-label={playing ? 'Stop metronome' : 'Start metronome'}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
+      onPointerCancel={() => { firedRef.current = false; }}
       className={`
         w-full min-h-[56px] rounded-xl text-base font-semibold
         flex items-center justify-center gap-3
@@ -48,8 +48,7 @@ export function PlayButton({ disabled = false }: { disabled?: boolean }) {
     >
       {playing ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-          <rect x="5" y="4" width="5" height="16" rx="1" />
-          <rect x="14" y="4" width="5" height="16" rx="1" />
+          <rect x="5" y="5" width="14" height="14" rx="2" />
         </svg>
       ) : (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
