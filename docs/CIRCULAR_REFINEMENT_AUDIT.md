@@ -28,6 +28,7 @@ These sources informed product judgments; they do not prove that a particular fo
 | Recordings led with comparison controls and an irrelevant empty-state prerequisite | List takes first. Put comparisons with Practice progress. The empty library offers a direct route to Practice. |
 | Inconsistent secondary screens | Share header sizing, spacing, disclosure styling and navigation treatment; move New Project into the header; simplify Review tabs and score grouping; enlarge shared switches and recording-play targets. |
 | Updated dependency advisories blocked the release gate | Compatible lockfile updates to Vitest 4.1.12, fast-uri 3.1.9 and serialize-javascript 7.1.4 restore a clean audit. |
+| A failed capture-worklet download was reported as a busy microphone | Identify the recording-engine load failure and offer a connection check/retry. Preserve the original cause for diagnostics. A browser regression verifies all microphone tracks are released and the next attempt captures audio and opens Review. |
 
 The recorded-audio sync model is unchanged: an explicit offset moves the reference click/grid against unchanged source audio. One draft/save continues to synchronize waveform, score, playback and export.
 
@@ -40,3 +41,5 @@ Focused workflow checks include preparation cancellation, a timed silent take, s
 The React review checked effect cleanup, modal focus, stable dial callbacks, subscriptions, immutable state and bounded rendering. No new runtime dependency or storage migration was added. The initial application bundle remains about 338 kB (104 kB gzip).
 
 Physical Fold 7 operation, real percussion detection, acoustic latency, Bluetooth routing and thermal behavior still require device evidence. Browser viewport emulation and synthetic audio do not establish those results. See [physical acceptance](PRODUCTION_READINESS.md#device-acceptance-still-required).
+
+Hosted verification uses TLS-verified request routing because the execution environment's Chromium certificate store does not trust its network proxy. Native AudioWorklet loading bypasses that routing, so the harness fetches the deployed worklet over verified TLS and loads its unchanged bytes as a Blob for the synthetic capture check. This verifies the deployed capture code and saved workflow, not native hosted worklet fetching or physical microphone access. Native worklet URLs and offline activation pass against the local production build.

@@ -1,5 +1,45 @@
 import { expect, test } from '@playwright/test';
 
+test('a recording-engine load failure releases the microphone and allows a clear retry', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).captureTestTracks = [];
+    navigator.mediaDevices.getUserMedia = async () => {
+      const context = new AudioContext(); await context.resume();
+      const source = context.createConstantSource(); source.offset.value = 0.25;
+      const output = context.createMediaStreamDestination();
+      source.connect(output); source.start();
+      const stream = output.stream;
+      for (const track of stream.getTracks()) {
+        const stop = track.stop.bind(track);
+        track.stop = () => { stop(); void context.close(); };
+      }
+      (window as any).captureTestTracks.push(...stream.getTracks());
+      return stream;
+    };
+    const addModule = AudioWorklet.prototype.addModule;
+    let failed = false;
+    AudioWorklet.prototype.addModule = function (url, options) {
+      if (!failed && String(url).includes('pcm-capture.js')) {
+        failed = true;
+        return Promise.reject(new DOMException('Failed to load worklet module script', 'AbortError'));
+      }
+      return addModule.call(this, url, options);
+    };
+  });
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('The recording engine could not load. Check your connection and try again.');
+  await expect.poll(() => page.evaluate(() => {
+    const tracks = (window as any).captureTestTracks as MediaStreamTrack[];
+    return tracks.length > 0 && tracks.every((track) => track.readyState === 'ended');
+  })).toBe(true);
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
+  await expect(page.getByRole('meter', { name: 'Microphone level' })).toHaveAttribute('aria-valuenow', '25');
+  await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Review take', exact: true })).toBeVisible();
+});
+
 test('microphone disconnection stops capture and saves the partial take', async ({ page }) => {
   await page.addInitScript(() => {
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
