@@ -109,4 +109,31 @@ U4 evidence: 127 unit/regression tests, 112 browser checks, type-check/productio
 
 Delivery follows the standing merge/deploy authorization. CI repeats the release gates; the final report records the deployed build and fresh-profile/existing-data update checks. Physical acceptance remains open.
 
-Acceptance: Start and Record visible without scrolling at 412×915; one shared local font; no instructional paragraphs on idle Home; primary destinations consistently labelled; playback sync adjustable without visiting Settings; no hidden automatic timing correction or changed source audio.
+## Collaborative circular-interface refinement — 2026-10-21
+
+**Superseded release checkpoint, 2026-10-26:** The user now explicitly delegates design decisions and asks for a finished product without further design reviews. Preserve the circular concept and earlier product constraints; implement, verify, merge and deploy under the standing release authorization. The historical review steps below describe the earlier plan, not a current approval requirement.
+
+The user wants the existing circular metronome refined, with restrained color, strong typography and spacious controls. They rejected the A/B/C studies because those removed the circle. They explicitly want heavy involvement in design and requested research before further design work. The existing release authorization now depends on design sign-off for this redesign.
+
+- [x] D1 Research interface hierarchy, typography, grouping, accessibility, adaptive layout and music-tool examples. Assess the existing circular screen and document findings in [Circular UI research](docs/design/CIRCULAR_UI_RESEARCH.md).
+- [ ] D2 Show the current circular Practice screen beside one careful refinement, including idle/playing/recording states and folded/unfolded layouts. Review ring treatment, readable beat markers and labels, typography, spacing and control grouping with the user. Obtain design sign-off before implementation.
+- [ ] D3 Show Recordings, Review, Projects and Settings in the agreed direction. Resolve user feedback and record approved choices in the style guide.
+- [ ] D4 Implement approved screens, inspect real screenshots and exercise complete user workflows. Review the result with the user before merging/deploying.
+
+The rejected static studies remain in `docs/design/interface-review.html` as historical artifacts; [the design README](docs/design/README.md) records their superseded status. Research found small canvas labels below 4.5:1 contrast and ordinary beat dots around 2.51:1 against the current background; these need targeted review and correction in the refinement. No application code changed during this research. No design decision is approved by elapsed time or a default question selection.
+
+Acceptance: preserve the circular tempo/rhythm display; Start and Record visible without scrolling at 412×915; one shared local font with agreed type roles; readable canvas labels and meaningful beat markers; no instructional paragraphs on idle Home; primary destinations consistently labelled; playback sync adjustable without visiting Settings; no hidden automatic timing correction or changed source audio. Automated checks and visual design acceptance are separate requirements.
+
+## Autonomous refinement and release — 2026-10-26
+
+- [x] A1 Research actual music-app feedback and apply the existing hierarchy/accessibility research to a concrete implementation plan.
+- [x] A2 Refine the circular dial, readable typography and rhythm states; expose precise tempo adjustment; simplify Practice grouping and folded/unfolded layout.
+- [x] A3 Standardize navigation, settings, recording lists, project surfaces and Review controls. Exercise complete workflows and repair concrete usability failures.
+- [x] A4 Run focused interaction/accessibility checks, inspect screenshots, simplify, retest; then pass full unit/browser/build/dependency gates.
+- [ ] A5 Update documentation, commit/push, merge through CI, deploy and verify live fresh/existing-data/offline workflows.
+
+Completion is a verified usable release, not a claim of mathematical perfection. Physical Fold 7, microphone/Bluetooth latency and acoustic accuracy require real hardware and remain explicitly distinguished from automated evidence.
+
+- A1–A3: implementation applies the research without removing the circle. A focused failing keypad regression led to draft-only entry with true cancellation. Capture now shows measured levels. Manual four-track inspection exposed crowded labels; the corrected geometry passes at 320 px.
+
+- A4 final evidence: 127 unit/regression tests, 122 browser checks across both main viewports, type-check/build, zero dependency vulnerabilities and diff checks pass. Screenshots include idle/playing/recording, unfolded Practice and four-ring geometry at 320 px.

@@ -7,6 +7,7 @@ import type { SessionRecord } from '../store/db';
 import { TakeComparison } from '../components/progress/TakeComparison';
 import { PageHeader } from '../components/ui/PageHeader';
 import { HelpTip } from '../components/ui/HelpTip';
+import { useNavStore, PAGE_HOME } from '../store/nav-store';
 import { getPracticeStreak } from '../utils/practice-streak';
 
 function formatDuration(ms: number): string {
@@ -73,8 +74,8 @@ export function ProgressPage() {
     : 0;
 
   return (
-    <div className="h-full flex flex-col px-4 pb-4 overflow-y-auto bg-bg-primary">
-      <div className="w-full max-w-xl mx-auto">
+    <div className="h-full overflow-y-auto bg-bg-primary">
+      <div className="app-page">
         <PageHeader title="Recordings" />
         <label className="flex items-center gap-3 mb-4 text-sm text-text-secondary">
           <span>Project</span>
@@ -84,16 +85,14 @@ export function ProgressPage() {
           </select>
         </label>
         {playbackError && <p role="alert" className="text-sm text-danger my-3">{playbackError}</p>}
-        <TakeComparison sessions={sessions} />
         <div>
-          <h3 className="text-xs font-semibold text-text-muted  mb-2">
-            Sessions ({sessions.length})
-          </h3>
+          {sessions.length > 0 && <h2 className="section-heading">{sessions.length} take{sessions.length === 1 ? '' : 's'}</h2>}
           {sessions.length === 0 ? (
-            <div className="flex items-center justify-center py-6 bg-bg-surface rounded-xl border border-border-subtle">
-              <p className="text-xs text-text-muted">
-                {activeProject ? 'No sessions in this project yet' : 'No recordings yet'}
-              </p>
+            <div className="empty-state">
+              <span className="empty-state-icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 9v6m4-10v14m4-12v10m4-14v18m4-12v6" /></svg></span>
+              <h2>{activeProject ? 'No takes in this project' : 'Your practice, recorded'}</h2>
+              <p>Record a take to hear it back and explore your timing.</p>
+              <button type="button" className="ui-button ui-button-primary" onClick={() => useNavStore.getState().navigateTo(PAGE_HOME)}>Go to Practice</button>
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -108,15 +107,14 @@ export function ProgressPage() {
                 return (
                   <div
                     key={session.id}
-                    className="bg-bg-surface rounded-lg border border-border-subtle px-3 py-2.5
-                               touch-manipulation active:bg-bg-raised cursor-pointer"
+                    className="bg-bg-surface rounded-2xl px-4 py-4"
                   >
                     <div className="flex items-center gap-3">
                       {session.hasRecording && (
                         <button
                           type="button"
                           onClick={(event) => { event.stopPropagation(); play(session.id); }}
-                          className={`w-[40px] h-[40px] rounded-lg flex items-center justify-center
+                          className={`w-[48px] h-[48px] rounded-full flex items-center justify-center
                                       shrink-0 touch-manipulation border border-border-subtle
                             ${isPlaying
                               ? 'bg-accent text-bg-primary'
@@ -140,7 +138,7 @@ export function ProgressPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-text-secondary">{formatDate(session.date)}</span>
-                          <span className="font-mono text-xs text-text-primary font-semibold">{session.bpm} BPM</span>
+                          <span className="font-mono text-sm text-text-primary font-semibold">{session.bpm} BPM</span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className="text-xs text-text-muted">{session.meter}</span>
@@ -173,7 +171,7 @@ export function ProgressPage() {
                       </button>
                     </div>
                     {headline && (
-                      <p className="text-xs text-text-muted mt-1 ml-[52px] truncate">{headline}</p>
+                      <p className="text-xs text-text-muted mt-1 ml-[60px] truncate">{headline}</p>
                     )}
                   </div>
                 );
@@ -193,6 +191,7 @@ export function ProgressPage() {
         </div>
 
         {sessions.length > 0 && <details className="mt-5 ui-surface p-3"><summary className="min-h-[44px] cursor-pointer text-sm font-semibold">Practice progress</summary>
+        <TakeComparison sessions={sessions} />
         <div className="bg-bg-surface rounded-xl border border-border-subtle p-4 mb-3 shrink-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-text-secondary">Score</span>

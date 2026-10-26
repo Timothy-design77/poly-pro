@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { clampBpm } from '../../utils/timing';
 import { TAP_MIN_TAPS, TAP_MAX_TAPS, TAP_TIMEOUT_MS } from '../../utils/constants';
@@ -9,6 +9,8 @@ export function TapTempo() {
   const tapTimesRef = useRef<number[]>([]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const firedRef = useRef(false);
+
+  useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); }, []);
 
   const handleTap = useCallback(() => {
     const now = performance.now();
@@ -43,17 +45,19 @@ export function TapTempo() {
   }, [setBpm]);
 
   const handlePointerDown = useCallback((event: React.PointerEvent) => {
+    if (!event.isPrimary || event.button !== 0) return;
     event.preventDefault();
     firedRef.current = true;
     handleTap();
   }, [handleTap]);
 
   const handleClick = useCallback((event: React.MouseEvent) => {
-    if (firedRef.current) {
+    if (firedRef.current && event.detail !== 0) {
       event.preventDefault();
       firedRef.current = false;
       return;
     }
+    firedRef.current = false;
     handleTap();
   }, [handleTap]);
 
@@ -62,17 +66,13 @@ export function TapTempo() {
       type="button"
       onPointerDown={handlePointerDown}
       onClick={handleClick}
-      className="w-full min-h-[44px] flex items-center justify-center gap-2 rounded-xl
-                 border-[1.5px] border-border-subtle bg-bg-surface
-                 text-text-primary text-sm font-semibold
-                 active:bg-bg-raised transition-colors duration-75
-                 touch-manipulation select-none relative"
+      onPointerCancel={() => { firedRef.current = false; }}
+      className="min-h-[48px] w-32 flex items-center justify-center gap-2 rounded-full
+                 text-text-secondary text-sm font-medium active:bg-bg-raised touch-manipulation select-none relative"
     >
       Tap tempo
       {tapCount >= 2 && (
-        <span className="absolute top-2 right-2 min-w-6 h-6 px-1.5 rounded-full
-                         bg-accent-dim text-xs font-mono font-semibold
-                         flex items-center justify-center text-text-primary border border-border-subtle">
+        <span aria-hidden="true" className="absolute -top-2 right-1 text-xs font-mono text-text-muted">
           {tapCount}
         </span>
       )}

@@ -57,14 +57,14 @@ export function CollapsibleCard({
   };
 
   return (
-    <div className="border border-border-subtle rounded-xl overflow-hidden bg-bg-surface">
+    <div className="settings-section" data-open={isOpen || undefined}>
       <div className="flex items-center">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={isOpen}
         aria-controls={contentId}
-        className="flex-1 min-w-0 min-h-[48px] flex items-center gap-3 px-4 py-3 active:bg-bg-raised transition-colors duration-75 text-left"
+        className="settings-section-toggle flex-1 min-w-0 flex items-center gap-3 active:bg-bg-raised text-left"
       >
         {icon && <span aria-hidden="true" className="text-text-muted">{icon}</span>}
         <span className="text-sm font-semibold text-text-primary flex-1 flex items-center gap-1.5 min-w-0">
@@ -86,9 +86,9 @@ export function CollapsibleCard({
       </div>
 
       {isOpen && (
-        <div id={contentId} className="border-t border-border-subtle bg-bg-primary">
+        <div id={contentId} className="settings-section-content">
           {renderContent && (
-            <div className="px-4 py-3">
+            <div className="px-3 pb-4 pt-1">
               {help && <div className="flex justify-end"><HelpTip text={help} /></div>}
               {onReset && (
                 <div className="flex justify-end mb-2">

@@ -163,8 +163,8 @@ export function SwipeNavigation({
 
         {currentPage === settingsIndex && (
           <section className="h-full overflow-y-auto overscroll-contain bg-bg-primary" aria-label="Settings">
-            <div className="w-full max-w-xl mx-auto pb-8">
-              <div className="px-4"><PageHeader title="Settings" /></div>
+            <div className="app-page">
+              <PageHeader title="Settings" />
               {settingsContent || (
                 <div className="flex items-center justify-center h-40 text-text-muted text-sm">
                   No settings available
@@ -176,7 +176,7 @@ export function SwipeNavigation({
       </main>
 
       <nav
-        className="shrink-0 border-t border-border-subtle bg-bg-surface px-2 pt-2 pb-safe select-none"
+        className="primary-nav shrink-0 select-none"
         aria-label="Primary navigation"
         style={{ touchAction: 'pan-y' }}
         onPointerDown={handlePointerDown}

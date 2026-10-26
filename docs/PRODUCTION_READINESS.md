@@ -1,10 +1,12 @@
-# Poly Pro 2.4 release readiness
+# Poly Pro 2.5 release readiness
 
-Updated 2026-10-20. Current iteration: `improve/clear-practice-and-sync`, based on deployed `44e5f0e`. The original 2.1 audit below started at `c90e2d8`.
+Updated 2026-10-26. Current iteration: `improve/circular-practice-refinement`, based on deployed `8de05e8`. The original 2.1 audit below started at `c90e2d8`.
 
 ## Release decision
 
-The 2.4 release passes 127 unit/regression tests and 112 browser checks, type-checking, production build and a clean dependency audit. Release verification is recorded in [release/verification.txt](release/verification.txt). Target-device acceptance remains open below. Physical Galaxy Z Fold 7 acceptance is required before calling the release fully production-validated.
+The 2.5 release passes 127 unit/regression tests and 122 browser checks, type-checking, production build and a clean dependency audit. Release verification is recorded in [release/verification.txt](release/verification.txt). Target-device acceptance remains open below. Physical Galaxy Z Fold 7 acceptance is required before calling the release fully production-validated.
+
+The 2.5 [circular refinement audit](CIRCULAR_REFINEMENT_AUDIT.md) records the research, circular dial, direct tempo controls, draft keypad fix, measured microphone levels, adaptive layout and consistent secondary screens. The user delegated design and release decisions on October 26.
 
 The 2.4 [interface and sync audit](INTERFACE_AND_SYNC_AUDIT.md) addresses the reported clutter, startup delay, hidden playback sync and inconsistent navigation. [The style guide](STYLE_GUIDE.md) defines the bundled DM Sans typography, shared controls and simpler navigation. Start prepares only selected sounds; Review exposes precise sync and explicit beat/hit alignment. Recordings lists all takes first with a project filter.
 
@@ -41,6 +43,7 @@ Coverage includes:
 - Correct hits and adjust timing → preview across Review/Charts → Save changes → reopen/reload; unsaved-edit protection, re-detection confirmation and saved-audio retry.
 - Actual audio-source playback rate, native loop bounds, pause/resume and WAV download.
 - Explicit reference-hit alignment at 137.5 ms, matching native click scheduling, undo, atomic save and reload.
+- Draft tempo replacement, decimals, cancellation, focus restoration and persistence; actual microphone-level readings including silence/clipping; four-track text bounds at 320 px.
 - Cold/warm click startup with an unavailable unused sound, local font loading, above-fold practice actions and consistent navigation.
 - Recording filters and active-project deletion preserve takes and recover the selected filter.
 - Project creation/editing/switching/deletion, plus progression/transport regression tests.
@@ -50,7 +53,7 @@ Coverage includes:
 - Take comparison without changing saved scores, dialog focus, narrow layout and offline service-worker reload.
 - Deterministic synthetic transients, including all 359 hits in a three-minute recording within 20 ms of their known locations. This is a synthetic-signal regression, not an acoustic accuracy claim.
 
-Screenshots of [Practice](release/home.png), [Settings](release/settings.png), [Recordings](release/recordings.png), [Projects](release/projects.png), [Review](release/review.png), [Sync](release/sync.png), [Charts](release/charts.png), [320px Review](release/review-320.png) and [wide Review](release/review-wide.png) were reviewed. Automated WCAG A/AA checks cover primary screens, Review, expanded Home/Settings controls and training/project dialogs at both main viewports; canvas bounds are also tested at 3× pixel density. The initial application JavaScript chunk is approximately 340 kB (105 kB gzip); settings and Session Detail load separately. Waveform/spectrogram preparation runs in a worker, spectral display work is bounded and playback schedules only the next 150 ms of clicks.
+Screenshots of [Practice](release/home.png), [Settings](release/settings.png), [Recordings](release/recordings.png), [Projects](release/projects.png), [Review](release/review.png), [Sync](release/sync.png), [Charts](release/charts.png), [320px Review](release/review-320.png) and [wide Review](release/review-wide.png) were reviewed. New [playing](release/playing.png), [recording](release/recording.png), [unfolded Practice](release/practice-wide.png) and [four-ring narrow](release/four-rings-320.png) views were also inspected. Automated WCAG A/AA checks cover primary screens, Review, expanded Home/Settings controls and training/project dialogs at both main viewports; canvas bounds are also tested at 3× pixel density. The initial application JavaScript chunk is approximately 340 kB (105 kB gzip); settings and Session Detail load separately. Waveform/spectrogram preparation runs in a worker, spectral display work is bounded and playback schedules only the next 150 ms of clicks.
 
 ## Device acceptance still required
 

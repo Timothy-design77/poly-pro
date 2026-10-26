@@ -19,7 +19,7 @@ export function TakeComparison({ sessions }: { sessions: SessionRecord[] }) {
       if (cancelled) return;
       if (!first || !second) setError('Hit data is missing for one take. Open the take to re-analyze its audio.');
       else setEvents({ a: first, b: second });
-    }).catch(() => { if (!cancelled) setError('Could not load comparison data. Reopen Progress to retry.'); });
+    }).catch(() => { if (!cancelled) setError('Could not load comparison data. Reopen Recordings to retry.'); });
     return () => { cancelled = true; };
   }, [a?.id, b?.id, a?.analysisRevision, b?.analysisRevision]);
 
@@ -29,7 +29,7 @@ export function TakeComparison({ sessions }: { sessions: SessionRecord[] }) {
     const score = (take: SessionRecord, hits: HitEventsRecord) => rescoreSession(hits, { ...shared, latencyOffsetMs: take.analysisConfig?.latencyOffsetMs ?? 0 }, take.bpm, Number(take.meter.split('/')[0]), take.subdivision, take.durationMs);
     return { a: score(a, events.a), b: score(b, events.b), window: shared.scoringWindowPct, flam: shared.flamMergePct };
   }, [a, b, events]);
-  if (takes.length < 2) return <p className="text-xs text-text-muted mb-3">Record two takes with at least 8 matched hits to compare your timing.</p>;
+  if (takes.length < 2) return null;
   const compatible = a.bpm === b.bpm && a.meter === b.meter && a.subdivision === b.subdivision;
   const detectionKeys = ['noiseGate', 'inputGain', 'highPassHz', 'noiseFloorMultiplier', 'minOnsetIntervalMs', 'postHitMaskingMs', 'postHitMaskingStrength', 'fluxThresholdOffset'] as const;
   const sameDetection = !!a.analysisConfig && !!b.analysisConfig && detectionKeys.every((key) => a.analysisConfig?.[key] === b.analysisConfig?.[key]);

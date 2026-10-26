@@ -95,18 +95,18 @@ function SessionWorkspace({ session, onClose, onDelete }: Props & { session: Ses
       <div className="text-center"><h1 className="text-sm font-semibold text-text-primary">Review take</h1><p className="text-xs text-text-muted">{new Date(session.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p></div>
       <button aria-label="Delete session" disabled={busy} onClick={() => setConfirmDelete(true)} className="min-h-[44px] min-w-[44px] text-danger disabled:opacity-50">Delete</button>
     </header>
-    <div role="tablist" aria-label="Session detail views" className="grid grid-cols-2 gap-2 px-4 py-2 shrink-0">
+    <div role="tablist" aria-label="Session detail views" className="review-tabs grid grid-cols-2 gap-4 px-4 py-2 shrink-0">
       {(['review', 'charts'] as const).map((tab) => <button key={tab} id={`${tabsId}-${tab}`} role="tab" aria-selected={activeTab === tab} aria-controls={`${tabsId}-${tab}-panel`} tabIndex={activeTab === tab ? 0 : -1}
         onClick={() => setActiveTab(tab)} onKeyDown={(event) => {
           if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault(); const next = event.key === 'Home' ? 'review' : event.key === 'End' ? 'charts' : activeTab === 'review' ? 'charts' : 'review';
           setActiveTab(next); document.getElementById(`${tabsId}-${next}`)?.focus();
-        }} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${activeTab === tab ? 'bg-accent text-white border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>{tab === 'review' ? 'Review' : 'Charts'}</button>)}
+        }} className={`min-h-[44px] border-b-2 text-sm font-semibold ${activeTab === tab ? 'text-text-primary border-accent' : 'text-text-muted border-transparent'}`}>{tab === 'review' ? 'Review' : 'Charts'}</button>)}
     </div>
     <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pb-5">
       {error && <p role="alert" className="text-sm text-danger py-3">{error}</p>}
       <section role="tabpanel" id={`${tabsId}-review-panel`} aria-labelledby={`${tabsId}-review`} hidden={activeTab !== 'review'} className="space-y-3 max-w-4xl mx-auto">
-        {take.analyzed && <div className="rounded-xl border border-border-subtle bg-bg-surface p-3">
+        {take.analyzed && <div className="px-1 py-2">
           <div className="flex justify-between items-center gap-3">
             <div><p className="text-xs text-text-muted">{draft.dirty ? 'Preview score' : 'Score'}</p><p className="text-3xl font-semibold font-mono text-text-primary">{reliable ? `${Math.round(take.score ?? 0)}%` : 'Insufficient hits'}</p></div>
             <div className="text-right text-xs text-text-secondary"><p>{take.totalScored ?? take.totalHits}/{take.totalExpected ?? 0} matched beats</p><p>Timing spread {take.sigma?.toFixed(1) ?? '—'} ms</p></div>

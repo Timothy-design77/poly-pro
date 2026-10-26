@@ -51,8 +51,8 @@ test('a delayed silent take stops itself at the exact duration and opens saved r
   await expect(page.getByRole('status')).toContainText('No audio is saved until the countdown ends');
   await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Tap tempo/ })).toBeDisabled();
-  await expect(page.getByRole('button', { name: /Open tempo keypad/ })).toHaveCount(0);
-  await expect(page.getByText('Stop recording to change tempo or setup.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Open tempo keypad/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Increase tempo', exact: true })).toBeDisabled();
   await expect(page.getByRole('dialog', { name: 'Review take' })).toBeVisible({ timeout: 25000 });
   const saved = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve) => {

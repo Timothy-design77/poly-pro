@@ -16,7 +16,7 @@ test('advanced practice controls expose names, selections and usable narrow layo
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('./');
-  for (const name of ['Fine tempo', 'Meter & subdivision', 'Pattern', 'Practice modes', 'Trainer', 'Polyrhythm']) {
+  for (const name of ['Meter & subdivision', 'Pattern', 'Practice modes', 'Trainer', 'Polyrhythm']) {
     const section = page.getByRole('button', { name: new RegExp(`^${name}`) });
     await section.click();
     if (name === 'Meter & subdivision') {
@@ -66,10 +66,8 @@ test('advanced practice controls expose names, selections and usable narrow layo
   }
 });
 
-test('fine tempo responds to keyboard and ends held adjustment when its panel closes', async ({ page }) => {
+test('visible tempo responds to keyboard and ends held adjustment on navigation', async ({ page }) => {
   await page.goto('./');
-  const section = page.getByRole('button', { name: /^Fine tempo/ });
-  await section.click();
   const increase = page.getByRole('button', { name: 'Increase tempo', exact: true });
   const decrease = page.getByRole('button', { name: 'Decrease tempo', exact: true });
   const tempo = page.getByRole('button', { name: /^Tempo .* Open tempo keypad/ });
@@ -83,13 +81,14 @@ test('fine tempo responds to keyboard and ends held adjustment when its panel cl
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
   await expect(tempo).not.toHaveAttribute('aria-label', initial!);
-  // Closing the card while a hold is active must dispose its repeat timer.
-  await section.press('Enter');
-  await expect(increase).toHaveCount(0);
+  // Navigation keeps Practice mounted, but must dispose its repeat timer.
+  await page.getByRole('button', { name: 'Recordings', exact: true }).press('Enter');
+  await expect(increase).toBeHidden();
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Practice', exact: true }).click();
   const stopped = await tempo.getAttribute('aria-label');
   await page.waitForTimeout(650);
   await expect(tempo).toHaveAttribute('aria-label', stopped!);
-  await page.mouse.up();
 });
 
 test('expanded settings remain accessible and vibration controls survive reload', async ({ page }, testInfo) => {
