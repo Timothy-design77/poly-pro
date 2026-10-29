@@ -3,7 +3,7 @@
  * All Canvas-rendered per the plan.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
 import { DistributionChart } from '../analytics/DistributionChart';
 import { FatigueChart } from '../analytics/FatigueChart';
@@ -28,11 +28,11 @@ export function ChartsTab({ session, hitEvents, autoOpenSection }: Props) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const measure = () => setChartWidth(el.clientWidth);
+    const measure = () => setChartWidth(Math.max(120, el.clientWidth - 18));
     measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, []);
+    const observer = new ResizeObserver(measure); observer.observe(el);
+    return () => observer.disconnect();
+  }, [!!hitEvents]);
 
   if (!hitEvents) {
     return (
@@ -101,7 +101,7 @@ export function ChartsTab({ session, hitEvents, autoOpenSection }: Props) {
 
 function ChartSection({
   title,
-  id: _id,
+  id,
   defaultOpen = false,
   help,
   children,
@@ -113,16 +113,19 @@ function ChartSection({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const contentId = useId();
+  useEffect(() => { if (defaultOpen) setOpen(true); }, [defaultOpen]);
 
   return (
-    <div className="bg-bg-surface rounded-xl border border-border-subtle overflow-hidden">
+    <div id={`chart-${id}`} className="bg-bg-surface rounded-xl border border-border-subtle overflow-hidden">
+      <div className="flex items-center">
       <button
+        type="button" aria-expanded={open} aria-controls={contentId}
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 py-2.5 touch-manipulation"
+        className="flex-1 min-w-0 min-h-[44px] flex items-center justify-between px-3 py-2.5 touch-manipulation"
       >
         <span className="text-xs font-semibold text-text-secondary flex items-center gap-1.5">
           {title}
-          {help && <HelpTip text={help} />}
         </span>
         <svg
           width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -132,7 +135,9 @@ function ChartSection({
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      {open && <div className="px-2 pb-3">{children}</div>}
+      {help && <div className="pr-3"><HelpTip text={help} /></div>}
+      </div>
+      <div id={contentId} hidden={!open} className="px-2 pb-3">{open && children}</div>
     </div>
   );
 }

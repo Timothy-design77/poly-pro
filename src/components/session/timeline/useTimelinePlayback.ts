@@ -1,413 +1,270 @@
-/**
- * useTimelinePlayback — playback transport for the session timeline:
- * play/pause/seek/skip, speed control, click overlay scheduling,
- * live volume tracking, playhead-follow scrolling, and WAV export.
- *
- * Extracted from TimelineTab; behavior unchanged. Click-beat iteration
- * is shared with WAV export via forEachClickBeat (previously duplicated).
- */
-
+/** Timeline playback transport with safe gain staging and exact stored click grid. */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { SessionRecord } from '../../../store/db';
+import type { SessionRecord, HitEventsRecord } from '../../../store/db';
 import { useSettingsStore } from '../../../store/settings-store';
-import { useMetronomeStore } from '../../../store/metronome-store';
 import { VOLUME_GAINS } from '../../../audio/types';
-import {
-  MIC_BOOST,
-  perceptualGain,
-  forEachClickBeat,
-} from './timeline-shared';
+import { createPlaybackLimiter, recordingPlaybackGain } from '../../../audio/recording-playback';
+import { audioEngine } from '../../../audio';
+import { useMetronomeStore } from '../../../store/metronome-store';
+import { beginCriticalActivity, isCriticalActivityActive } from '../../../utils/critical-activity';
+import { getBuffer } from '../../../audio/sounds';
+import { mediaPosition, eventsInWindow, type PlaybackLoop } from '../../../audio/playback-clock';
+import { forEachClickBeat } from './timeline-shared';
+import { exportWav, type ExportClick } from '../../../audio/wav-export';
 
 export interface TimelinePlayback {
+  error: string | null;
   isPlaying: boolean;
   playbackPos: number;
   playbackSpeed: number;
-  setPlaybackSpeed: (s: number) => void;
+  setPlaybackSpeed: (speed: number) => void;
+  playbackVolume: number;
+  setPlaybackVolume: (value: number) => void;
+  followPlayhead: boolean;
+  setFollowPlayhead: (value: boolean) => void;
   clickOverlay: boolean;
-  setClickOverlay: (v: boolean) => void;
+  setClickOverlay: (value: boolean) => void;
   clickVolume: number;
-  setClickVolume: (v: number) => void;
+  setClickVolume: (value: number) => void;
+  cleanupEnabled: boolean;
+  setCleanupEnabled: (value: boolean) => void;
+  highPassHz: number;
+  setHighPassHz: (value: number) => void;
+  lowPassHz: number;
+  setLowPassHz: (value: number) => void;
+  presenceBoostDb: number;
+  setPresenceBoostDb: (value: number) => void;
   isSaving: boolean;
+  exportProgress: number;
+  cancelExport: () => void;
   latencyOffsetMs: number;
-  setLatencyOffsetMs: (ms: number) => void;
   togglePlayback: () => Promise<void>;
   skip: (deltaS: number) => Promise<void>;
-  /** Seek to a 0–1 fraction of the recording. */
   seekToFraction: (fraction: number) => void;
   saveAudio: (withClick: boolean) => Promise<void>;
 }
 
 interface Options {
   session: SessionRecord;
+  active: boolean;
+  gridBeats: HitEventsRecord['gridBeats'];
+  latencyOffsetMs: number;
   audioBufferRef: React.MutableRefObject<AudioBuffer | null>;
-  /** Current zoom level (for playhead-follow scrolling). */
   zoom: number;
+  loopEnabled: boolean;
+  loopStart: number;
+  loopEnd: number;
   containerRef: React.RefObject<HTMLDivElement>;
   setScrollX: React.Dispatch<React.SetStateAction<number>>;
 }
 
-export function useTimelinePlayback({
-  session,
-  audioBufferRef,
-  zoom,
-  containerRef,
-  setScrollX,
-}: Options): TimelinePlayback {
+export function useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX, loopEnabled, loopStart, loopEnd, active, gridBeats, latencyOffsetMs }: Options): TimelinePlayback {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [playbackPos, setPlaybackPos] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [clickOverlay, setClickOverlay] = useState(true);
+  const [playbackVolume, setPlaybackVolumeState] = useState(0.72);
+  const [followPlayhead, setFollowPlayhead] = useState(true);
+  const [clickOverlay, setClickOverlay] = useState(false);
   const [clickVolume, setClickVolume] = useState(0.5);
+  const [cleanupEnabled, setCleanupEnabled] = useState(false);
+  const [highPassHz, setHighPassHz] = useState(90);
+  const [lowPassHz, setLowPassHz] = useState(12000);
+  const [presenceBoostDb, setPresenceBoostDb] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
-  const [latencyOffsetMs, setLatencyOffsetMs] = useState(() => {
-    const s = useSettingsStore.getState();
-    return s.calibratedOffset + s.manualAdjustment;
-  });
-
-  // Audio refs
+  const [exportProgress, setExportProgress] = useState(0);
+  const exportRef = useRef<{ controller: AbortController; release: () => void } | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const clickNodesRef = useRef<AudioBufferSourceNode[]>([]);
   const clickGainRef = useRef<GainNode | null>(null);
-  const playStartTimeRef = useRef(0);
-  const playOffsetRef = useRef(0);
-  const animFrameRef = useRef(0);
-  const volUnsubRef = useRef<(() => void) | null>(null);
-  const savedClickVolRef = useRef(0.5);
+  const nodesRef = useRef<AudioNode[]>([]);
+  const clicksRef = useRef(new Set<AudioBufferSourceNode>());
+  const epochRef = useRef(0);
+  const pendingRef = useRef(false);
+  const offsetRef = useRef(0);
+  const clockRef = useRef({ time: 0, offset: 0, speed: 1, duration: 1, loop: undefined as PlaybackLoop | undefined });
+  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const frameRef = useRef(0);
+  const releaseRef = useRef<(() => void) | null>(null);
+  const visualRef = useRef({ zoom, followPlayhead });
+  visualRef.current = { zoom, followPlayhead };
+  const clickSoundId = useSettingsStore((state) => state.clickSound);
+  const accentSoundId = useSettingsStore((state) => state.accentSound);
+  const accentThreshold = useSettingsStore((state) => state.accentSoundThreshold);
 
-  // Click sound settings
-  const clickSoundId = useSettingsStore((s) => s.clickSound);
-  const accentSoundId = useSettingsStore((s) => s.accentSound);
-  const accentThreshold = useSettingsStore((s) => s.accentSoundThreshold);
-
-  const stopPlayback = useCallback(() => {
-    if (sourceNodeRef.current) {
-      try { sourceNodeRef.current.stop(); } catch {}
-      sourceNodeRef.current = null;
-    }
-    if (gainNodeRef.current) {
-      try { gainNodeRef.current.disconnect(); } catch {}
-      gainNodeRef.current = null;
-    }
-    for (const node of clickNodesRef.current) {
-      try { node.stop(); } catch {}
-    }
-    clickNodesRef.current = [];
-    if (clickGainRef.current) {
-      try { clickGainRef.current.disconnect(); } catch {}
-      clickGainRef.current = null;
-    }
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = 0;
-    }
-    volUnsubRef.current?.();
-    volUnsubRef.current = null;
-    setIsPlaying(false);
+  const position = useCallback(() => {
+    const clock = clockRef.current;
+    return sourceNodeRef.current ? mediaPosition(clock.offset + Math.max(0, (audioEngine.getContext()?.currentTime ?? clock.time) - clock.time) * clock.speed, clock.duration, clock.loop) : offsetRef.current;
   }, []);
 
+  const stopPlayback = useCallback(() => {
+    ++epochRef.current; pendingRef.current = false;
+    releaseRef.current?.(); releaseRef.current = null;
+    if (sourceNodeRef.current) {
+      offsetRef.current = position();
+      sourceNodeRef.current.onended = null;
+      try { sourceNodeRef.current.stop(); } catch {}
+      sourceNodeRef.current.disconnect(); sourceNodeRef.current = null;
+    }
+    for (const source of clicksRef.current) { try { source.stop(); } catch {} source.disconnect(); }
+    clicksRef.current.clear();
+    for (const node of nodesRef.current) node.disconnect();
+    nodesRef.current = []; gainNodeRef.current = null; clickGainRef.current = null;
+    clearInterval(timerRef.current); cancelAnimationFrame(frameRef.current);
+    setIsPlaying(false);
+  }, [position]);
+
   const startPlayback = useCallback(async () => {
-    if (!audioBufferRef.current) return;
-    const { audioEngine } = await import('../../../audio');
-    const ctx = await audioEngine.initContext();
-    if (ctx.state === 'suspended') await ctx.resume();
-
-    const offset = playOffsetRef.current;
-    const duration = audioBufferRef.current.duration;
-    if (offset >= duration) {
-      playOffsetRef.current = 0;
-    }
-
-    const source = ctx.createBufferSource();
-    source.buffer = audioBufferRef.current;
-    source.playbackRate.value = playbackSpeed;
-
-    // Gain with volume slider
-    const gain = ctx.createGain();
-    const vol = useMetronomeStore.getState().volume;
-    gain.gain.value = MIC_BOOST * perceptualGain(vol);
-    source.connect(gain);
-    gain.connect(ctx.destination);
-
-    sourceNodeRef.current = source;
-    gainNodeRef.current = gain;
-
-    // Schedule click overlay
-    const { getBuffer } = await import('../../../audio/sounds');
-    const latencyOffsetS = latencyOffsetMs / 1000;
-    const durationS = session.durationMs / 1000;
-
-    const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
-    const accentBuf = getBuffer(accentSoundId) || clickBuf;
-
-    if (clickBuf) {
-      const clickGain = ctx.createGain();
-      clickGain.gain.value = clickOverlay ? clickVolume : 0;
-      savedClickVolRef.current = clickVolume;
-      clickGain.connect(ctx.destination);
-      clickGainRef.current = clickGain;
-
-      const scheduled: AudioBufferSourceNode[] = [];
-      forEachClickBeat(session, latencyOffsetS, ({ adjustedBeatTime, volState }) => {
-        // Only schedule future beats (adjusted for speed)
-        const playbackTime = (adjustedBeatTime - playOffsetRef.current) / playbackSpeed;
-        if (playbackTime > 0 && adjustedBeatTime < durationS) {
-          const useAccent = volState >= accentThreshold;
-          const buf = useAccent ? (accentBuf || clickBuf) : clickBuf;
-
-          const clickSource = ctx.createBufferSource();
-          clickSource.buffer = buf;
-          const clickNodeGain = ctx.createGain();
-          clickNodeGain.gain.value = VOLUME_GAINS[volState];
-          clickSource.connect(clickNodeGain);
-          clickNodeGain.connect(clickGain);
-          clickSource.start(ctx.currentTime + playbackTime);
-          scheduled.push(clickSource);
+    const buffer = audioBufferRef.current;
+    if (!buffer) { setError('This recording is not ready for playback.'); return; }
+    if (!active) return;
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
+    audioEngine.stop(); useMetronomeStore.getState().setPlaying(false);
+    releaseRef.current = beginCriticalActivity('playback');
+    const epoch = ++epochRef.current; pendingRef.current = true; setError(null);
+    try {
+      const ctx = await audioEngine.initContext();
+      if (ctx.state === 'suspended') await ctx.resume();
+      if (epoch !== epochRef.current) return;
+      const duration = buffer.duration;
+      const loop = loopEnabled && loopEnd > loopStart ? { start: loopStart * duration, end: loopEnd * duration } : undefined;
+      if (offsetRef.current >= duration) offsetRef.current = 0;
+      if (loop && (offsetRef.current < loop.start || offsetRef.current >= loop.end)) offsetRef.current = loop.start;
+      const source = ctx.createBufferSource(); source.buffer = buffer; source.playbackRate.value = playbackSpeed;
+      if (loop) { source.loop = true; source.loopStart = loop.start; source.loopEnd = loop.end; }
+      const gain = ctx.createGain(); gain.gain.value = recordingPlaybackGain(playbackVolume);
+      const limiter = createPlaybackLimiter(ctx); gain.connect(limiter); limiter.connect(ctx.destination);
+      gainNodeRef.current = gain; nodesRef.current = [source, gain, limiter];
+      if (cleanupEnabled) {
+        const highPass = ctx.createBiquadFilter(); highPass.type = 'highpass'; highPass.frequency.value = highPassHz; highPass.Q.value = 0.707;
+        const lowPass = ctx.createBiquadFilter(); lowPass.type = 'lowpass'; lowPass.frequency.value = Math.max(highPassHz + 100, lowPassHz); lowPass.Q.value = 0.707;
+        const presence = ctx.createBiquadFilter(); presence.type = 'peaking'; presence.frequency.value = 3200; presence.Q.value = 0.8; presence.gain.value = presenceBoostDb;
+        source.connect(highPass); highPass.connect(lowPass); lowPass.connect(presence); presence.connect(gain);
+        nodesRef.current.push(highPass, lowPass, presence);
+      } else source.connect(gain);
+      const clickGain = ctx.createGain(); clickGain.gain.value = clickOverlay ? clickVolume : 0; clickGain.connect(limiter);
+      clickGainRef.current = clickGain; nodesRef.current.push(clickGain);
+      const beats: Array<{ time: number; volState: keyof typeof VOLUME_GAINS }> = [];
+      forEachClickBeat(session, latencyOffsetMs / 1000, ({ adjustedBeatTime, volState }) => {
+        if (adjustedBeatTime >= 0 && adjustedBeatTime < duration) beats.push({ time: adjustedBeatTime, volState });
+      }, gridBeats);
+      const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
+      const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
+      const startTime = ctx.currentTime + 0.025;
+      clockRef.current = { time: startTime, offset: offsetRef.current, speed: playbackSpeed, duration, loop };
+      let through = offsetRef.current;
+      const schedule = () => {
+        const clock = clockRef.current;
+        const from = Math.max(through, clock.offset + (ctx.currentTime - clock.time) * clock.speed);
+        const to = clock.offset + (ctx.currentTime + 0.15 - clock.time) * clock.speed;
+        if (clickBuffer) for (const { event, time } of eventsInWindow(beats, from, to, loop)) {
+          const click = ctx.createBufferSource(); click.buffer = event.volState >= accentThreshold ? accentBuffer! : clickBuffer;
+          const level = ctx.createGain(); level.gain.value = VOLUME_GAINS[event.volState];
+          click.connect(level); level.connect(clickGain); clicksRef.current.add(click);
+          click.onended = () => { clicksRef.current.delete(click); click.disconnect(); level.disconnect(); };
+          click.start(clock.time + (time - clock.offset) / clock.speed);
         }
-      });
-      clickNodesRef.current = scheduled;
-    }
-
-    // Subscribe to volume changes during playback
-    volUnsubRef.current?.();
-    let prevVol = vol;
-    volUnsubRef.current = useMetronomeStore.subscribe((state) => {
-      if (state.volume !== prevVol) {
-        prevVol = state.volume;
-        if (gainNodeRef.current) {
-          gainNodeRef.current.gain.value = MIC_BOOST * perceptualGain(state.volume);
+        through = to;
+      };
+      sourceNodeRef.current = source;
+      source.onended = () => { if (sourceNodeRef.current === source) { stopPlayback(); offsetRef.current = duration; setPlaybackPos(1); } };
+      source.start(startTime, offsetRef.current);
+      pendingRef.current = false; setIsPlaying(true); schedule(); timerRef.current = setInterval(schedule, 25);
+      const animate = () => {
+        if (epoch !== epochRef.current || !sourceNodeRef.current) return;
+        const pos = position() / duration; setPlaybackPos(pos);
+        const width = containerRef.current?.clientWidth ?? 350;
+        if (visualRef.current.followPlayhead) {
+          const x = pos * width * visualRef.current.zoom;
+          setScrollX((previous) => x < previous || x > previous + width * 0.8 ? Math.max(0, Math.min(width * (visualRef.current.zoom - 1), x - width * 0.3)) : previous);
         }
-      }
-    });
-
-    source.onended = () => stopPlayback();
-    playStartTimeRef.current = ctx.currentTime;
-    source.start(0, playOffsetRef.current);
-    setIsPlaying(true);
-
-    // Animation loop: update playhead + smooth scroll
-    const animate = () => {
-      if (!sourceNodeRef.current) return;
-      const elapsed = (ctx.currentTime - playStartTimeRef.current) * playbackSpeed + playOffsetRef.current;
-      const pos = Math.min(1, elapsed / (session.durationMs / 1000));
-      setPlaybackPos(pos);
-
-      // Smooth scroll to follow playhead
-      const cw = containerRef.current?.clientWidth ?? 350;
-      const tw = cw * zoom;
-      const playheadX = pos * tw;
-      setScrollX((prev) => {
-        // If playhead is off-screen, lerp toward it
-        if (playheadX < prev || playheadX > prev + cw) {
-          const target = Math.max(0, playheadX - cw * 0.3);
-          return prev + (target - prev) * 0.15; // Smooth lerp
-        }
-        // If playhead is near right edge, gently scroll
-        if (playheadX > prev + cw * 0.7) {
-          const target = Math.max(0, playheadX - cw * 0.3);
-          return prev + (target - prev) * 0.08;
-        }
-        return prev;
-      });
-
-      if (pos < 1) {
-        animFrameRef.current = requestAnimationFrame(animate);
-      }
-    };
-    animFrameRef.current = requestAnimationFrame(animate);
-  }, [stopPlayback, session, zoom, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold, latencyOffsetMs, playbackSpeed, audioBufferRef, containerRef, setScrollX]);
+        frameRef.current = requestAnimationFrame(animate);
+      };
+      frameRef.current = requestAnimationFrame(animate);
+    } catch (failure) { if (epoch === epochRef.current) { stopPlayback(); setError(failure instanceof Error ? failure.message : 'Playback failed.'); } }
+  }, [active, gridBeats, audioBufferRef, session, playbackSpeed, playbackVolume, loopEnabled, loopStart, loopEnd, cleanupEnabled, highPassHz, lowPassHz, presenceBoostDb, clickOverlay, clickVolume, clickSoundId, accentSoundId, accentThreshold, latencyOffsetMs, stopPlayback, position, containerRef, setScrollX]);
 
   const togglePlayback = useCallback(async () => {
-    if (isPlaying) {
-      // Pause: save current position
-      const { audioEngine } = await import('../../../audio');
-      const ctx = audioEngine.getContext();
-      if (ctx) {
-        playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-      }
-      stopPlayback();
-    } else {
-      startPlayback();
-    }
-  }, [isPlaying, stopPlayback, startPlayback, playbackSpeed]);
-
-  // Skip ±5 seconds
-  const skip = useCallback(async (deltaS: number) => {
-    const durationS = session.durationMs / 1000;
-    if (isPlaying) {
-      const { audioEngine } = await import('../../../audio');
-      const ctx = audioEngine.getContext();
-      if (ctx) {
-        playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-      }
-      stopPlayback();
-      playOffsetRef.current = Math.max(0, Math.min(durationS, playOffsetRef.current + deltaS));
-      startPlayback();
-    } else {
-      playOffsetRef.current = Math.max(0, Math.min(durationS, playOffsetRef.current + deltaS));
-      setPlaybackPos(playOffsetRef.current / durationS);
-    }
-  }, [isPlaying, stopPlayback, startPlayback, session.durationMs, playbackSpeed]);
-
+    if (sourceNodeRef.current || pendingRef.current) stopPlayback(); else await startPlayback();
+  }, [startPlayback, stopPlayback]);
   const seekToFraction = useCallback((fraction: number) => {
-    const durationS = session.durationMs / 1000;
-    playOffsetRef.current = fraction * durationS;
-    setPlaybackPos(fraction);
+    const resume = !!sourceNodeRef.current || pendingRef.current;
+    stopPlayback();
+    const duration = audioBufferRef.current?.duration ?? session.durationMs / 1000;
+    offsetRef.current = Math.max(0, Math.min(1, fraction)) * duration;
+    setPlaybackPos(offsetRef.current / duration);
+    if (resume) void startPlayback();
+  }, [audioBufferRef, session.durationMs, startPlayback, stopPlayback]);
+  const skip = useCallback(async (delta: number) => {
+    const duration = audioBufferRef.current?.duration ?? session.durationMs / 1000;
+    seekToFraction((position() + delta) / duration);
+  }, [audioBufferRef, session.durationMs, position, seekToFraction]);
 
-    if (isPlaying) {
-      stopPlayback();
-      startPlayback();
-    }
-  }, [session.durationMs, isPlaying, stopPlayback, startPlayback]);
-
-  // Latency offset restart
-  const prevLatencyRef = useRef(latencyOffsetMs);
+  const restartKey = `${playbackSpeed}:${loopEnabled}:${loopStart}:${loopEnd}:${cleanupEnabled}:${highPassHz}:${lowPassHz}:${presenceBoostDb}:${latencyOffsetMs}:${clickSoundId}:${accentSoundId}:${accentThreshold}`;
+  const previousKey = useRef(restartKey);
   useEffect(() => {
-    if (prevLatencyRef.current !== latencyOffsetMs && isPlaying) {
-      const restart = async () => {
-        const { audioEngine: eng } = await import('../../../audio');
-        const ctx = eng.getContext();
-        if (ctx) {
-          playOffsetRef.current += (ctx.currentTime - playStartTimeRef.current) * playbackSpeed;
-        }
-        stopPlayback();
-        setTimeout(() => startPlayback(), 50);
-      };
-      restart();
-    }
-    prevLatencyRef.current = latencyOffsetMs;
-  }, [latencyOffsetMs, isPlaying, stopPlayback, startPlayback, playbackSpeed]);
-
-  // Mid-playback click toggle
-  useEffect(() => {
-    if (clickGainRef.current) {
-      clickGainRef.current.gain.value = clickOverlay ? savedClickVolRef.current : 0;
-    }
-  }, [clickOverlay]);
-
-  // Click volume slider: update gain in real-time
-  useEffect(() => {
-    savedClickVolRef.current = clickVolume;
-    if (clickGainRef.current && clickOverlay) {
-      clickGainRef.current.gain.value = clickVolume;
-    }
-  }, [clickVolume, clickOverlay]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => stopPlayback();
+    if (previousKey.current !== restartKey && (sourceNodeRef.current || pendingRef.current)) { stopPlayback(); void startPlayback(); }
+    previousKey.current = restartKey;
+  }, [restartKey, stopPlayback, startPlayback]);
+  useEffect(() => { if (clickGainRef.current) clickGainRef.current.gain.value = clickOverlay ? clickVolume : 0; }, [clickOverlay, clickVolume]);
+  const setPlaybackVolume = useCallback((value: number) => {
+    const next = Math.max(0, Math.min(1, value)); setPlaybackVolumeState(next);
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = recordingPlaybackGain(next);
+  }, []);
+  const cancelExport = useCallback(() => {
+    const operation = exportRef.current;
+    if (!operation) return;
+    operation.controller.abort(); operation.release(); exportRef.current = null;
+    setIsSaving(false); setExportProgress(0);
+  }, []);
+  useEffect(() => { if (!active) { stopPlayback(); cancelExport(); } }, [active, stopPlayback, cancelExport]);
+  useEffect(() => () => {
+    stopPlayback();
+    exportRef.current?.controller.abort(); exportRef.current?.release(); exportRef.current = null;
   }, [stopPlayback]);
-
-  // ─── Save / Export ───
-
   const saveAudio = useCallback(async (withClick: boolean) => {
-    if (!audioBufferRef.current) return;
-    setIsSaving(true);
-
+    const sourceBuffer = audioBufferRef.current;
+    if (!sourceBuffer || !active || exportRef.current) return;
+    stopPlayback();
+    if (isCriticalActivityActive()) { setError('Finish the current recording, analysis or data operation first.'); return; }
+    const operation = { controller: new AbortController(), release: beginCriticalActivity('data') };
+    exportRef.current = operation;
+    setIsSaving(true); setExportProgress(0); setError(null);
     try {
-      const { getBuffer } = await import('../../../audio/sounds');
-      const srcBuf = audioBufferRef.current;
-      const sampleRate = srcBuf.sampleRate;
-      const durationS = srcBuf.duration;
-      const totalSamples = Math.ceil(durationS * sampleRate);
-
-      const offline = new OfflineAudioContext(1, totalSamples, sampleRate);
-
-      const recSource = offline.createBufferSource();
-      recSource.buffer = srcBuf;
-      const recGain = offline.createGain();
-      recGain.gain.value = 4.0;
-      recSource.connect(recGain);
-      recGain.connect(offline.destination);
-      recSource.start(0);
-
+      const clicks: ExportClick[] = [];
       if (withClick) {
-        const clickBuf = getBuffer(clickSoundId) || getBuffer('woodblock');
-        const accentBuf = getBuffer(accentSoundId) || clickBuf;
-
-        if (clickBuf) {
-          const clickMasterGain = offline.createGain();
-          clickMasterGain.gain.value = clickVolume;
-          clickMasterGain.connect(offline.destination);
-          const latencyOffsetS = latencyOffsetMs / 1000;
-
-          forEachClickBeat(session, latencyOffsetS, ({ adjustedBeatTime, volState }) => {
-            if (adjustedBeatTime >= 0 && adjustedBeatTime < durationS) {
-              const useAccent = volState >= accentThreshold;
-              const buf = useAccent ? (accentBuf || clickBuf) : clickBuf;
-
-              const clickSource = offline.createBufferSource();
-              clickSource.buffer = buf;
-              const clickNodeGain = offline.createGain();
-              clickNodeGain.gain.value = VOLUME_GAINS[volState];
-              clickSource.connect(clickNodeGain);
-              clickNodeGain.connect(clickMasterGain);
-              clickSource.start(adjustedBeatTime);
-            }
-          });
-        }
+        const clickBuffer = getBuffer(clickSoundId) || getBuffer('woodblock');
+        const accentBuffer = getBuffer(accentSoundId) || clickBuffer;
+        if (!clickBuffer) throw new Error('Click sounds are still loading. Try exporting again.');
+        forEachClickBeat(session, latencyOffsetMs / 1000, ({ adjustedBeatTime, volState }) => {
+          if (adjustedBeatTime < 0 || adjustedBeatTime >= sourceBuffer.duration) return;
+          clicks.push({ time: adjustedBeatTime, buffer: volState >= accentThreshold ? accentBuffer! : clickBuffer, gain: clickVolume * VOLUME_GAINS[volState] });
+        }, gridBeats);
       }
-
-      const rendered = await offline.startRendering();
-      const pcm = rendered.getChannelData(0);
-      const dataSize = pcm.length * 2;
-      const wavBuf = new ArrayBuffer(44 + dataSize);
-      const v = new DataView(wavBuf);
-      const w = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
-
-      w(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true); w(8, 'WAVE');
-      w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-      v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
-      v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-      w(36, 'data'); v.setUint32(40, dataSize, true);
-
-      let peak = 0;
-      for (let i = 0; i < pcm.length; i++) {
-        const abs = Math.abs(pcm[i]);
-        if (abs > peak) peak = abs;
-      }
-      const scale = peak > 0 ? 0.89 / peak : 1;
-
-      let off = 44;
-      for (let i = 0; i < pcm.length; i++) {
-        const s = pcm[i] * scale;
-        v.setInt16(off, Math.max(-32768, Math.min(32767, s < 0 ? s * 0x8000 : s * 0x7FFF)), true);
-        off += 2;
-      }
-
-      const blob = new Blob([wavBuf], { type: 'audio/wav' });
+      const blob = await exportWav({ buffer: sourceBuffer, clicks, signal: operation.controller.signal,
+        onProgress: (progress) => { if (exportRef.current === operation) setExportProgress(progress); } });
+      operation.controller.signal.throwIfAborted();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const dateStr = new Date(session.date).toISOString().slice(0, 10);
-      const suffix = withClick ? 'with-click' : 'raw';
-      a.href = url;
-      a.download = `polypro-${session.bpm}bpm-${dateStr}-${suffix}.wav`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Save failed:', err);
+      const anchor = document.createElement('a');
+      const date = new Date(session.date).toISOString().slice(0, 10);
+      anchor.href = url;
+      anchor.download = `polypro-${session.bpm}bpm-${date}-${withClick ? 'with-click' : 'raw'}.wav`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (failure) {
+      if (!operation.controller.signal.aborted && exportRef.current === operation) {
+        setError(failure instanceof Error ? failure.message : 'Could not export this recording.');
+      }
     } finally {
-      setIsSaving(false);
+      operation.release();
+      if (exportRef.current === operation) { exportRef.current = null; setIsSaving(false); }
     }
-  }, [session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs, audioBufferRef]);
+  }, [active, gridBeats, audioBufferRef, session, clickSoundId, accentSoundId, accentThreshold, clickVolume, latencyOffsetMs, stopPlayback]);
 
-  return {
-    isPlaying,
-    playbackPos,
-    playbackSpeed,
-    setPlaybackSpeed,
-    clickOverlay,
-    setClickOverlay,
-    clickVolume,
-    setClickVolume,
-    isSaving,
-    latencyOffsetMs,
-    setLatencyOffsetMs,
-    togglePlayback,
-    skip,
-    seekToFraction,
-    saveAudio,
-  };
+  return { error, isPlaying, playbackPos, playbackSpeed, setPlaybackSpeed, playbackVolume, setPlaybackVolume, followPlayhead, setFollowPlayhead,
+    clickOverlay, setClickOverlay, clickVolume, setClickVolume, cleanupEnabled, setCleanupEnabled, highPassHz, setHighPassHz,
+    lowPassHz, setLowPassHz, presenceBoostDb, setPresenceBoostDb, isSaving, exportProgress, cancelExport, latencyOffsetMs,
+    togglePlayback, skip, seekToFraction, saveAudio };
 }

@@ -48,7 +48,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
       const midY = pad.top + chartH / 2;
 
       // Grid
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.06)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(pad.left, midY);
@@ -56,7 +56,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
       ctx.stroke();
 
       // Draw line
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.7)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       for (let i = 0; i < points.length; i++) {
@@ -78,7 +78,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
 
       // Labels
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(`+${Math.round(maxAbs)}ms`, pad.left - 4, pad.top + 4);
       ctx.fillText('0', pad.left - 4, midY + 4);
@@ -90,7 +90,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
 
       // Direction labels
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('late ↑', pad.left + 4, pad.top + 12);
       ctx.fillText('early ↓', pad.left + 4, pad.top + chartH - 4);

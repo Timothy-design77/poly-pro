@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 interface SoundPickerSheetProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export function SoundPickerSheet({
   beatLabel,
 }: SoundPickerSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(panelRef, isOpen, onClose);
   const openTimeRef = useRef(0);
 
   // Track when sheet opens — ignore close events for 300ms after
@@ -42,16 +44,6 @@ export function SoundPickerSheet({
       openTimeRef.current = Date.now();
     }
   }, [isOpen]);
-
-  // Escape to close
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -84,6 +76,7 @@ export function SoundPickerSheet({
     >
       <div
         ref={panelRef}
+        role="dialog" aria-modal="true" aria-label={`${beatLabel} sound`} tabIndex={-1}
         className="w-full max-h-[70vh] bg-bg-surface rounded-t-2xl flex flex-col animate-slide-up"
         onClick={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
@@ -91,20 +84,20 @@ export function SoundPickerSheet({
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-border-subtle shrink-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-bold text-text-primary">{beatLabel} Sound</span>
+            <span className="text-sm font-semibold text-text-primary">{beatLabel} Sound</span>
             <button
               onClick={onClose}
-              className="text-xs text-text-muted font-bold px-2 py-1 rounded active:bg-bg-raised"
+              className="text-xs text-text-muted font-semibold px-2 py-1 rounded active:bg-bg-raised"
             >
               Done
             </button>
           </div>
           {hasOverride ? (
-            <div className="text-[11px] text-text-muted">
+            <div className="text-xs text-text-muted">
               Custom override · Default: {inheritedName}
             </div>
           ) : (
-            <div className="text-[11px] text-text-muted">
+            <div className="text-xs text-text-muted">
               Using track default: {inheritedName}
             </div>
           )}
@@ -133,7 +126,7 @@ export function SoundPickerSheet({
             const sounds = SOUND_CATALOG.filter((s) => s.category === cat);
             return (
               <div key={cat}>
-                <div className="text-[10px] text-text-muted uppercase tracking-wider px-3 pt-3 pb-1">
+                <div className="text-xs text-text-muted  px-3 pt-3 pb-1">
                   {categoryLabels[cat]}
                 </div>
                 <div className="grid grid-cols-1 gap-1">
@@ -147,7 +140,7 @@ export function SoundPickerSheet({
                           text-left px-3 py-3 rounded-lg text-sm flex items-center gap-2
                           touch-manipulation
                           ${isActive
-                            ? 'bg-[rgba(255,255,255,0.08)] text-text-primary border border-[rgba(255,255,255,0.1)]'
+                            ? 'bg-[rgba(21,23,26,0.08)] text-text-primary border border-[rgba(21,23,26,0.1)]'
                             : 'text-text-secondary active:bg-bg-raised'}
                         `}
                       >

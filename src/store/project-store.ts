@@ -6,12 +6,10 @@ import { useMetronomeStore } from './metronome-store';
 import { useSettingsStore } from './settings-store';
 import type { TrackConfig } from '../audio/types';
 
-/** Capture current metronome + settings state as a snapshot */
 function captureSnapshot(): MetronomeSnapshot {
   return captureSnapshotFromStores(useMetronomeStore.getState(), useSettingsStore.getState());
 }
 
-/** Restore a snapshot into metronome + settings stores */
 function restoreSnapshot(snap: MetronomeSnapshot): void {
   useMetronomeStore.setState({
     bpm: snap.bpm,
@@ -50,28 +48,13 @@ interface ProjectState {
   activeProjectId: string | null;
   presets: PresetRecord[];
   loaded: boolean;
-
-  // Actions
   loadFromDB: () => Promise<void>;
   createProject: (project: Omit<ProjectRecord, 'id' | 'created' | 'lastOpened' | 'currentBpm' | 'consecutiveCount' | 'sessionIds' | 'snapshot'>) => Promise<string>;
   updateProject: (id: string, updates: Partial<ProjectRecord>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
-  setActiveProject: (id: string) => void;
+  setActiveProject: (id: string | null) => Promise<void>;
   getActiveProject: () => ProjectRecord | null;
-
-  /**
-   * Feed a completed session's result into a project's auto-advance
-   * tracker. A session passes when its score meets the project's
-   * accuracy target at (or above) the project's current BPM; after
-   * `advanceAfterN` consecutive passes the project BPM steps up.
-   */
-  recordSessionResult: (
-    projectId: string,
-    score: number,
-    sessionBpm: number,
-  ) => Promise<{ advanced: boolean; newBpm: number | null }>;
-
-  // Presets
+  recordSessionResult: (projectId: string, score: number, sessionBpm: number) => Promise<{ advanced: boolean; newBpm: number | null }>;
   savePreset: (preset: Omit<PresetRecord, 'id' | 'created'>) => Promise<string>;
   deletePreset: (id: string) => Promise<void>;
   loadPreset: (id: string) => PresetRecord | null;
@@ -79,19 +62,6 @@ interface ProjectState {
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
-
-// Debounce IDB writes — keyed per write target so writes to different
-// records (e.g. the activeProjectId setting vs. a project record) never
-// cancel each other; only rapid re-writes of the SAME target coalesce.
-const writeTimers = new Map<string, ReturnType<typeof setTimeout>>();
-function debouncedWrite(key: string, fn: () => Promise<void>) {
-  const existing = writeTimers.get(key);
-  if (existing) clearTimeout(existing);
-  writeTimers.set(key, setTimeout(() => {
-    writeTimers.delete(key);
-    fn().catch(console.error);
-  }, 500));
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -104,41 +74,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const [projects, presets, activeId] = await Promise.all([
       db.getAllProjects(),
       db.getAllPresets(),
-      db.getSetting<string>('activeProjectId'),
+      db.getSetting<string | null>('activeProjectId'),
     ]);
-
-    // Create default project if none exist
-    if (projects.length === 0) {
-      const defaultProject: ProjectRecord = {
-        id: generateId(),
-        name: 'My First Project',
-        icon: '🥁',
-        created: new Date().toISOString(),
-        lastOpened: new Date().toISOString(),
-        startBpm: 80,
-        goalBpm: 120,
-        currentBpm: 80,
-        accuracyTarget: 85,
-        autoAdvance: true,
-        advanceAfterN: 3,
-        bpmStep: 5,
-        consecutiveCount: 0,
-        presetId: null,
-        sessionIds: [],
-        snapshot: null,
-      };
-      await db.putProject(defaultProject);
-      projects.push(defaultProject);
-      await db.setSetting('activeProjectId', defaultProject.id);
-      set({ projects, activeProjectId: defaultProject.id, presets, loaded: true });
-    } else {
-      set({
-        projects,
-        presets,
-        activeProjectId: activeId || projects[0].id,
-        loaded: true,
-      });
-    }
+    const validActiveId = activeId && projects.some((project) => project.id === activeId) ? activeId : null;
+    set({ projects, presets, activeProjectId: validActiveId, loaded: true });
   },
 
   createProject: async (input) => {
@@ -155,90 +94,63 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     };
     await db.putProject(project);
     set((s) => ({ projects: [...s.projects, project] }));
-
-    // Auto-activate the new project (snapshots old, resets to clean defaults)
-    get().setActiveProject(id);
+    await get().setActiveProject(id);
     return id;
   },
 
   updateProject: async (id, updates) => {
-    const { projects } = get();
-    const updated = projects.map((p) =>
-      p.id === id ? { ...p, ...updates } : p
-    );
-    set({ projects: updated });
-    const project = updated.find((p) => p.id === id);
-    if (project) {
-      debouncedWrite(`project:${id}`, () => db.putProject(project));
-    }
+    const updated = await db.patchProject(id, updates);
+    if (!updated) throw new Error('This project no longer exists. Reload Projects.');
+    set((state) => ({ projects: state.projects.map((project) => project.id === id ? updated : project) }));
   },
 
   deleteProject: async (id) => {
-    const { activeProjectId } = get();
-    if (id === activeProjectId) return; // can't delete active
-    await db.deleteProject(id);
-    set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
+    if (id === get().activeProjectId) throw new Error('Switch to Quick Start before deleting the active project.');
+    await db.removeProjectData(id);
+    set((state) => ({ projects: state.projects.filter((project) => project.id !== id), presets: state.presets.filter((preset) => preset.projectId !== id) }));
+    const { useSessionStore } = await import('./session-store');
+    await useSessionStore.getState().loadFromDB();
   },
 
-  setActiveProject: (id) => {
+  setActiveProject: async (id) => {
     const { projects, activeProjectId } = get();
     if (id === activeProjectId) return;
+    if (id !== null && !projects.some((project) => project.id === id)) return;
 
-    // 1. Save snapshot of current state to the OLD project
     if (activeProjectId) {
       const snapshot = captureSnapshot();
-      const oldProject = projects.find((p) => p.id === activeProjectId);
+      const oldProject = projects.find((project) => project.id === activeProjectId);
       if (oldProject) {
-        const updated = { ...oldProject, snapshot, currentBpm: snapshot.bpm };
-        set((s) => ({ projects: s.projects.map((p) => p.id === activeProjectId ? updated : p) }));
-        db.putProject(updated).catch(console.error);
+        await get().updateProject(oldProject.id, { snapshot, currentBpm: snapshot.bpm });
       }
     }
 
-    // 2. Switch active project
+    await db.setSetting('activeProjectId', id);
     set({ activeProjectId: id });
-    debouncedWrite('active-project-id', () => db.setSetting('activeProjectId', id));
+    if (id === null) return;
 
-    // 3. Restore snapshot from the NEW project (or defaults from project config)
-    const newProject = projects.find((p) => p.id === id);
+    const newProject = projects.find((project) => project.id === id);
     if (newProject) {
       if (newProject.snapshot) {
         restoreSnapshot(newProject.snapshot);
       } else {
-        // No snapshot yet — reset BOTH stores to clean defaults
         useMetronomeStore.getState().resetToDefaults();
-        useSettingsStore.getState().resetToDefaults();
         useMetronomeStore.getState().setBpm(newProject.currentBpm);
       }
-      // Update lastOpened
-      const updated = { ...newProject, lastOpened: new Date().toISOString() };
-      set((s) => ({ projects: s.projects.map((p) => p.id === id ? updated : p) }));
-      debouncedWrite(`project:${id}`, () => db.putProject(updated));
+      await get().updateProject(newProject.id, { lastOpened: new Date().toISOString() });
     }
   },
 
-  getActiveProject: () => {
-    const { projects, activeProjectId } = get();
-    return projects.find((p) => p.id === activeProjectId) || null;
-  },
+  getActiveProject: () => get().projects.find((p) => p.id === get().activeProjectId) || null,
 
   recordSessionResult: async (projectId, score, sessionBpm) => {
     const project = get().projects.find((p) => p.id === projectId);
-    if (!project || !project.autoAdvance) {
-      return { advanced: false, newBpm: null };
-    }
-
-    // Sessions played below the project's current BPM don't count toward
-    // (or against) the streak — they're warm-ups, not attempts.
-    if (sessionBpm < project.currentBpm) {
-      return { advanced: false, newBpm: null };
-    }
+    if (!project || !project.autoAdvance) return { advanced: false, newBpm: null };
+    if (sessionBpm < project.currentBpm) return { advanced: false, newBpm: null };
 
     const passed = score >= project.accuracyTarget;
     if (!passed) {
-      if (project.consecutiveCount > 0) {
-        await get().updateProject(projectId, { consecutiveCount: 0 });
-      }
+      if (project.consecutiveCount > 0) await get().updateProject(projectId, { consecutiveCount: 0 });
       return { advanced: false, newBpm: null };
     }
 
@@ -246,10 +158,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const canAdvance = project.currentBpm < project.goalBpm;
     if (streak >= project.advanceAfterN && canAdvance) {
       const newBpm = Math.min(project.currentBpm + project.bpmStep, project.goalBpm);
+      const active = get().activeProjectId === projectId;
+      const snapshot = active ? captureSnapshot() : project.snapshot;
       await get().updateProject(projectId, {
-        consecutiveCount: 0,
-        currentBpm: newBpm,
+        consecutiveCount: 0, currentBpm: newBpm,
+        snapshot: snapshot ? { ...snapshot, bpm: newBpm } : null,
       });
+      if (active) useMetronomeStore.getState().setBpm(newBpm);
       return { advanced: true, newBpm };
     }
 
@@ -259,11 +174,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   savePreset: async (input) => {
     const id = generateId();
-    const preset: PresetRecord = {
-      ...input,
-      id,
-      created: new Date().toISOString(),
-    };
+    const preset: PresetRecord = { ...input, id, created: new Date().toISOString() };
     await db.putPreset(preset);
     set((s) => ({ presets: [...s.presets, preset] }));
     return id;
@@ -274,8 +185,5 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((s) => ({ presets: s.presets.filter((p) => p.id !== id) }));
   },
 
-  loadPreset: (id) => {
-    const { presets } = get();
-    return presets.find((p) => p.id === id) || null;
-  },
+  loadPreset: (id) => get().presets.find((p) => p.id === id) || null,
 }));

@@ -5,7 +5,6 @@ import * as db from './db';
 interface SessionState {
   sessions: SessionRecord[];
   loaded: boolean;
-
   loadFromDB: () => Promise<void>;
   addSession: (session: SessionRecord) => Promise<void>;
   updateSession: (id: string, updates: Partial<SessionRecord>) => Promise<void>;
@@ -19,42 +18,29 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   loadFromDB: async () => {
     const sessions = await db.getAllSessions();
-    // Sort by date descending
     sessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     set({ sessions, loaded: true });
   },
 
   addSession: async (session) => {
     await db.putSession(session);
-    set((s) => ({
-      sessions: [session, ...s.sessions],
-    }));
+    set((s) => ({ sessions: [session, ...s.sessions] }));
   },
 
   updateSession: async (id, updates) => {
-    const { sessions } = get();
-    const existing = sessions.find((s) => s.id === id);
+    const existing = get().sessions.find((session) => session.id === id);
     if (!existing) return;
     const updated = { ...existing, ...updates };
     await db.putSession(updated);
-    set((s) => ({
-      sessions: s.sessions.map((ses) => (ses.id === id ? updated : ses)),
-    }));
+    set((state) => ({ sessions: state.sessions.map((session) => session.id === id ? updated : session) }));
   },
 
   deleteSession: async (id) => {
-    await db.deleteSession(id);
-    await db.deleteRecording(id);
-    await db.deleteHitEvents(id);
-    // Legacy compressed playback blob from the MediaRecorder era
-    await db.deleteRecording(id + '-playback');
-    set((s) => ({
-      sessions: s.sessions.filter((ses) => ses.id !== id),
-    }));
+    await db.removeSessionData(id);
+    set((state) => ({ sessions: state.sessions.filter((session) => session.id !== id) }));
+    const { useProjectStore } = await import('./project-store');
+    await useProjectStore.getState().loadFromDB();
   },
 
-  getSessionsForProject: (projectId) => {
-    const { sessions } = get();
-    return sessions.filter((s) => s.projectId === projectId);
-  },
+  getSessionsForProject: (projectId) => get().sessions.filter((s) => s.projectId === projectId),
 }));

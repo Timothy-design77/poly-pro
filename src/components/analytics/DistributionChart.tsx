@@ -66,7 +66,7 @@ export function DistributionChart({ hitEvents, width, height }: Props) {
 
       // Center line (0ms)
       const zeroX = pad.left + (range / (range * 2)) * chartW;
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.3)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
@@ -77,14 +77,14 @@ export function DistributionChart({ hitEvents, width, height }: Props) {
 
       // Labels
       ctx.fillStyle = '#8B8B94';
-      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`-${Math.round(range)}ms`, pad.left, h - 8);
       ctx.fillText('0', zeroX, h - 8);
       ctx.fillText(`+${Math.round(range)}ms`, w - pad.right, h - 8);
 
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.fillText('early', pad.left + chartW * 0.2, pad.top - 6);
       ctx.fillText('late', pad.left + chartW * 0.8, pad.top - 6);
     },

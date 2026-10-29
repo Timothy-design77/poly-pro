@@ -4,10 +4,11 @@
  * they paint identical pixels. No React, no state: just (canvas, params).
  */
 
-import type { SessionRecord } from '../../../store/db';
+import type { SessionRecord, HitEventsRecord } from '../../../store/db';
+import { gridFromParams } from '../../../analysis/grid';
 import { bandColor } from '../Spectrogram';
 import type { SpectrogramData } from '../Spectrogram';
-import { CANVAS_HEIGHT, MINIMAP_HEIGHT, meterNumerator } from './timeline-shared';
+import { CANVAS_HEIGHT, MINIMAP_HEIGHT } from './timeline-shared';
 
 /**
  * Minimal onset shape the renderer needs — structurally satisfied by both
@@ -32,6 +33,8 @@ export interface TimelineRenderParams {
   showHigh: boolean;
   onsets: readonly TimelineOnset[] | undefined | null;
   rawPcm: Float32Array | null;
+  gridBeats?: HitEventsRecord['gridBeats'];
+  scoringWindowPct: number;
 }
 
 export function renderTimeline({
@@ -45,12 +48,13 @@ export function renderTimeline({
   showMid,
   showHigh,
   onsets,
-  rawPcm,
+  rawPcm, gridBeats, scoringWindowPct,
 }: TimelineRenderParams): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const dpr = window.devicePixelRatio || 1;
+  // Bound canvas allocation at high zoom on high-density foldable screens.
+  const dpr = Math.min(window.devicePixelRatio || 1, 16384 / Math.max(1, totalWidth));
   canvas.width = totalWidth * dpr;
   canvas.height = CANVAS_HEIGHT * dpr;
   ctx.scale(dpr, dpr);
@@ -64,24 +68,15 @@ export function renderTimeline({
   const wMid = CANVAS_HEIGHT * 0.5;
 
   // ─── Beat grid lines ───
-  const bpm = session.bpm;
   const sub = session.subdivision || 1;
-  const meterNum = meterNumerator(session);
-  const beatsPerMeasure = meterNum * sub;
-  const ioi = 60 / bpm / sub;
-  const latencyOffsetS = latencyOffsetMs / 1000;
-
-  {
-    let t = 0;
-    let beatIdx = 0;
-    while (t < durationS) {
-      const adjustedT = t + latencyOffsetS;
-      const x = (adjustedT / durationS) * totalWidth;
-      const isDownbeat = beatIdx % beatsPerMeasure === 0;
-      const isMainBeat = beatIdx % sub === 0;
-
+  const ioi = 60 / session.bpm / sub;
+  const grid = gridBeats ?? gridFromParams(session.bpm, parseInt(session.meter) || 4, sub, durationS);
+  for (const beat of grid) {
+      if (beat.trackId !== 'track-0') continue;
+      const x = ((beat.time + latencyOffsetMs / 1000) / durationS) * totalWidth;
+      const { isDownbeat, isMainBeat } = beat;
       // Scoring window zone
-      const scoringWindowS = ioi * 0.05;
+      const scoringWindowS = ioi * scoringWindowPct / 100;
       const scoringWindowPx = (scoringWindowS / durationS) * totalWidth;
       if (isMainBeat && scoringWindowPx > 1) {
         ctx.fillStyle = 'rgba(74,222,128,0.06)';
@@ -90,10 +85,10 @@ export function renderTimeline({
 
       // Grid line — much brighter now
       ctx.strokeStyle = isDownbeat
-        ? 'rgba(255,255,255,0.5)'
+        ? 'rgba(21,23,26,0.5)'
         : isMainBeat
-          ? 'rgba(255,255,255,0.25)'
-          : 'rgba(255,255,255,0.08)';
+          ? 'rgba(21,23,26,0.25)'
+          : 'rgba(21,23,26,0.08)';
       ctx.lineWidth = isDownbeat ? 2 : 1;
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -102,17 +97,14 @@ export function renderTimeline({
 
       // Measure:beat labels at zoom ≥ 4×
       if (zoom >= 4 && isMainBeat) {
-        const measureNum = Math.floor(beatIdx / beatsPerMeasure) + 1;
-        const beatInMeasure = Math.floor((beatIdx % beatsPerMeasure) / sub) + 1;
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.font = '9px "JetBrains Mono", monospace';
+        const measureNum = beat.measure + 1;
+        const beatInMeasure = Math.floor(beat.beatIndex / sub) + 1;
+        ctx.fillStyle = 'rgba(21,23,26,0.3)';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(`${measureNum}:${beatInMeasure}`, x, 12);
       }
 
-      t += ioi;
-      beatIdx++;
-    }
   }
 
   // ─── Spectrogram waveform (frequency-colored) ───
@@ -177,7 +169,7 @@ export function renderTimeline({
             ? 'rgba(251,191,36,0.7)'
             : 'rgba(248,113,113,0.7)';
       } else {
-        color = 'rgba(255,255,255,0.15)';
+        color = 'rgba(21,23,26,0.15)';
       }
 
       // Full-height vertical line
@@ -196,7 +188,7 @@ export function renderTimeline({
 
       // Dashed connector to matched beat at zoom ≥ 2×
       if (onset.scored && zoom >= 2) {
-        const gridX = ((onset.matchedBeatTime + latencyOffsetS) / durationS) * totalWidth;
+        const gridX = ((onset.matchedBeatTime + latencyOffsetMs / 1000) / durationS) * totalWidth;
         ctx.strokeStyle = color.replace(/[\d.]+\)$/, '0.3)');
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
@@ -209,8 +201,8 @@ export function renderTimeline({
 
       // Deviation label at zoom ≥ 4×
       if (zoom >= 4 && onset.scored) {
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.font = zoom >= 8 ? '10px "JetBrains Mono", monospace' : '8px "JetBrains Mono", monospace';
+        ctx.fillStyle = 'rgba(21,23,26,0.5)';
+        ctx.font = zoom >= 8 ? '11px "DM Sans", sans-serif' : '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         const label = `${onset.delta > 0 ? '+' : ''}${onset.delta.toFixed(1)}`;
         ctx.fillText(label, x, CANVAS_HEIGHT - 4);
@@ -285,7 +277,7 @@ export function renderMiniMap({
   const halfH = MINIMAP_HEIGHT * 0.45;
 
   // Draw waveform envelope
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillStyle = 'rgba(21,23,26,0.25)';
   for (let i = 0; i < env.length; i++) {
     const h = env[i] * halfH;
     ctx.fillRect(i * barW, midY - h, Math.max(1, barW), h * 2);
@@ -304,14 +296,14 @@ export function renderMiniMap({
     ctx.fillRect(x2, 0, width - x2, MINIMAP_HEIGHT);
 
     // Bright border on viewport
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.strokeStyle = 'rgba(21,23,26,0.6)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x1, 0, x2 - x1, MINIMAP_HEIGHT);
   }
 
   // Playhead on minimap
   const playX = playbackPos * width;
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = 'rgba(21,23,26,0.9)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(playX, 0);

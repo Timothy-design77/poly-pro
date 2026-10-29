@@ -15,9 +15,6 @@ export const useSettingsStore = create<SettingsState>()(subscribeWithSelector((s
   hapticEnabled: true,
   vibrationIntensity: 0.5,
 
-  // Interface
-  swipeNavEnabled: true,
-
   // Detection — defaults match "Standard" preset
   sensitivity: 0.5,
   scoringWindowPct: 5,
@@ -45,17 +42,15 @@ export const useSettingsStore = create<SettingsState>()(subscribeWithSelector((s
   audioAfterAnalysis: 'compress' as const,
   rawPcmRetentionDays: 30,
 
-  // ─── Actions ───
-
+  // Actions
   setClickSound: (id) => set({ clickSound: id }),
   setAccentSound: (id) => set({ accentSound: id }),
   setAccentSoundThreshold: (level) => set({ accentSoundThreshold: level }),
   setHapticEnabled: (enabled) => set({ hapticEnabled: enabled }),
-  setSwipeNavEnabled: (enabled) => set({ swipeNavEnabled: enabled }),
   setVibrationIntensity: (intensity) =>
     set({ vibrationIntensity: Math.max(0, Math.min(1, intensity)) }),
   setCalibratedOffset: (offset) => set({ calibratedOffset: offset }),
-  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-150, Math.min(150, adj)) }),
+  setManualAdjustment: (adj) => set({ manualAdjustment: Math.max(-300, Math.min(300, adj)) }),
   setLastCalibratedAt: (date) => set({ lastCalibratedAt: date }),
   setCalibrationConsistency: (value) => set({ calibrationConsistency: value }),
   setSensitivity: (value) => set({ sensitivity: Math.max(0, Math.min(1, value)) }),
@@ -87,7 +82,6 @@ export const useSettingsStore = create<SettingsState>()(subscribeWithSelector((s
   setFluxThresholdOffset: (value) =>
     set({ fluxThresholdOffset: value, detectionPreset: 'Custom' }),
 
-  // Preset: fills all sliders from the chosen preset
   setDetectionPreset: (name) => {
     const preset = DETECTION_PRESETS.find((p) => p.name === name);
     if (preset) {

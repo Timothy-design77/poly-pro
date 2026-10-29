@@ -56,6 +56,10 @@ export function alignToGrid(
   const measureDuration = grid.length >= 2
     ? estimateMeasureDuration(grid)
     : 1;
+  const measureStarts = new Map<number, number>();
+  for (const beat of grid) {
+    if (beat.beatIndex === 0 && !measureStarts.has(beat.measure)) measureStarts.set(beat.measure, beat.time);
+  }
 
   for (const onset of sortedOnsets) {
     const correctedTime = onset.time - latencyOffsetS;
@@ -64,17 +68,15 @@ export function alignToGrid(
     let bestGridIdx = -1;
     let bestDist = Infinity;
 
-    for (let g = 0; g < grid.length; g++) {
-      if (claimedBeats.has(g)) continue;
-
-      const dist = Math.abs(correctedTime - grid[g].time);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestGridIdx = g;
-      }
-
-      // Early exit: if distances are increasing, we've passed the best
-      if (dist > bestDist + scoringWindowS * 2) break;
+    let low = 0, high = grid.length;
+    while (low < high) { const mid = (low + high) >>> 1; if (grid[mid].time < correctedTime) low = mid + 1; else high = mid; }
+    let left = low - 1, right = low;
+    while (left >= 0 && claimedBeats.has(left)) left--;
+    while (right < grid.length && claimedBeats.has(right)) right++;
+    for (const index of [left, right]) {
+      if (index < 0 || index >= grid.length) continue;
+      const distance = Math.abs(correctedTime - grid[index].time);
+      if (distance < bestDist) { bestDist = distance; bestGridIdx = index; }
     }
 
     const withinWindow = bestDist <= scoringWindowS;
@@ -86,12 +88,10 @@ export function alignToGrid(
       const deltaMs = (correctedTime - gridBeat.time) * 1000; // positive = late
 
       // Measure position: fraction 0–1 within the measure
-      const measureStartBeat = grid.find(
-        (b) => b.measure === gridBeat.measure && b.beatIndex === 0,
-      );
+      const measureStart = measureStarts.get(gridBeat.measure);
       let measurePos = 0;
-      if (measureStartBeat && measureDuration > 0) {
-        measurePos = (correctedTime - measureStartBeat.time) / measureDuration;
+      if (measureStart !== undefined && measureDuration > 0) {
+        measurePos = (correctedTime - measureStart) / measureDuration;
         measurePos = Math.max(0, Math.min(1, measurePos));
       }
 
@@ -102,6 +102,7 @@ export function alignToGrid(
         peak: onset.peak,
         matchedBeatTime: gridBeat.time,
         matchedBeatIndex: gridBeat.beatIndex,
+        matchedMeasure: gridBeat.measure,
         scored: true,
         measurePosition: measurePos,
         spectralFeatures: null,
@@ -115,6 +116,7 @@ export function alignToGrid(
         peak: onset.peak,
         matchedBeatTime: gridBeat?.time ?? 0,
         matchedBeatIndex: gridBeat?.beatIndex ?? -1,
+        matchedMeasure: gridBeat?.measure,
         scored: false,
         measurePosition: 0,
         spectralFeatures: null,
@@ -228,6 +230,9 @@ import type { HeadlineItem } from './types';
 function generateHeadlines(
   analysis: Omit<SessionAnalysis, 'headlines'>,
 ): HeadlineItem[] {
+  if (analysis.totalScored < 8) {
+    return [{ text: 'Fewer than 8 matched hits: record a longer take or check hit detection before judging timing consistency.' }];
+  }
   const headlines: HeadlineItem[] = [];
 
   // 1. Personal best check — σ quality level
@@ -294,13 +299,6 @@ function generateHeadlines(
     headlines.push({
       text: `${Math.round(analysis.perfectPct)}% of hits within scoring window`,
       link: 'distribution',
-    });
-  }
-
-  // 7. First session at this tempo
-  if (analysis.totalScored > 0 && analysis.totalScored < 50) {
-    headlines.push({
-      text: `First session at ${analysis.bpm} BPM — baseline established`,
     });
   }
 
@@ -458,7 +456,7 @@ export function computeSessionAnalysis(
   const noiseFloor = 0; // Already computed upstream, passed through
   const autoLatencyMs = 0; // From onset detection
 
-  const partialAnalysis = {
+  const partialAnalysis: SessionAnalysis = {
     score,
     sigma,
     meanOffset,
@@ -477,7 +475,7 @@ export function computeSessionAnalysis(
     autoLatencyMs,
     scoredOnsets,
     rawOnsets,
-    sigmaLevel: getSigmaLevel(sigma),
+    sigmaLevel: scoredOnsets.filter((onset) => onset.scored).length < 8 ? 'Insufficient hits' : getSigmaLevel(sigma),
     fatigueRatio,
     maxDrift,
     headlines: [] as HeadlineItem[],

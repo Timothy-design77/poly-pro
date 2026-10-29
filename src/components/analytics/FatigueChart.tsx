@@ -51,7 +51,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
       const chartH = h - pad.top - pad.bottom;
 
       // Grid lines
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.06)';
       ctx.lineWidth = 1;
       for (let i = 0; i <= 4; i++) {
         const y = pad.top + (i / 4) * chartH;
@@ -62,7 +62,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
       }
 
       // Draw line
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.7)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       for (let i = 0; i < points.length; i++) {
@@ -106,20 +106,20 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
         ctx.stroke();
         ctx.setLineDash([]);
         // Circle marker
-        ctx.fillStyle = '#F87171';
+        ctx.fillStyle = '#B4232C';
         ctx.beginPath();
         ctx.arc(bx, by, 4, 0, Math.PI * 2);
         ctx.fill();
         // Label
-        ctx.fillStyle = '#F87171';
-        ctx.font = '8px "DM Sans", sans-serif';
+        ctx.fillStyle = '#B4232C';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('breakdown', bx, pad.top - 2);
       }
 
       // Y axis labels
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(`${Math.round(maxSigma)}ms`, pad.left - 4, pad.top + 4);
       ctx.fillText('0', pad.left - 4, pad.top + chartH + 4);
@@ -131,7 +131,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
 
       // σ label
       ctx.fillStyle = '#8B8B94';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('σ (ms)', pad.left, pad.top - 4);
     },

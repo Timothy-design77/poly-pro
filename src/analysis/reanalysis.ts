@@ -44,12 +44,12 @@ export function rescoreSession(
   // grid starting at t=0 has a phase error). Fall back to regeneration
   // for older records that predate grid persistence.
   const durationS = durationMs / 1000;
-  const grid = hitEvents.gridBeats && hitEvents.gridBeats.length > 0
+  const grid = hitEvents.gridBeats
     ? hitEvents.gridBeats
     : gridFromParams(bpm, meterNumerator, subdivision, durationS);
 
   // Re-score
-  return computeSessionAnalysis(
+  const result = computeSessionAnalysis(
     mergedOnsets,
     grid,
     config,
@@ -57,4 +57,6 @@ export function rescoreSession(
     subdivision,
     durationMs,
   );
+  // Keep the editable source hits: widening flam merge must be reversible.
+  return { ...result, rawOnsets };
 }

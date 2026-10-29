@@ -1,6 +1,6 @@
 /**
- * PrecisionSlider — custom, touch-friendly slider with direction locking,
- * vertical-offset precision, direct numeric entry, and keyboard semantics.
+ * PrecisionSlider — scroll-safe slider with vertical-offset fine control and
+ * tap-to-type exact numeric entry.
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -39,6 +39,7 @@ export function PrecisionSlider({
   unit = '',
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const valueButtonRef = useRef<HTMLButtonElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [precisionLevel, setPrecisionLevel] = useState(1);
   const [isEditing, setIsEditing] = useState(false);
@@ -48,8 +49,7 @@ export function PrecisionSlider({
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const startValueRef = useRef(value);
-  const directionRef = useRef<'h' | 'v' | null>(null);
-  const activeRef = useRef(false);
+  const directionRef = useRef<'h' | null>(null);
   const trackWidth = useRef(0);
   const lockHeldRef = useRef(false);
 
@@ -60,38 +60,40 @@ export function PrecisionSlider({
     }
   }, []);
 
-  useEffect(() => {
-    const measure = () => {
-      if (trackRef.current) trackWidth.current = trackRef.current.clientWidth;
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, []);
-
   const clampAndStep = useCallback((raw: number): number => {
     const clamped = Math.max(min, Math.min(max, raw));
     const steps = Math.round((clamped - min) / step);
     return Math.round((min + steps * step) * 1e10) / 1e10;
   }, [min, max, step]);
 
+  const fraction = max === min ? 0 : Math.max(0, Math.min(1, (value - min) / (max - min)));
+
   const handlePointerDown = useCallback((event: React.PointerEvent) => {
-    if (isEditing) return;
-    const rect = trackRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (isEditing || !trackRef.current || !event.isPrimary || event.button !== 0 || touchIdRef.current !== null) return;
 
     touchIdRef.current = event.pointerId;
     startXRef.current = event.clientX;
     startYRef.current = event.clientY;
     startValueRef.current = value;
     directionRef.current = null;
-    activeRef.current = false;
     setPrecisionLevel(1);
 
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    trackWidth.current = trackRef.current.clientWidth;
+    event.currentTarget.setPointerCapture(event.pointerId);
     beginControlDrag();
     lockHeldRef.current = true;
   }, [value, isEditing]);
+
+  const finishPointer = useCallback(() => {
+    touchIdRef.current = null;
+    directionRef.current = null;
+    setIsDragging(false);
+    setPrecisionLevel(1);
+    if (lockHeldRef.current) {
+      endControlDrag();
+      lockHeldRef.current = false;
+    }
+  }, []);
 
   const handlePointerMove = useCallback((event: React.PointerEvent) => {
     if (touchIdRef.current !== event.pointerId) return;
@@ -100,20 +102,15 @@ export function PrecisionSlider({
     const dy = event.clientY - startYRef.current;
 
     if (directionRef.current === null) {
-      const distance = Math.sqrt(dx * dx + dy * dy);
+      const distance = Math.hypot(dx, dy);
       if (distance < DIRECTION_LOCK_PX) return;
 
       if (Math.abs(dy) > Math.abs(dx) * 1.2) {
-        directionRef.current = 'v';
-        touchIdRef.current = null;
-        if (lockHeldRef.current) {
-          endControlDrag();
-          lockHeldRef.current = false;
-        }
+        finishPointer();
         return;
       }
+
       directionRef.current = 'h';
-      activeRef.current = true;
       setIsDragging(true);
     }
 
@@ -122,41 +119,29 @@ export function PrecisionSlider({
     const verticalOffset = Math.abs(dy);
     let sensitivity = 1;
     if (verticalOffset > PRECISION_START_PX) {
-      const interpolation = Math.min(
-        1,
-        (verticalOffset - PRECISION_START_PX) / (MAX_PRECISION_PX - PRECISION_START_PX),
-      );
-      sensitivity = 1 - interpolation * (1 - MIN_SENSITIVITY);
+      const t = Math.min(1, (verticalOffset - PRECISION_START_PX) / (MAX_PRECISION_PX - PRECISION_START_PX));
+      sensitivity = 1 - t * (1 - MIN_SENSITIVITY);
     }
     setPrecisionLevel(sensitivity);
 
     const width = trackWidth.current || 200;
-    const valueDelta = (dx / width) * (max - min) * sensitivity;
-    const nextValue = clampAndStep(startValueRef.current + valueDelta);
-    if (nextValue !== value) onChange(nextValue);
-  }, [min, max, value, onChange, clampAndStep]);
+    const newValue = clampAndStep(startValueRef.current + (dx / width) * (max - min) * sensitivity);
+    if (newValue !== value) onChange(newValue);
+  }, [min, max, value, onChange, clampAndStep, finishPointer]);
 
   const handlePointerUp = useCallback((event: React.PointerEvent) => {
     if (touchIdRef.current !== event.pointerId) return;
 
-    if (directionRef.current === null && !activeRef.current) {
+    if (directionRef.current === null) {
       const rect = trackRef.current?.getBoundingClientRect();
       if (rect) {
-        const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-        onChange(clampAndStep(min + fraction * (max - min)));
+        const frac = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        onChange(clampAndStep(min + frac * (max - min)));
       }
     }
 
-    touchIdRef.current = null;
-    directionRef.current = null;
-    activeRef.current = false;
-    setIsDragging(false);
-    setPrecisionLevel(1);
-    if (lockHeldRef.current) {
-      endControlDrag();
-      lockHeldRef.current = false;
-    }
-  }, [min, max, onChange, clampAndStep]);
+    finishPointer();
+  }, [min, max, onChange, clampAndStep, finishPointer]);
 
   const handleValueTap = useCallback(() => {
     setEditText(String(value));
@@ -164,81 +149,46 @@ export function PrecisionSlider({
   }, [value]);
 
   const handleEditSubmit = useCallback(() => {
-    const parsed = Number.parseFloat(editText);
+    const parsed = parseFloat(editText);
     if (!Number.isNaN(parsed)) onChange(clampAndStep(parsed));
     setIsEditing(false);
   }, [editText, onChange, clampAndStep]);
 
   const handleEditKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
     if (event.key === 'Enter') handleEditSubmit();
-    if (event.key === 'Escape') setIsEditing(false);
+    else setIsEditing(false);
+    requestAnimationFrame(() => valueButtonRef.current?.focus());
   }, [handleEditSubmit]);
 
-  const handleSliderKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    let nextValue: number | null = null;
-    const largeStep = step * 10;
-
-    switch (event.key) {
-      case 'ArrowRight':
-      case 'ArrowUp':
-        nextValue = value + step;
-        break;
-      case 'ArrowLeft':
-      case 'ArrowDown':
-        nextValue = value - step;
-        break;
-      case 'PageUp':
-        nextValue = value + largeStep;
-        break;
-      case 'PageDown':
-        nextValue = value - largeStep;
-        break;
-      case 'Home':
-        nextValue = min;
-        break;
-      case 'End':
-        nextValue = max;
-        break;
-      default:
-        return;
-    }
-
-    event.preventDefault();
-    onChange(clampAndStep(nextValue));
-  }, [value, step, min, max, onChange, clampAndStep]);
-
-  const fraction = (value - min) / (max - min);
-  const displayValue = formatValue
-    ? formatValue(value)
-    : step < 1
-      ? value.toFixed(String(step).split('.')[1]?.length || 1)
-      : String(value);
-  const accessibleLabel = ariaLabel || label || 'Precision slider';
+  const displayValue = formatValue ? formatValue(value) : (
+    step < 1 ? value.toFixed(String(step).split('.')[1]?.length || 1) : String(value)
+  );
 
   return (
     <div data-no-swipe className={`space-y-1 ${className}`}>
       {(label || showValue) && (
-        <div className="flex items-center justify-between">
-          {label && (
-            <span className="text-xs text-text-secondary uppercase tracking-wider">{label}</span>
-          )}
+        <div className="flex items-center justify-between gap-2">
+          {label && <span className="text-xs text-text-muted ">{label}</span>}
           {showValue && !isEditing && (
             <button
+              ref={valueButtonRef}
               type="button"
-              aria-label={`Enter ${accessibleLabel} value`}
+              aria-label={`Edit ${ariaLabel ?? label ?? 'value'}`}
               onClick={handleValueTap}
-              className="font-mono text-xs text-text-secondary px-1 py-0.5 rounded hover:bg-bg-raised
-                         transition-colors min-h-[28px] flex items-center
-                         focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              className="font-mono text-xs text-text-primary px-2 py-1 rounded-md border border-transparent
+                         active:bg-bg-raised active:border-border-subtle transition-colors min-h-[32px] flex items-center"
             >
-              {displayValue}{unit && <span className="text-text-secondary ml-0.5">{unit}</span>}
+              {displayValue}{unit && <span className="text-text-muted ml-0.5">{unit}</span>}
             </button>
           )}
           {isEditing && (
             <div className="flex items-center gap-1">
               <input
                 type="number"
-                aria-label={`${accessibleLabel} value`}
+                aria-label={ariaLabel ?? label ?? 'Value'}
                 value={editText}
                 onChange={(event) => setEditText(event.target.value)}
                 onBlur={handleEditSubmit}
@@ -247,10 +197,10 @@ export function PrecisionSlider({
                 step={step}
                 min={min}
                 max={max}
-                className="w-20 px-1.5 py-0.5 bg-bg-primary border border-accent rounded
-                           text-xs font-mono text-text-primary text-right outline-none"
+                className="w-24 px-2 py-1 bg-bg-input border border-accent rounded-md text-xs
+                           font-mono text-text-primary text-right outline-none"
               />
-              {unit && <span className="text-text-secondary text-xs">{unit}</span>}
+              {unit && <span className="text-text-muted text-xs">{unit}</span>}
             </div>
           )}
         </div>
@@ -258,43 +208,41 @@ export function PrecisionSlider({
 
       <div
         ref={trackRef}
-        data-no-swipe
         role="slider"
         tabIndex={0}
-        aria-label={accessibleLabel}
+        aria-label={ariaLabel ?? label ?? 'Value'}
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={value}
-        aria-valuetext={`${displayValue}${unit ? ` ${unit}` : ''}`}
-        className="relative h-10 flex items-center touch-manipulation select-none
-                   focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        aria-valuetext={displayValue}
+        onKeyDown={(event) => {
+          const direction = ['ArrowRight', 'ArrowUp'].includes(event.key) ? 1 : ['ArrowLeft', 'ArrowDown'].includes(event.key) ? -1 : 0;
+          if (direction || event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            onChange(clampAndStep(event.key === 'Home' ? min : event.key === 'End' ? max : value + direction * step));
+          }
+        }}
+        data-no-swipe
+        className="relative h-10 flex items-center select-none"
         style={{ touchAction: 'pan-y' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onKeyDown={handleSliderKeyDown}
+        onPointerCancel={(event) => { if (touchIdRef.current === event.pointerId) finishPointer(); }}
+        onLostPointerCapture={(event) => { if (touchIdRef.current === event.pointerId) finishPointer(); }}
       >
         <div
-          className="absolute inset-x-0 h-1.5 rounded-full overflow-hidden"
+          className="absolute inset-x-0 h-2 rounded-full overflow-hidden bg-bg-raised border border-border-subtle"
           style={{ top: '50%', transform: 'translateY(-50%)' }}
-          aria-hidden="true"
         >
-          <div className="h-full bg-[rgba(255,255,255,0.08)]" />
           <div
-            className="absolute inset-y-0 left-0 rounded-full transition-none"
-            style={{
-              width: `${fraction * 100}%`,
-              backgroundColor: isDragging
-                ? 'rgba(255,255,255,0.6)'
-                : 'rgba(255,255,255,0.35)',
-            }}
+            className="absolute inset-y-0 left-0 rounded-full transition-none bg-accent"
+            style={{ width: `${fraction * 100}%`, opacity: isDragging ? 0.8 : 0.55 }}
           />
         </div>
 
         <div
-          aria-hidden="true"
-          className="absolute w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+          className="absolute w-5 h-5 rounded-full bg-accent border-2 border-bg-surface shadow-sm transition-transform"
           style={{
             left: `calc(${fraction * 100}% - 10px)`,
             top: '50%',
@@ -304,8 +252,7 @@ export function PrecisionSlider({
 
         {isDragging && precisionLevel < 0.8 && (
           <div
-            aria-hidden="true"
-            className="absolute left-1/2 -translate-x-1/2 text-[8px] text-accent font-mono pointer-events-none"
+            className="absolute left-1/2 -translate-x-1/2 text-[8px] text-text-primary font-mono pointer-events-none"
             style={{ top: -12 }}
           >
             {precisionLevel < 0.3 ? '10×' : precisionLevel < 0.6 ? '4×' : '2×'} fine

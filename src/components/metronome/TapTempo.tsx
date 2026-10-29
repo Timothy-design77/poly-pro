@@ -4,14 +4,13 @@ import { clampBpm } from '../../utils/timing';
 import { TAP_MIN_TAPS, TAP_MAX_TAPS, TAP_TIMEOUT_MS } from '../../utils/constants';
 
 export function TapTempo() {
-  const setBpm = useMetronomeStore((state) => state.setBpm);
+  const setBpm = useMetronomeStore((s) => s.setBpm);
   const [tapCount, setTapCount] = useState(0);
   const tapTimesRef = useRef<number[]>([]);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const firedRef = useRef(false);
 
-  useEffect(() => () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-  }, []);
+  useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); }, []);
 
   const handleTap = useCallback(() => {
     const now = performance.now();
@@ -31,41 +30,49 @@ export function TapTempo() {
 
     if (count >= TAP_MIN_TAPS) {
       const intervals: number[] = [];
-      for (let index = 1; index < count; index += 1) {
-        intervals.push(tapTimesRef.current[index] - tapTimesRef.current[index - 1]);
+      for (let i = 1; i < count; i++) {
+        intervals.push(tapTimesRef.current[i] - tapTimesRef.current[i - 1]);
       }
-      const averageInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
-      setBpm(clampBpm(60_000 / averageInterval));
+      const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+      setBpm(clampBpm(60000 / avgInterval));
     }
 
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
       setTapCount(0);
       tapTimesRef.current = [];
-      timeoutRef.current = null;
     }, TAP_TIMEOUT_MS);
   }, [setBpm]);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
+    firedRef.current = true;
+    handleTap();
+  }, [handleTap]);
+
+  const handleClick = useCallback((event: React.MouseEvent) => {
+    if (firedRef.current && event.detail !== 0) {
+      event.preventDefault();
+      firedRef.current = false;
+      return;
+    }
+    firedRef.current = false;
+    handleTap();
+  }, [handleTap]);
 
   return (
     <button
       type="button"
-      onClick={handleTap}
-      aria-label={`Tap tempo${tapCount > 0 ? `. ${tapCount} taps entered.` : ''}`}
-      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl
-                 border-[1.5px] border-border-subtle bg-bg-surface
-                 text-text-secondary text-xs font-bold tracking-wide
-                 active:bg-bg-raised transition-all h-[44px]
-                 touch-manipulation select-none relative
-                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+      onPointerDown={handlePointerDown}
+      onClick={handleClick}
+      onPointerCancel={() => { firedRef.current = false; }}
+      className="min-h-[48px] w-32 flex items-center justify-center gap-2 rounded-full
+                 text-text-secondary text-sm font-medium active:bg-bg-raised touch-manipulation select-none relative"
     >
-      <span aria-hidden="true">♩</span> TAP
+      Tap tempo
       {tapCount >= 2 && (
-        <span
-          className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full
-                     bg-[rgba(255,255,255,0.20)] text-[10px] font-mono
-                     flex items-center justify-center text-text-primary"
-          aria-live="polite"
-        >
+        <span aria-hidden="true" className="absolute -top-2 right-1 text-xs font-mono text-text-muted">
           {tapCount}
         </span>
       )}

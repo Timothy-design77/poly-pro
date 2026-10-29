@@ -2,410 +2,272 @@
  * TimelineTab v2 — Mini-DAW session viewer.
  *
  * Features:
- *   - Frequency-colored spectrogram waveform (Bass🔴 / Mid🟢 / High🔵)
+ *   - Frequency-colored spectrogram waveform
  *   - Mini-map with viewport indicator + tap-to-jump
  *   - Tap-to-seek on main canvas
- *   - Smooth playback scrolling (lerp-based follow)
- *   - Inertial scroll with friction decay
- *   - Center-preserving zoom (buttons + pinch)
+ *   - Smooth playback scrolling
+ *   - Center-preserving zoom
  *   - Full-height onset markers with accuracy coloring
- *   - Measure:beat labels at zoom ≥ 4×
- *   - Playback speed control
- *   - Click overlay with mid-playback toggle
+ *   - Playback speed control and click overlay
+ *   - Nondestructive playback cleanup filters
+ *   - A/B loop practice over any recording region
+ *   - Manual hit correction with re-scoring
  *   - WAV save/export (raw + with click)
- *
- * Composition (decomposed from a single 1,250-line component):
- *   - timeline/useSessionAudio     — PCM load + AudioBuffer + spectrogram
- *   - timeline/useTimelineGestures — pan/pinch/tap/inertia + zoom
- *   - timeline/useTimelinePlayback — transport, click overlay, WAV export
- *   - timeline/renderers           — pure canvas painting
- *   - timeline/MiniMap             — overview strip component
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
-import type { SessionAnalysis, ScoredOnset } from '../../analysis/types';
+import type { AnalysisConfig } from '../../analysis/types';
+import { ClickSyncControls } from './ClickSyncControls';
 import { ScoringControls } from './ScoringControls';
-
+import { HitEditor } from './HitEditor';
 import { useSessionAudio } from './timeline/useSessionAudio';
 import { useTimelineGestures } from './timeline/useTimelineGestures';
 import { useTimelinePlayback } from './timeline/useTimelinePlayback';
 import { renderTimeline } from './timeline/renderers';
 import { MiniMap } from './timeline/MiniMap';
-import {
-  ZOOM_LEVELS,
-  SPEED_OPTIONS,
-  CANVAS_HEIGHT,
-  formatTime,
-} from './timeline/timeline-shared';
+import { ZOOM_LEVELS, SPEED_OPTIONS, CANVAS_HEIGHT, formatTime } from './timeline/timeline-shared';
 
 interface Props {
   session: SessionRecord;
   hitEvents: HitEventsRecord | null;
+  editableEvents: HitEventsRecord | null;
+  config: AnalysisConfig;
+  active: boolean;
+  saving: boolean;
+  onConfigChange: (partial: Partial<AnalysisConfig>) => void;
+  onEventsChange: (next: HitEventsRecord) => void;
+  redetectControls?: React.ReactNode;
 }
 
-export function TimelineTab({ session, hitEvents }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+type PanelId = 'sync' | 'audio' | 'loop' | 'edit' | 'tune' | 'export' | null;
 
-  // Band filter toggles (true = visible)
+function IconButton({ label, onClick, children, active = false, disabled = false, className = '' }: {
+  label: string; onClick: () => void; children: React.ReactNode; active?: boolean; disabled?: boolean; className?: string;
+}) {
+  return (
+    <button type="button" aria-label={label} aria-pressed={active} onClick={onClick} disabled={disabled}
+      className={`min-h-[44px] rounded-xl border text-xs font-semibold touch-manipulation disabled:opacity-30 ${active
+        ? 'bg-accent text-bg-primary border-accent'
+        : 'bg-bg-surface text-text-secondary border-border-subtle active:bg-bg-raised'} ${className}`}>
+      {children}
+    </button>
+  );
+}
+
+export function TimelineTab({ session, hitEvents, editableEvents, config, active, saving, onConfigChange, onEventsChange, redetectControls }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showBass, setShowBass] = useState(true);
   const [showMid, setShowMid] = useState(true);
   const [showHigh, setShowHigh] = useState(true);
-
-  // Live-scored onsets from ScoringControls
-  const [liveOnsets, setLiveOnsets] = useState<ScoredOnset[] | null>(null);
-
-  // ─── Audio loading ───
-  const { isLoading, isReady, spectrogramData, audioBufferRef, rawPcmRef } =
-    useSessionAudio(session);
-
-  // ─── Gestures (tap handler wired after playback hook exists) ───
+  const [loopEnabled, setLoopEnabled] = useState(false);
+  const [loopStart, setLoopStart] = useState(0);
+  const [loopEnd, setLoopEnd] = useState(1);
+  const [panel, setPanel] = useState<PanelId>(null);
+  const { error: audioError, isLoading, isReady, spectrogramData, audioBufferRef, rawPcmRef } = useSessionAudio(session);
   const onTapRef = useRef<(clientX: number) => void>(() => {});
-  const gestures = useTimelineGestures((clientX) => onTapRef.current(clientX));
+  const gestures = useTimelineGestures((clientX) => onTapRef.current(clientX), isReady && active);
   const { zoom, scrollX, setScrollX, containerWidth, totalWidth, containerRef } = gestures;
+  const playback = useTimelinePlayback({ session, audioBufferRef, zoom, containerRef, setScrollX, loopEnabled, loopStart, loopEnd, active, gridBeats: hitEvents?.gridBeats, latencyOffsetMs: config.latencyOffsetMs });
 
-  // ─── Playback ───
-  const playback = useTimelinePlayback({
-    session,
-    audioBufferRef,
-    zoom,
-    containerRef,
-    setScrollX,
-  });
+  const onsets = useMemo(() => hitEvents?.scoredOnsets ?? [], [hitEvents]);
+  const sortedOnsets = useMemo(() => [...onsets].sort((a, b) => a.time - b.time), [onsets]);
+  const currentTimeMs = playback.playbackPos * session.durationMs;
 
-  // ─── Tap-to-seek on main canvas ───
   const handleCanvasTap = useCallback((clientX: number) => {
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const localX = clientX - rect.left + scrollX;
-    const fraction = Math.max(0, Math.min(1, localX / totalWidth));
-    playback.seekToFraction(fraction);
+    playback.seekToFraction(Math.max(0, Math.min(1, localX / totalWidth)));
   }, [containerRef, scrollX, totalWidth, playback]);
 
-  useEffect(() => {
-    onTapRef.current = handleCanvasTap;
-  }, [handleCanvasTap]);
+  useEffect(() => { onTapRef.current = handleCanvasTap; }, [handleCanvasTap]);
 
-  // ─── Scoring result handler ───
-  const handleScoringResult = useCallback((result: SessionAnalysis) => {
-    setLiveOnsets(result.scoredOnsets);
+  const setLoopA = useCallback(() => {
+    setLoopStart(Math.max(0, Math.min(playback.playbackPos, loopEnd - 0.005)));
+    setLoopEnabled(true);
+  }, [playback.playbackPos, loopEnd]);
+
+  const setLoopB = useCallback(() => {
+    setLoopEnd(Math.min(1, Math.max(playback.playbackPos, loopStart + 0.005)));
+    setLoopEnabled(true);
+  }, [playback.playbackPos, loopStart]);
+
+  const clearLoop = useCallback(() => {
+    setLoopEnabled(false);
+    setLoopStart(0);
+    setLoopEnd(1);
   }, []);
 
-  // ─── Main canvas rendering ───
+  const jumpToHit = useCallback((direction: -1 | 1) => {
+    if (!onsets.length || session.durationMs <= 0) return;
+    const currentSec = currentTimeMs / 1000;
+    const sorted = sortedOnsets;
+    const target = direction > 0
+      ? sorted.find((hit) => hit.time > currentSec + 0.025) ?? sorted[sorted.length - 1]
+      : [...sorted].reverse().find((hit) => hit.time < currentSec - 0.025) ?? sorted[0];
+    playback.seekToFraction(Math.max(0, Math.min(1, target.time / (session.durationMs / 1000))));
+  }, [onsets, sortedOnsets, currentTimeMs, session.durationMs, playback]);
+
+  const playbackRef = useRef(playback);
+  playbackRef.current = playback;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const playback = playbackRef.current;
+      const target = event.target as HTMLElement | null;
+      if (!active || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || target?.closest('input, textarea, select, button, [role="slider"], [role="tab"], [contenteditable="true"]')) return;
+      if (event.code === 'Space') { event.preventDefault(); void playback.togglePlayback(); }
+      else if (event.key === 'ArrowLeft') { event.preventDefault(); void playback.skip(-5); }
+      else if (event.key === 'ArrowRight') { event.preventDefault(); void playback.skip(5); }
+      else if (event.key.toLowerCase() === 'c') playback.setClickOverlay(!playback.clickOverlay);
+      else if (event.key.toLowerCase() === 'l') setLoopEnabled((value) => !value);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [active]);
+
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !spectrogramData) return;
     renderTimeline({
-      canvas,
-      spectrogramData,
-      session,
-      totalWidth,
-      zoom,
+      canvas, spectrogramData, session, totalWidth, zoom,
       latencyOffsetMs: playback.latencyOffsetMs,
-      showBass,
-      showMid,
-      showHigh,
-      onsets: liveOnsets ?? hitEvents?.scoredOnsets,
+      showBass, showMid, showHigh,
+      onsets, gridBeats: hitEvents?.gridBeats, scoringWindowPct: config.scoringWindowPct,
       rawPcm: rawPcmRef.current,
     });
-  }, [spectrogramData, session, totalWidth, zoom, playback.latencyOffsetMs,
-      showBass, showMid, showHigh, liveOnsets, hitEvents, rawPcmRef]);
+  }, [spectrogramData, session, totalWidth, zoom, playback.latencyOffsetMs, showBass, showMid, showHigh, onsets, rawPcmRef, hitEvents?.gridBeats, config.scoringWindowPct]);
 
-  // ─── No recording guard ───
-  if (!session.hasRecording) {
-    return (
-      <div className="flex items-center justify-center h-32">
-        <p className="text-text-muted text-sm">No recording for this session</p>
-      </div>
-    );
-  }
+  if (!session.hasRecording) return <div className="flex items-center justify-center h-32"><p className="text-text-muted text-sm">No recording for this session</p></div>;
+  if (isLoading) return <div className="flex flex-col items-center justify-center h-48 gap-3"><div className="w-8 h-8 border-2 border-t-transparent border-text-muted/30 rounded-full animate-spin" /><p className="text-text-muted text-xs">Preparing playback…</p></div>;
 
-  // ─── Loading state ───
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-48 gap-3">
-        <div className="w-8 h-8 border-2 border-t-transparent border-white/30 rounded-full animate-spin" />
-        <p className="text-text-muted text-xs">Analyzing waveform…</p>
-      </div>
-    );
-  }
+  const togglePanel = (next: Exclude<PanelId, null>) => setPanel((current) => current === next ? null : next);
 
-  // ─── Render ───
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3 pb-4">
+      <div className="flex items-end justify-between gap-3 pt-1">
+        <div>
 
-      {/* ─── Mini-map ─── */}
-      <MiniMap
-        spectrogramData={spectrogramData}
-        containerWidth={containerWidth}
-        zoom={zoom}
-        scrollX={scrollX}
-        totalWidth={totalWidth}
-        playbackPos={playback.playbackPos}
-        onSeekFraction={playback.seekToFraction}
-      />
-
-      {/* ─── Main timeline canvas ─── */}
-      <div
-        ref={containerRef}
-        className="overflow-hidden rounded-lg border border-border-subtle relative bg-[rgba(0,0,0,0.3)]"
-        style={{ touchAction: 'none' }}
-        onTouchStart={gestures.handleTouchStart}
-        onTouchMove={gestures.handleTouchMove}
-        onTouchEnd={gestures.handleTouchEnd}
-      >
-        <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth, position: 'relative' }}>
-          <canvas
-            ref={canvasRef}
-            style={{ width: totalWidth, height: CANVAS_HEIGHT }}
-          />
-          {/* Playhead */}
-          <div
-            style={{
-              position: 'absolute',
-              left: `${playback.playbackPos * 100}%`,
-              top: 0,
-              bottom: 0,
-              width: 2,
-              backgroundColor: 'rgba(255,255,255,0.95)',
-              pointerEvents: 'none',
-              boxShadow: '0 0 8px rgba(255,255,255,0.5), 0 0 16px rgba(255,255,255,0.2)',
-            }}
-          />
+          <p className="text-xl font-mono font-semibold text-text-primary tabular-nums mt-0.5">{formatTime(currentTimeMs)} <span className="text-sm font-medium text-text-muted">/ {formatTime(session.durationMs)}</span></p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-mono font-semibold text-text-secondary">{session.bpm} BPM · {session.meter}</p>
+          <p className="text-xs text-text-muted mt-0.5">{onsets.length} detected hits</p>
         </div>
       </div>
 
-      {/* ─── Band filter toggles + zoom buttons ─── */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {/* Band filters */}
-        <button
-          onClick={() => setShowBass(!showBass)}
-          className={`px-2 py-1 rounded text-[10px] font-bold touch-manipulation transition-colors
-            ${showBass ? 'text-white' : 'text-white/20'}`}
-          style={{ backgroundColor: showBass ? 'hsla(15,80%,55%,0.3)' : 'rgba(255,255,255,0.05)' }}
-        >
-          Bass
-        </button>
-        <button
-          onClick={() => setShowMid(!showMid)}
-          className={`px-2 py-1 rounded text-[10px] font-bold touch-manipulation transition-colors
-            ${showMid ? 'text-white' : 'text-white/20'}`}
-          style={{ backgroundColor: showMid ? 'hsla(140,60%,50%,0.3)' : 'rgba(255,255,255,0.05)' }}
-        >
-          Mid
-        </button>
-        <button
-          onClick={() => setShowHigh(!showHigh)}
-          className={`px-2 py-1 rounded text-[10px] font-bold touch-manipulation transition-colors
-            ${showHigh ? 'text-white' : 'text-white/20'}`}
-          style={{ backgroundColor: showHigh ? 'hsla(195,80%,55%,0.3)' : 'rgba(255,255,255,0.05)' }}
-        >
-          High
-        </button>
-
-        <div className="w-px h-5 bg-border-subtle mx-1" />
-
-        {/* Zoom buttons */}
-        {ZOOM_LEVELS.map((z) => (
-          <button
-            key={z}
-            onClick={() => gestures.setZoomLevel(z)}
-            className={`px-2 py-1 rounded text-[10px] font-mono font-bold touch-manipulation transition-colors
-              ${Math.abs(zoom - z) < 0.5
-                ? 'bg-[rgba(255,255,255,0.15)] text-white'
-                : 'bg-[rgba(255,255,255,0.04)] text-white/30'}`}
-          >
-            {z}×
+      <div className="sticky top-0 z-20 rounded-2xl border border-border-subtle bg-bg-surface p-2.5">
+        <div className="grid grid-cols-[46px_46px_1fr_46px_46px] items-center gap-2">
+          <button type="button" aria-label="Skip back 5 seconds" onClick={() => void playback.skip(-5)} className="h-11 rounded-xl bg-bg-raised text-text-secondary font-mono text-xs">−5</button>
+          <button type="button" aria-label="Previous detected hit" onClick={() => jumpToHit(-1)} className="h-11 rounded-xl text-text-muted text-lg">‹</button>
+          <button type="button" aria-label={playback.isPlaying ? 'Pause playback' : 'Start playback'} onClick={() => void playback.togglePlayback()} disabled={!isReady}
+            className={`h-14 flex items-center justify-center rounded-2xl text-xl font-semibold disabled:opacity-30 ${playback.isPlaying ? 'bg-text-primary text-bg-primary' : 'bg-accent text-bg-primary'}`}>
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">{playback.isPlaying ? <><rect x="5" y="4" width="5" height="16" rx="1" /><rect x="14" y="4" width="5" height="16" rx="1" /></> : <polygon points="6 3 20 12 6 21" />}</svg>
           </button>
-        ))}
-        {!ZOOM_LEVELS.some((z) => Math.abs(zoom - z) < 0.5) && (
-          <span className="px-1 py-1 text-[10px] font-mono text-white/30">
-            {zoom.toFixed(1)}×
-          </span>
-        )}
+          <button type="button" aria-label="Next detected hit" onClick={() => jumpToHit(1)} className="h-11 rounded-xl text-text-muted text-lg">›</button>
+          <button type="button" aria-label="Skip forward 5 seconds" onClick={() => void playback.skip(5)} className="h-11 rounded-xl bg-bg-raised text-text-secondary font-mono text-xs">+5</button>
+        </div>
+        <div className="grid grid-cols-[60px_1fr_1fr] gap-2 mt-2">
+          <button type="button" aria-label={`Playback speed ${playback.playbackSpeed}×`} onClick={() => { const idx = SPEED_OPTIONS.indexOf(playback.playbackSpeed); playback.setPlaybackSpeed(SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]); }} className="min-h-[44px] rounded-xl bg-bg-raised text-sm tabular-nums">{playback.playbackSpeed}×</button>
+          <IconButton label="Toggle click overlay" active={playback.clickOverlay} onClick={() => playback.setClickOverlay(!playback.clickOverlay)}>Click {playback.clickOverlay ? 'on' : 'off'}</IconButton>
+          <button type="button" aria-label="Sync click" aria-expanded={panel === 'sync'} disabled={saving} onClick={() => { togglePanel('sync'); playback.setClickOverlay(true); }} className={`ui-button ${panel === 'sync' ? 'ui-button-primary' : 'ui-button-secondary'}`}>Sync</button>
+        </div>
+      </div>
+      {panel === 'sync' && <fieldset disabled={saving} className="ui-surface p-4">
+        <ClickSyncControls session={session} hitEvents={editableEvents ?? hitEvents} offsetMs={config.latencyOffsetMs} playheadSeconds={currentTimeMs / 1000} playing={playback.isPlaying}
+          onChange={(latencyOffsetMs) => onConfigChange({ latencyOffsetMs })} onSeek={playback.seekToFraction} />
+      </fieldset>}
+
+      <label className="sr-only" htmlFor={`seek-${session.id}`}>Recording position</label>
+      <input id={`seek-${session.id}`} type="range" min="0" max="1000" step="1" value={Math.round(playback.playbackPos * 1000)} onChange={(event) => playback.seekToFraction(Number(event.target.value) / 1000)} aria-valuetext={`${formatTime(currentTimeMs)} of ${formatTime(session.durationMs)}`} className="w-full accent-accent" />
+      {zoom > 1 && <MiniMap spectrogramData={spectrogramData} containerWidth={containerWidth} zoom={zoom} scrollX={scrollX} totalWidth={totalWidth} playbackPos={playback.playbackPos} onSeekFraction={playback.seekToFraction} />}
+
+      <div className="rounded-2xl border border-border-subtle overflow-hidden bg-bg-surface shadow-sm">
+        <details>
+        <summary className="min-h-[44px] flex items-center px-3 cursor-pointer text-xs text-text-secondary border-b border-border-subtle">Waveform view · {Math.round(zoom)}×</summary>
+        <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-border-subtle overflow-x-auto">
+          <button type="button" aria-pressed={showBass} onClick={() => setShowBass(!showBass)} className={`h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap ${showBass ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Bass</button>
+          <button type="button" aria-pressed={showMid} onClick={() => setShowMid(!showMid)} className={`h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap ${showMid ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>Mid</button>
+          <button type="button" aria-pressed={showHigh} onClick={() => setShowHigh(!showHigh)} className={`h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap ${showHigh ? 'bg-bg-raised text-text-primary' : 'text-text-muted'}`}>High</button>
+          <div className="w-px h-5 bg-border-subtle mx-1 shrink-0" />
+          {ZOOM_LEVELS.map((z) => <button type="button" key={z} aria-pressed={Math.abs(zoom - z) < 0.5} onClick={() => gestures.setZoomLevel(z)} className={`h-8 px-2.5 rounded-full text-xs font-mono font-semibold whitespace-nowrap ${Math.abs(zoom - z) < 0.5 ? 'bg-accent text-bg-primary' : 'text-text-muted'}`}>{z}×</button>)}
+          <button type="button" aria-pressed={playback.followPlayhead} onClick={() => playback.setFollowPlayhead(!playback.followPlayhead)} className={`ml-auto h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap ${playback.followPlayhead ? 'bg-accent-dim text-accent' : 'text-text-muted'}`}>Follow</button>
+        </div>
+
+        </details>
+        <div ref={containerRef} className="overflow-hidden relative bg-bg-surface" onPointerUp={(event) => { if (event.pointerType === 'mouse') handleCanvasTap(event.clientX); }} style={{ touchAction: 'none' }} onTouchStart={gestures.handleTouchStart} onTouchMove={gestures.handleTouchMove} onTouchEnd={gestures.handleTouchEnd} onTouchCancel={gestures.handleTouchCancel}>
+          <div style={{ transform: `translateX(-${scrollX}px)`, width: totalWidth, position: 'relative' }}>
+            <canvas aria-label="Recording waveform and detected hits" role="img" ref={canvasRef} style={{ width: totalWidth, height: CANVAS_HEIGHT }} />
+            {loopEnabled && <div aria-hidden="true" style={{ position: 'absolute', left: `${loopStart * 100}%`, width: `${(loopEnd - loopStart) * 100}%`, top: 0, bottom: 0, background: 'rgba(21,23,26,0.055)', borderLeft: '2px solid rgba(21,23,26,0.65)', borderRight: '2px solid rgba(21,23,26,0.65)', pointerEvents: 'none' }} />}
+            <div style={{ position: 'absolute', left: `${playback.playbackPos * 100}%`, top: 0, bottom: 0, width: 2, backgroundColor: 'rgba(21,23,26,0.98)', pointerEvents: 'none', boxShadow: '0 0 10px rgba(21,23,26,0.55)' }} />
+          </div>
+        </div>
       </div>
 
-      {/* ─── Transport bar ─── */}
-      <div className="flex items-center gap-2 bg-bg-raised/60 rounded-lg px-3 py-2 border border-border-subtle">
-        {/* Skip back 5s */}
-        <button
-          onClick={() => playback.skip(-5)}
-          className="w-8 h-8 rounded flex items-center justify-center text-white/60 active:text-white touch-manipulation"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z" />
-          </svg>
-        </button>
+      <fieldset disabled={saving} className="grid grid-cols-3 gap-2 disabled:opacity-50">
+        <IconButton label="Hit correction tools" active={panel === 'edit'} onClick={() => togglePanel('edit')}>Edit hits</IconButton>
+        <IconButton label="Tune scoring" active={panel === 'tune'} onClick={() => togglePanel('tune')}>Scoring</IconButton>
+        <IconButton label="Loop region controls" active={panel === 'loop'} onClick={() => togglePanel('loop')}>A / B loop</IconButton>
+        <IconButton label="Audio cleanup controls" active={panel === 'audio'} onClick={() => togglePanel('audio')}>Sound</IconButton>
+        <IconButton label="Export audio" active={panel === 'export'} onClick={() => togglePanel('export')}>Export</IconButton>
+      </fieldset>
+      {panel === 'tune' && <fieldset disabled={saving} className="rounded-xl border border-border-subtle bg-bg-surface p-3 space-y-4">
+        <ScoringControls bpm={session.bpm} subdivision={session.subdivision} config={config} onChange={onConfigChange} />
+        {redetectControls}
+      </fieldset>}
 
-        {/* Play/Pause */}
-        <button
-          onClick={playback.togglePlayback}
-          disabled={!isReady}
-          className={`w-10 h-10 rounded-lg flex items-center justify-center touch-manipulation transition-colors
-            ${playback.isPlaying
-              ? 'bg-white/15 text-white'
-              : 'bg-white/8 text-white/70 active:bg-white/12'}
-            ${!isReady ? 'opacity-30' : ''}`}
-        >
-          {playback.isPlaying ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="5" y="4" width="5" height="16" rx="1" />
-              <rect x="14" y="4" width="5" height="16" rx="1" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="6 3 20 12 6 21" />
-            </svg>
-          )}
-        </button>
-
-        {/* Skip forward 5s */}
-        <button
-          onClick={() => playback.skip(5)}
-          className="w-8 h-8 rounded flex items-center justify-center text-white/60 active:text-white touch-manipulation"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
-          </svg>
-        </button>
-
-        {/* Time display */}
-        <span className="text-xs font-mono text-white/40 min-w-[70px] text-center">
-          {formatTime(playback.playbackPos * session.durationMs)} / {formatTime(session.durationMs)}
-        </span>
-
-        {/* Speed selector */}
-        <button
-          onClick={() => {
-            const idx = SPEED_OPTIONS.indexOf(playback.playbackSpeed);
-            const next = SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
-            playback.setPlaybackSpeed(next);
-          }}
-          className={`px-2 py-1 rounded text-[10px] font-mono font-bold touch-manipulation transition-colors
-            ${playback.playbackSpeed !== 1 ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/40'}`}
-        >
-          {playback.playbackSpeed}×
-        </button>
-
-        {/* Click toggle */}
-        <button
-          onClick={() => playback.setClickOverlay(!playback.clickOverlay)}
-          className={`ml-auto w-8 h-8 rounded flex items-center justify-center touch-manipulation transition-colors
-            ${playback.clickOverlay ? 'text-white/80' : 'text-white/20'}`}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-            {playback.clickOverlay && <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />}
-          </svg>
-        </button>
-      </div>
-
-      {/* Click volume slider (visible when click enabled) */}
-      {playback.clickOverlay && (
-        <div className="flex items-center gap-2 px-3">
-          <span className="text-[9px] text-white/30">Click Vol</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={Math.round(playback.clickVolume * 100)}
-            onChange={(e) => playback.setClickVolume(Number(e.target.value) / 100)}
-            className="flex-1 accent-white h-1 bg-white/10 rounded-full appearance-none max-w-[160px]
-                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3
-                       [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full
-                       [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
-          />
-          <span className="text-[9px] text-white/30 font-mono w-7 text-right">
-            {Math.round(playback.clickVolume * 100)}%
-          </span>
+      {panel === 'audio' && (
+        <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-3">
+          <label className="flex items-center gap-3 text-xs text-text-secondary">Recording volume<input aria-label="Playback volume" type="range" min="0" max="100" value={Math.round(playback.playbackVolume * 100)} onChange={(event) => playback.setPlaybackVolume(Number(event.target.value) / 100)} className="min-w-0 flex-1" /></label>
+          <label className="flex items-center gap-3 text-xs text-text-secondary">Click volume<input aria-label="Click volume" type="range" min="0" max="100" value={Math.round(playback.clickVolume * 100)} onChange={(event) => playback.setClickVolume(Number(event.target.value) / 100)} className="min-w-0 flex-1" /></label>
+          <div className="flex items-center justify-between gap-3">
+            <div><p className="text-xs font-semibold text-text-primary">Playback cleanup</p><p className="text-xs text-text-muted mt-0.5">Nondestructive. The stored recording stays unchanged.</p></div>
+            <button type="button" aria-label="Playback cleanup" aria-pressed={playback.cleanupEnabled} onClick={() => playback.setCleanupEnabled(!playback.cleanupEnabled)} className={`h-9 px-4 rounded-full text-xs font-semibold ${playback.cleanupEnabled ? 'bg-accent text-bg-primary' : 'bg-bg-raised text-text-muted'}`}>{playback.cleanupEnabled ? 'On' : 'Off'}</button>
+          </div>
+          {playback.cleanupEnabled && <div className="grid gap-3">
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-xs text-text-muted"><span>Low cut</span><input type="range" min="20" max="800" step="10" value={playback.highPassHz} onChange={(e) => playback.setHighPassHz(Number(e.target.value))} /><span className="font-mono text-right">{playback.highPassHz}Hz</span></label>
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-xs text-text-muted"><span>High cut</span><input type="range" min="3000" max="20000" step="250" value={playback.lowPassHz} onChange={(e) => playback.setLowPassHz(Number(e.target.value))} /><span className="font-mono text-right">{(playback.lowPassHz / 1000).toFixed(1)}k</span></label>
+            <label className="grid grid-cols-[68px_1fr_58px] items-center gap-2 text-xs text-text-muted"><span>Presence</span><input type="range" min="-6" max="9" step="1" value={playback.presenceBoostDb} onChange={(e) => playback.setPresenceBoostDb(Number(e.target.value))} /><span className="font-mono text-right">{playback.presenceBoostDb > 0 ? '+' : ''}{playback.presenceBoostDb}dB</span></label>
+          </div>}
         </div>
       )}
 
-      {/* ─── Save / Export ─── */}
-      {isReady && (
-        <div className="flex gap-2">
-          <button
-            onClick={() => playback.saveAudio(false)}
-            disabled={playback.isSaving}
-            className="flex-1 py-2 bg-bg-raised border border-border-subtle text-text-secondary rounded-md text-[10px] min-h-[38px] hover:bg-border-subtle transition-colors disabled:opacity-40"
-          >
-            {playback.isSaving ? 'Rendering…' : 'Save Raw'}
-          </button>
-          <button
-            onClick={() => playback.saveAudio(true)}
-            disabled={playback.isSaving}
-            className="flex-1 py-2 bg-bg-raised border border-border-subtle text-text-primary rounded-md text-[10px] min-h-[38px] hover:bg-border-subtle transition-colors disabled:opacity-40"
-          >
-            {playback.isSaving ? 'Rendering…' : 'Save with Click'}
-          </button>
+      {panel === 'loop' && (
+        <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-3">
+          <div className="grid grid-cols-4 gap-2">
+            <IconButton label="Set loop start" onClick={setLoopA}>Set A</IconButton>
+            <IconButton label="Set loop end" onClick={setLoopB}>Set B</IconButton>
+            <IconButton label="Enable or disable loop" active={loopEnabled} onClick={() => setLoopEnabled((value) => !value)}>{loopEnabled ? 'On' : 'Off'}</IconButton>
+            <IconButton label="Clear loop" onClick={clearLoop}>Clear</IconButton>
+          </div>
+          <div className="flex justify-between text-xs font-mono text-text-muted"><span>A {formatTime(loopStart * session.durationMs)}</span><span>{formatTime((loopEnd - loopStart) * session.durationMs)} loop</span><span>B {formatTime(loopEnd * session.durationMs)}</span></div>
         </div>
       )}
 
-      {/* ─── Legend ─── */}
-      <div className="flex items-center gap-3 text-[9px] text-white/30">
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-success inline-block" /> &lt;10ms
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-warning inline-block" /> 10–25ms
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-danger inline-block" /> &gt;25ms
-        </span>
-      </div>
+      {panel === 'edit' && editableEvents && session.analyzed && <fieldset disabled={saving}><HitEditor session={session} hitEvents={editableEvents} playheadFraction={playback.playbackPos} onChange={onEventsChange} /></fieldset>}
 
-      {/* ─── Tune drawer toggle ─── */}
-      <TuneDrawer
-        session={session}
-        hitEvents={hitEvents}
-        onResult={handleScoringResult}
-        onLatencyChange={playback.setLatencyOffsetMs}
-      />
+      {panel === 'export' && isReady && (
+        <div className="rounded-2xl border border-border-subtle bg-bg-surface p-3 space-y-2">
+          <p className="text-xs font-semibold text-text-primary">Export WAV</p>
+          <p className="text-xs text-text-muted">Exports the full-quality stored recording. Click export uses the timing preview above. Playback speed and cleanup do not change the exported recording.</p>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button type="button" onClick={() => playback.saveAudio(false)} disabled={playback.isSaving} className="min-h-[44px] rounded-xl bg-bg-raised border border-border-subtle text-text-secondary text-xs font-semibold disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'Raw recording'}</button>
+            <button type="button" onClick={() => playback.saveAudio(true)} disabled={playback.isSaving} className="min-h-[44px] rounded-xl bg-accent text-bg-primary text-xs font-semibold disabled:opacity-40">{playback.isSaving ? 'Rendering…' : 'With click'}</button>
+          </div>
+          {playback.isSaving && <div className="space-y-2">
+            <p role="status" className="text-xs text-text-secondary">Preparing WAV… {Math.round(playback.exportProgress * 100)}%</p>
+            <progress aria-label="Audio export progress" max={1} value={playback.exportProgress} className="w-full accent-accent" />
+            <button type="button" onClick={playback.cancelExport} className="min-h-[44px] w-full rounded-xl border border-border-subtle text-sm font-semibold">Cancel export</button>
+          </div>}
+        </div>
+      )}
+
+      {audioError && <p role="alert" className="p-3 text-sm text-danger">{audioError}</p>}
+      {playback.error && <p role="alert" className="p-3 text-sm text-danger">{playback.error}</p>}
+
+
     </div>
-  );
-}
-
-// ─── Tune drawer (scoring controls) ───
-
-function TuneDrawer({
-  session,
-  hitEvents,
-  onResult,
-  onLatencyChange,
-}: {
-  session: SessionRecord;
-  hitEvents: HitEventsRecord | null;
-  onResult: (result: SessionAnalysis) => void;
-  onLatencyChange: (ms: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <button
-        onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs touch-manipulation transition-colors
-          ${open ? 'bg-white/10 text-white' : 'bg-white/5 text-white/40'}`}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-        Tune
-      </button>
-
-      {open && hitEvents && session.analyzed && (
-        <div className="border border-border-subtle rounded-lg p-3 bg-bg-raised/40">
-          <ScoringControls
-            session={session}
-            hitEvents={hitEvents}
-            compact={false}
-            onResult={onResult}
-            onLatencyChange={onLatencyChange}
-          />
-        </div>
-      )}
-    </>
   );
 }

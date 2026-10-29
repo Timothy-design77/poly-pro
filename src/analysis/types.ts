@@ -33,6 +33,8 @@ export interface ScoredOnset {
   matchedBeatTime: number;
   /** Beat index this onset matched within the measure */
   matchedBeatIndex: number;
+  /** Actual captured measure, independent of the within-measure beat index. */
+  matchedMeasure?: number;
   /** Whether this onset passed the scoring window */
   scored: boolean;
   /** Position within measure (0–1 fraction) */
@@ -185,6 +187,7 @@ export interface HeadlineItem {
 
 /** Sigma quality level */
 export type SigmaLevel =
+  | 'Insufficient hits'
   | 'Professional'   // σ ≤ 10ms
   | 'Advanced'       // σ ≤ 20ms
   | 'Intermediate'   // σ ≤ 35ms
@@ -340,7 +343,7 @@ export type AnalysisStage =
 
 export const ANALYSIS_STAGE_LABELS: Record<AnalysisStage, string> = {
   'noise-floor': 'Estimating noise floor…',
-  'latency-detect': 'Detecting latency…',
+  'latency-detect': 'Applying latency calibration…',
   'coarse-onset': 'Detecting onsets…',
   'fine-onset': 'Refining onset timing…',
   'flam-analysis': 'Analyzing flams…',

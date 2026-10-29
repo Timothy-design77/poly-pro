@@ -89,7 +89,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
           ctx.stroke();
 
           ctx.fillStyle = '#4A4A52';
-          ctx.font = '10px "JetBrains Mono", monospace';
+          ctx.font = '11px "DM Sans", sans-serif';
           ctx.textAlign = 'right';
           ctx.fillText(v.toFixed(1), pad.left - 4, y + 3);
         }
@@ -106,14 +106,14 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
 
       // Label "straight"
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('straight', pad.left + 2, y1 - 4);
 
       // Average ratio line (dashed)
       const avgRatio = pairs.reduce((s, p) => s + p.ratio, 0) / pairs.length;
       const yAvg = toY(avgRatio);
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.5)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -123,8 +123,8 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
       ctx.setLineDash([]);
 
       // Label average
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(21,23,26,0.7)';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(`avg ${avgRatio.toFixed(2)}`, w - pad.right, yAvg - 4);
 
@@ -135,7 +135,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
 
         // Color: green if close to average, amber if varying
         const dev = Math.abs(pairs[i].ratio - avgRatio);
-        const color = dev < 0.2 ? '#4ADE80' : dev < 0.4 ? '#FBBF24' : '#F87171';
+        const color = dev < 0.2 ? '#187A3B' : dev < 0.4 ? '#A45108' : '#B4232C';
 
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.7;
@@ -148,7 +148,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
       // Smoothed trend line
       if (pairs.length > 5) {
         const windowSize = Math.max(3, Math.floor(pairs.length / 8));
-        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.strokeStyle = 'rgba(21,23,26,0.6)';
         ctx.lineWidth = 2;
         ctx.beginPath();
 
@@ -168,7 +168,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
 
       // X axis label
       ctx.fillStyle = '#4A4A52';
-      ctx.font = '10px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Beat pair →', w / 2, h - 3);
     },

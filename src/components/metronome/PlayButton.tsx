@@ -2,57 +2,60 @@ import { useCallback, useRef } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { useMetronome } from '../../hooks/useMetronome';
 
-export function PlayButton() {
-  const playing = useMetronomeStore((state) => state.playing);
+/**
+ * Fires on primary pointer-down so the
+ * transport responds at finger contact rather than release.
+ */
+export function PlayButton({ disabled = false }: { disabled?: boolean }) {
+  const playing = useMetronomeStore((s) => s.playing);
   const { togglePlay } = useMetronome();
-  const pointerFiredRef = useRef(false);
+  const firedRef = useRef(false);
 
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!event.isPrimary || event.button !== 0) return;
-    event.preventDefault();
-    pointerFiredRef.current = true;
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (disabled || !e.isPrimary || e.button !== 0) return;
+    e.preventDefault();
+    firedRef.current = true;
     togglePlay();
-  }, [togglePlay]);
+  }, [togglePlay, disabled]);
 
-  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    if (pointerFiredRef.current) {
-      event.preventDefault();
-      pointerFiredRef.current = false;
-      return;
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (firedRef.current && e.detail !== 0) {
+      e.preventDefault();
+      firedRef.current = false;
+    } else if (!disabled) {
+      firedRef.current = false;
+      togglePlay();
     }
-    // Keyboard activation does not produce the pointerdown path.
-    togglePlay();
-  }, [togglePlay]);
+  }, [togglePlay, disabled]);
 
   return (
     <button
       type="button"
+      disabled={disabled}
       aria-label={playing ? 'Stop metronome' : 'Start metronome'}
-      aria-pressed={playing}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
+      onPointerCancel={() => { firedRef.current = false; }}
       className={`
-        w-full rounded-[14px] text-sm font-bold tracking-wider
-        flex items-center justify-center gap-2.5 h-[52px]
-        touch-manipulation select-none
-        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white
+        w-full min-h-[56px] rounded-xl text-base font-semibold
+        flex items-center justify-center gap-3
+        touch-manipulation select-none disabled:opacity-50 border-[1.5px]
         ${playing
-          ? 'bg-bg-raised text-text-primary border border-border-emphasis'
-          : 'bg-[rgba(255,255,255,0.88)] text-bg-primary'
+          ? 'bg-bg-surface text-text-primary border-border-emphasis'
+          : 'bg-accent text-bg-primary border-accent'
         }
       `}
     >
       {playing ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <rect x="5" y="4" width="5" height="16" rx="1" />
-          <rect x="14" y="4" width="5" height="16" rx="1" />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="5" y="5" width="14" height="14" rx="2" />
         </svg>
       ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5 3 19 12 5 21" />
         </svg>
       )}
-      {playing ? 'STOP' : 'START'}
+      {playing ? 'Stop' : 'Start'}
     </button>
   );
 }

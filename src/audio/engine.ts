@@ -19,7 +19,7 @@
 
 import { VolumeState, VOLUME_GAINS } from './types';
 import type { ScheduledBeat, BeatEvent } from './types';
-import { getBuffer, loadAllSounds } from './sounds';
+import { getBuffer, loadSound } from './sounds';
 import type { EngineHost, EngineMetronomeConfig } from './engine-host';
 import { computeTrackIOI, computeSwingOffsetS, perceptualGain as basePerceptualGain } from './scheduling';
 import {
@@ -57,7 +57,25 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private outputGain: GainNode | null = null;
-  private outputVolumeOverride: number | null = null;
+  private scheduledSources = new Set<AudioBufferSourceNode>();
+  private outputSuppressions = new Set<symbol>();
+  private vibrationTimers = new Set<ReturnType<typeof setTimeout>>();
+  private vibrationActive = false;
+  private transportGeneration = 0;
+
+  /** Keep the transport and captured grid running without audible or haptic clicks. */
+  suppressOutput(): () => void {
+    const token = Symbol();
+    this.outputSuppressions.add(token);
+    this.stopScheduledSources();
+    this.stopVibration();
+    this.refreshOutputGain();
+    return () => { this.outputSuppressions.delete(token); this.refreshOutputGain(); };
+  }
+
+  private refreshOutputGain(): void {
+    if (this.masterGain) this.masterGain.gain.value = this.outputSuppressions.size ? 0 : perceptualGain(this.host.getMetronome().volume);
+  }
 
   private schedulerTimer: ReturnType<typeof setTimeout> | null = null;
   private nextNoteTime: Record<string, number> = {};
@@ -81,48 +99,31 @@ export class AudioEngine {
   public scheduledBeats: ScheduledBeat[] = [];
   private beatCallbacks: Set<BeatCallback> = new Set();
 
-  private soundsLoaded = false;
+  private preparedSoundKey = '';
   private isRunning = false;
-  private _warmedUp = false;
-  private _warmUpPromise: Promise<void> | null = null;
-
-  // ─── Warm-up ───
-
+  /** Unlock audio on the first real gesture; preparation never waits on this. */
   warmUp(): void {
-    if (this._warmedUp || this._warmUpPromise) return;
-    this._warmUpPromise = this._doWarmUp();
-  }
-
-  private async _doWarmUp(): Promise<void> {
-    try {
-      await this.initContext();
-      this._warmedUp = true;
-    } catch (err) {
-      console.warn('Audio warm-up failed:', err);
-    }
-    this._warmUpPromise = null;
-  }
-
-  get isWarmedUp(): boolean {
-    return this._warmedUp;
+    void this.initContext().catch((error) => console.warn('Audio warm-up failed:', error));
   }
 
   // ─── Initialization ───
 
-  async initContext(): Promise<AudioContext> {
-    if (this.audioCtx && this.audioCtx.state !== 'closed') {
-      if (this.audioCtx.state === 'suspended') {
-        await this.audioCtx.resume();
-      }
-      if (!this.soundsLoaded) {
-        await loadAllSounds(this.audioCtx);
-        this.soundsLoaded = true;
-      }
-      return this.audioCtx;
+  private requiredSounds(): string[] {
+    const settings = this.host.getSettings();
+    const state = this.host.getMetronome();
+    const ids = new Set(['woodblock', settings.clickSound, settings.accentSound]);
+    for (const track of state.tracks) {
+      if (track.id !== 'track-0') { ids.add(track.normalSound); ids.add(track.accentSound); }
+      for (const sound of Object.values(track.soundOverrides)) ids.add(sound);
     }
+    if (state.countInBars > 0) for (let n = 1; n <= 4; n++) ids.add(`count-${n}`);
+    return [...ids].sort();
+  }
 
-    this.audioCtx = new AudioContext({ sampleRate: 48000 });
-
+  private ensureContext(): AudioContext {
+    if (this.audioCtx && this.audioCtx.state !== 'closed') return this.audioCtx;
+    this.preparedSoundKey = '';
+    this.audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
     this.compressor = this.audioCtx.createDynamicsCompressor();
     this.compressor.threshold.value = COMPRESSOR_THRESHOLD;
     this.compressor.knee.value = COMPRESSOR_KNEE;
@@ -134,26 +135,43 @@ export class AudioEngine {
     this.outputGain.gain.value = OUTPUT_GAIN;
 
     this.masterGain = this.audioCtx.createGain();
-    const vol = this.host.getMetronome().volume;
-    this.masterGain.gain.value = perceptualGain(vol);
+    this.refreshOutputGain();
 
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.outputGain);
     this.outputGain.connect(this.audioCtx.destination);
 
-    if (!this.soundsLoaded) {
-      await loadAllSounds(this.audioCtx);
-      this.soundsLoaded = true;
-    }
-
     return this.audioCtx;
+  }
+
+  private async prepareSounds(ctx: AudioContext): Promise<void> {
+    const ids = this.requiredSounds();
+    const key = ids.join('|');
+    if (this.preparedSoundKey === key) return;
+    await Promise.all(ids.map((id) => loadSound(ctx, id)));
+    if (!getBuffer('woodblock')) throw new Error('Could not load the click sound. Try again.');
+    if (ctx === this.audioCtx) this.preparedSoundKey = key;
+  }
+
+  /** Decode the current setup before interaction; never play or resume audio here. */
+  async prepare(): Promise<void> {
+    const ctx = this.ensureContext();
+    await this.prepareSounds(ctx);
+  }
+
+  async initContext(): Promise<AudioContext> {
+    const ctx = this.ensureContext();
+    // Resume in the user-gesture stack, in parallel with only the needed samples.
+    const resume = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve();
+    await Promise.all([resume, this.prepareSounds(ctx)]);
+    return ctx;
   }
 
   // ─── Start / Stop ───
 
   startSync(): boolean {
     if (this.isRunning) return true;
-    if (!this.audioCtx || this.audioCtx.state !== 'running' || !this.soundsLoaded) {
+    if (!this.audioCtx || this.audioCtx.state !== 'running' || this.preparedSoundKey !== this.requiredSounds().join('|')) {
       return false;
     }
 
@@ -193,7 +211,7 @@ export class AudioEngine {
     }
 
     if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());
+      this.refreshOutputGain();
     }
 
     this.schedule();
@@ -203,24 +221,35 @@ export class AudioEngine {
   async start(): Promise<void> {
     if (this.isRunning) return;
     if (this.startSync()) return;
+    const generation = this.transportGeneration;
 
-    if (this._warmUpPromise) {
-      await this._warmUpPromise;
-    }
+    try {
+      const ctx = await this.initContext();
+      if (generation !== this.transportGeneration) return;
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
 
-    const ctx = await this.initContext();
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
-    }
-
-    if (!this.isRunning) {
-      this.startSync();
+      if (generation === this.transportGeneration && !this.isRunning) {
+        // A sound selection may have changed while the first request was loading.
+        if (!this.startSync()) {
+          await this.initContext();
+          if (generation === this.transportGeneration && !this.startSync()) throw new Error('Audio is not ready. Tap Start to retry.');
+        }
+      }
+    } catch (error) {
+      // An old interrupted request must not stop a newer practice session.
+      if (generation === this.transportGeneration) throw error;
     }
   }
 
   stop(): void {
-    if (!this.isRunning) return;
+    // A Stop while initialization is pending must also cancel that future start.
+    this.transportGeneration++;
+    const wasRunning = this.isRunning;
     this.isRunning = false;
+    this.stopScheduledSources();
+    this.stopVibration();
 
     if (this.schedulerTimer !== null) {
       clearTimeout(this.schedulerTimer);
@@ -229,9 +258,15 @@ export class AudioEngine {
 
     this.countInActive = false;
     this.countInRemaining = 0;
+    if (!wasRunning) return;
     // Clear all per-track beat indicators
     const state = this.host.getMetronome();
     this.host.onStop(state.tracks.map((t) => t.id));
+  }
+
+  private stopScheduledSources(): void {
+    for (const source of this.scheduledSources) { try { source.stop(); } catch {} }
+    this.scheduledSources.clear();
   }
 
   get running(): boolean {
@@ -241,20 +276,6 @@ export class AudioEngine {
   /** Get the current AudioContext (or null if not initialized) */
   getContext(): AudioContext | null {
     return this.audioCtx;
-  }
-
-  private getEffectiveVolume(): number {
-    return this.outputVolumeOverride ?? this.host.getMetronome().volume;
-  }
-
-  /** Temporarily override audible click output without stopping the timing grid. */
-  setOutputVolumeOverride(volume: number | null): void {
-    this.outputVolumeOverride = volume === null
-      ? null
-      : Math.max(0, Math.min(1, volume));
-    if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());
-    }
   }
 
   // ─── Core Scheduler ───
@@ -267,7 +288,7 @@ export class AudioEngine {
     const settings = this.host.getSettings();
 
     if (this.masterGain) {
-      this.masterGain.gain.value = perceptualGain(this.getEffectiveVolume());
+      this.refreshOutputGain();
     }
 
     const now = ctx.currentTime;
@@ -296,6 +317,9 @@ export class AudioEngine {
       while (this.nextNoteTime[track.id] < now + SCHEDULE_AHEAD_S) {
         const beatTime = this.nextNoteTime[track.id];
         const beatIndex = this.currentBeat[track.id];
+        // Timers can be throttled in the background. Keep the elapsed grid and
+        // transport state, but never replay a backlog of clicks all at once.
+        const missed = beatTime < now - SCHEDULE_INTERVAL_MS / 1000;
 
         // During count-in: play count-1/2/3/4 voice samples on main beats
         let volumeState: VolumeState;
@@ -338,7 +362,7 @@ export class AudioEngine {
         }
 
         // Play the sound
-        if (volumeState !== VolumeState.OFF && !muted) {
+        if (!missed && volumeState !== VolumeState.OFF && !muted && !this.outputSuppressions.size) {
           if (countInSound) {
             // Count-in: play the specific count-N voice sample
             this.playBuffer(countInSound, volumeState, beatTime);
@@ -348,16 +372,18 @@ export class AudioEngine {
         }
 
         // Haptic
-        if (settings.hapticEnabled && volumeState >= VolumeState.LOUD && !muted) {
+        if (!missed && !this.outputSuppressions.size && settings.hapticEnabled && volumeState >= VolumeState.LOUD && !muted) {
           this.triggerVibration(beatTime - now, volumeState, settings.vibrationIntensity);
         }
 
         // Record scheduled beat
-        this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState });
+        this.scheduledBeats.push({ beatIndex, time: beatTime, trackId: track.id, volumeState, isCountIn: this.countInActive });
 
         // Notify UI for ALL tracks (each track gets its own dial ring)
-        const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
-        this.beatCallbacks.forEach((cb) => cb(event));
+        if (!missed) {
+          const event: BeatEvent = { beatIndex, time: beatTime, trackId: track.id };
+          this.beatCallbacks.forEach((cb) => cb(event));
+        }
 
         // Advance
         this.advanceBeat(track.id, state);
@@ -472,6 +498,8 @@ export class AudioEngine {
     gainNode.gain.value = VOLUME_GAINS[volumeState];
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
+    this.scheduledSources.add(source);
+    source.onended = () => { this.scheduledSources.delete(source); source.disconnect(); gainNode.disconnect(); };
     source.start(beatTime);
   }
 
@@ -513,23 +541,41 @@ export class AudioEngine {
 
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
+    this.scheduledSources.add(source);
+    source.onended = () => { this.scheduledSources.delete(source); source.disconnect(); gainNode.disconnect(); };
     source.start(beatTime);
   }
 
   // ─── Vibration ───
 
-  private triggerVibration(delayMs: number, volumeState: VolumeState, intensity: number): void {
+  private stopVibration(): void {
+    for (const timer of this.vibrationTimers) clearTimeout(timer);
+    this.vibrationTimers.clear();
+    if (this.vibrationActive && navigator.vibrate) navigator.vibrate(0);
+    this.vibrationActive = false;
+  }
+
+  private triggerVibration(delayS: number, volumeState: VolumeState, intensity: number): void {
     if (!navigator.vibrate) return;
 
     const duration = volumeState === VolumeState.ACCENT ? 20 : 12;
     const scaledDuration = Math.round(duration * intensity);
     if (scaledDuration <= 0) return;
 
-    const delay = Math.max(0, delayMs * 1000);
-    if (delay > 0) {
-      setTimeout(() => navigator.vibrate(scaledDuration), delay);
-    } else {
+    const vibrate = () => {
+      if (!this.isRunning || this.outputSuppressions.size || !this.host.getSettings().hapticEnabled) return;
       navigator.vibrate(scaledDuration);
+      this.vibrationActive = true;
+    };
+    const delay = Math.max(0, delayS * 1000);
+    if (delay > 0) {
+      const timer = setTimeout(() => {
+        this.vibrationTimers.delete(timer);
+        vibrate();
+      }, delay);
+      this.vibrationTimers.add(timer);
+    } else {
+      vibrate();
     }
   }
 
@@ -537,7 +583,7 @@ export class AudioEngine {
 
   async previewSound(soundId: string): Promise<void> {
     const ctx = await this.initContext();
-    const buffer = getBuffer(soundId);
+    const buffer = await loadSound(ctx, soundId);
     if (!buffer || !this.masterGain) return;
 
     const source = ctx.createBufferSource();
@@ -548,6 +594,8 @@ export class AudioEngine {
 
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
+    this.scheduledSources.add(source);
+    source.onended = () => { this.scheduledSources.delete(source); source.disconnect(); gainNode.disconnect(); };
     source.start();
   }
 
@@ -569,7 +617,6 @@ export class AudioEngine {
     this.masterGain = null;
     this.compressor = null;
     this.outputGain = null;
-    this.soundsLoaded = false;
-    this._warmedUp = false;
+    this.preparedSoundKey = '';
   }
 }

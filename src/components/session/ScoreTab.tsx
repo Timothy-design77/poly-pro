@@ -7,6 +7,7 @@
 
 import { useState, useMemo } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
+import { getSigmaLevel } from '../../analysis/types';
 import { HelpTip } from '../ui/HelpTip';
 import { computeInstrumentMetrics, computeInterLimbCorrelation, INSTRUMENT_INFO } from '../../analysis/classification';
 import type { ClassificationResult, InstrumentMetrics } from '../../analysis/classification';
@@ -52,29 +53,29 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
     return (
       <div className="flex flex-col items-center justify-center h-40 gap-2">
         <p className="text-text-muted text-sm">This session hasn't been analyzed</p>
-        <p className="text-text-muted text-xs">Record a new session to see detailed scores</p>
+        <p className="text-text-muted text-xs">Use Analyze saved recording above to get timing feedback.</p>
       </div>
     );
   }
 
   const score = session.score ?? 0;
-  const sigma = session.sigma ?? 0;
-  const sigmaLevel = session.sigmaLevel ?? 'Beginner';
+  const sigma = session.sigma ?? session.stdDev;
+  const sigmaLevel = (session.totalScored ?? session.totalHits) < 8 ? 'Insufficient hits' : session.sigmaLevel ?? getSigmaLevel(sigma);
   const rawHeadlines = session.headlines ?? [];
   // Normalize headlines: handle both old string[] and new HeadlineItem[] format
   const headlines = rawHeadlines.map((h) =>
     typeof h === 'string' ? { text: h } : h
   );
-  const meanOffset = session.meanOffset ?? 0;
-  const hitRate = session.hitRate ?? 0;
+  const meanOffset = session.meanOffset ?? session.avgDelta;
   const perfectPct = session.perfectPct ?? 0;
   const goodPct = session.goodPct ?? 0;
   const fatigueRatio = session.fatigueRatio ?? 1;
   const maxDrift = session.maxDrift ?? 0;
   const totalScored = session.totalScored ?? session.totalHits;
-  const totalExpected = session.totalExpected ?? 0;
-  const scoringWindowMs = session.scoringWindowMs ?? 0;
-  const flamMergeMs = session.flamMergeMs ?? 0;
+  const totalExpected = session.totalExpected ?? hitEvents?.gridBeats?.length ?? 0;
+  const hitRate = session.hitRate ?? (totalExpected ? totalScored / totalExpected : 0);
+  const scoringWindowMs = session.scoringWindowMs;
+  const flamMergeMs = session.flamMergeMs;
 
   // Phase 9: Groove
   const swingRatio = session.swingRatio;
@@ -86,18 +87,19 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
   const dynamicRange = session.dynamicRange;
   const velocityDecayLabel = session.velocityDecayLabel;
 
-  const scoreColor = score >= 85 ? '#4ADE80' : score >= 70 ? '#FBBF24' : '#F87171';
+  const scoreColor = score >= 85 ? '#187A3B' : score >= 70 ? '#A45108' : '#B4232C';
 
   const durationMin = Math.floor(session.durationMs / 60000);
   const durationSec = Math.floor((session.durationMs / 1000) % 60);
 
   return (
     <div className="space-y-4">
+      {(session.totalScored ?? session.totalHits) < 8 && <p role="status" className="rounded-lg bg-warning-dim p-3 text-sm text-text-primary">Fewer than 8 matched hits. Timing consistency and the score are not reliable yet. Check detection in Review or record a longer take.</p>}
       {/* Score hero */}
       <div className="flex flex-col items-center py-4">
         <div className="flex items-center gap-2">
           <span
-            className="text-5xl font-bold font-mono"
+            className="text-5xl font-semibold font-mono"
             style={{ color: scoreColor }}
           >
             {Math.round(score)}%
@@ -108,7 +110,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
         {/* σ badge */}
         <div
           className="mt-2 px-3 py-1 rounded-full flex items-center gap-1.5"
-          style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+          style={{ backgroundColor: 'rgba(21,23,26,0.06)' }}
         >
           <span className="text-xs font-mono text-text-secondary">
             σ {sigma.toFixed(1)}ms
@@ -156,10 +158,10 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
           <StatRow label="Hit Rate" value={`${Math.round(hitRate * 100)}%`}
             help="Percentage of expected beats where a hit was detected within the scoring window." />
           <StatRow label="Perfect" value={`${Math.round(perfectPct)}%`}
-            sub={`within ±${scoringWindowMs.toFixed(0)}ms`}
+            sub={scoringWindowMs == null ? 'window unavailable' : `within ±${scoringWindowMs.toFixed(0)}ms`}
             help="Percentage of your scored hits that landed within the scoring window." />
           <StatRow label="Good" value={`${Math.round(goodPct)}%`}
-            sub={`within ±${(scoringWindowMs * 1.5).toFixed(0)}ms`}
+            sub={scoringWindowMs == null ? 'window unavailable' : `within ±${(scoringWindowMs * 1.5).toFixed(0)}ms`}
             help="Percentage of scored hits within 1.5× the scoring window." />
           <StatRow label="Fatigue" value={fatigueRatio.toFixed(2) + '×'}
             sub={fatigueRatio > 1.4 ? 'timing degraded' : fatigueRatio < 0.8 ? 'improved' : 'stable'}
@@ -175,7 +177,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
       {/* Phase 9: Groove & Dynamics stats */}
       {(hasSwing || grooveConsistency != null || accentAdherence != null || dynamicRange != null) && (
         <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
-          <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider mb-2">
+          <p className="text-xs text-text-muted font-medium  mb-2">
             Groove & Dynamics
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -216,7 +218,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
       {instrumentMetrics.length > 0 && (
         <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
           <div className="flex items-center gap-1 mb-2">
-            <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">
+            <p className="text-xs text-text-muted font-medium ">
               Per Instrument
             </p>
             <HelpTip text="Timing breakdown by instrument. Only instruments with ≥10 high-confidence hits (≥75% classification confidence) get their own row." />
@@ -242,7 +244,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
       {interLimbCorrelations.length > 0 && (
         <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
           <div className="flex items-center gap-1 mb-2">
-            <p className="text-[10px] text-text-muted font-medium uppercase tracking-wider">
+            <p className="text-xs text-text-muted font-medium ">
               Inter-Limb Correlation
             </p>
             <HelpTip text="Pearson r between timing deviations of instruments that hit simultaneously. High positive = limbs rush/drag together. Negative = one rushes when the other drags." />
@@ -251,9 +253,9 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
             {interLimbCorrelations.map((c, i) => {
               const infoA = INSTRUMENT_INFO[c.instrumentA as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
               const infoB = INSTRUMENT_INFO[c.instrumentB as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
-              const rColor = Math.abs(c.correlation) > 0.5 ? '#FBBF24' : '#4A4A52';
+              const rColor = Math.abs(c.correlation) > 0.5 ? '#A45108' : '#4A4A52';
               return (
-                <div key={i} className="flex items-center gap-2 py-1 px-1 text-[10px]">
+                <div key={i} className="flex items-center gap-2 py-1 px-1 text-xs">
                   <span>{infoA.icon} {c.instrumentA}</span>
                   <span className="text-text-muted">↔</span>
                   <span>{infoB.icon} {c.instrumentB}</span>
@@ -298,12 +300,13 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
           )}
           <p>
             <span className="text-text-muted">Final:</span>{' '}
-            <span className="font-mono font-bold" style={{ color: scoreColor }}>{Math.round(score)}%</span>
+            <span className="font-mono font-semibold" style={{ color: scoreColor }}>{Math.round(score)}%</span>
           </p>
           <hr className="border-border-subtle" />
           <p className="text-text-muted leading-relaxed">
-            Scoring window: ±{scoringWindowMs.toFixed(1)}ms (tempo-scaled).
-            Flam merge: {flamMergeMs.toFixed(1)}ms.
+            Scoring window: {scoringWindowMs == null ? 'not saved' : `±${scoringWindowMs.toFixed(1)}ms`}.
+            Flam merge: {flamMergeMs == null ? 'not saved' : `${flamMergeMs.toFixed(1)}ms`}.
+            {' '}Both windows use the starting tempo ({session.bpm} BPM) and remain fixed through tempo-trainer changes. The beat grid follows captured timing when available.
             σ (standard deviation) measures timing consistency — being
             consistently early or late doesn&apos;t hurt your σ.
           </p>
@@ -316,7 +319,7 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center">
-      <p className="text-[10px] text-text-muted">{label}</p>
+      <p className="text-xs text-text-muted">{label}</p>
       <p className="text-xs font-mono font-semibold text-text-primary">{value}</p>
     </div>
   );
@@ -324,13 +327,13 @@ function MetaItem({ label, value }: { label: string; value: string }) {
 
 function StatRow({ label, value, sub, help }: { label: string; value: string; sub?: string; help?: string }) {
   return (
-    <div className="px-2 py-1.5">
-      <p className="text-[10px] text-text-muted flex items-center gap-1">
+    <div role="group" aria-label={label} className="px-2 py-1.5">
+      <p className="text-xs text-text-muted flex items-center gap-1">
         {label}
         {help && <HelpTip text={help} />}
       </p>
       <p className="text-sm font-mono font-semibold text-text-primary">{value}</p>
-      {sub && <p className="text-[9px] text-text-muted">{sub}</p>}
+      {sub && <p className="text-xs text-text-muted">{sub}</p>}
     </div>
   );
 }
@@ -369,18 +372,18 @@ function InstrumentRow({
         <span className="text-text-primary text-xs flex-shrink-0 w-14">{metrics.name}</span>
 
         {/* Hit count */}
-        <span className="text-text-muted text-[10px] font-mono w-10 text-right">
+        <span className="text-text-muted text-xs font-mono w-10 text-right">
           {metrics.hitCount}
         </span>
 
         {/* Mean offset */}
-        <span className="text-text-secondary text-[10px] font-mono w-16 text-right">
+        <span className="text-text-secondary text-xs font-mono w-16 text-right">
           {metrics.meanOffset > 0 ? '+' : ''}
           {metrics.meanOffset.toFixed(1)}ms
         </span>
 
         {/* σ */}
-        <span className="text-text-primary text-[10px] font-mono w-16 text-right font-semibold">
+        <span className="text-text-primary text-xs font-mono w-16 text-right font-semibold">
           σ {metrics.sigma.toFixed(1)}
         </span>
 
@@ -392,7 +395,7 @@ function InstrumentRow({
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="ml-8 mt-1 mb-2 text-[10px] text-text-muted space-y-0.5 pl-1 border-l border-border-subtle">
+        <div className="ml-8 mt-1 mb-2 text-xs text-text-muted space-y-0.5 pl-1 border-l border-border-subtle">
           <p>Hits: {metrics.hitCount}</p>
           <p>Mean: {metrics.meanOffset > 0 ? '+' : ''}{metrics.meanOffset.toFixed(2)}ms</p>
           <p>σ: {metrics.sigma.toFixed(2)}ms</p>

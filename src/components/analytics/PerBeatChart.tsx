@@ -68,20 +68,20 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
 
         // Mean offset dot
         const dotY = pad.top + chartH / 2 - (s.mean / maxOffset) * (chartH / 2) * 0.4;
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillStyle = 'rgba(21,23,26,0.8)';
         ctx.beginPath();
         ctx.arc(x + barW / 2, dotY, 3, 0, Math.PI * 2);
         ctx.fill();
 
         // Beat label
         ctx.fillStyle = '#4A4A52';
-        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(String(s.beatIndex + 1), x + barW / 2, h - 8);
       }
 
       // Zero line for offset
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeStyle = 'rgba(21,23,26,0.15)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
@@ -92,7 +92,7 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
 
       // Legend
       ctx.fillStyle = '#8B8B94';
-      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('bars = σ, dots = mean offset', pad.left, pad.top - 6);
     },

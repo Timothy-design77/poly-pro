@@ -117,6 +117,12 @@ describe('computeSessionAnalysis', () => {
     expect(a.totalScored).toBe(0);
     expect(a.sigma).toBe(0);
     expect(a.hitRate).toBe(0);
+    expect(a.headlines.map((item) => item.text).join(' ')).not.toMatch(/Professional|Tight timing|baseline established/);
+  });
+
+  it('does not claim a take is the first session without knowing practice history', () => {
+    const result = computeSessionAnalysis(grid.map((beat) => onset(beat.time)), grid, config, bpm, 1, 8000);
+    expect(result.headlines.map((item) => item.text).join(' ')).not.toMatch(/First session|baseline established/);
   });
 
   it('perfectPct is measured over all detected onsets, not just scored ones', () => {

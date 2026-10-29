@@ -1,5 +1,6 @@
-import { useState, useEffect, useId, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavStore } from '../../store/nav-store';
+import { PageHeader } from './PageHeader';
 
 interface SwipeNavigationProps {
   pages: ReactNode[];
@@ -8,141 +9,215 @@ interface SwipeNavigationProps {
   settingsContent?: ReactNode;
 }
 
+const SWIPE_DISTANCE = 34;
+const DIRECTION_LOCK = 12;
+
 /**
- * Explicit mobile navigation shell.
+ * Persistent bottom navigation.
  *
- * The historical name is retained to avoid a broad import migration, but page
- * swiping and swipe-to-dismiss gestures have intentionally been removed. This
- * prevents scroll/control conflicts and follows the app's vertical-navigation
- * design requirement.
+ * Main content never owns a horizontal swipe gesture. The bottom navigation
+ * bar itself does: swipe left/right on the bar to move one destination at a
+ * time. Settings is a first-class destination so the bar remains visible and
+ * there is no top-corner Done button to reach for.
+ *
+ * App pages remain mounted while another destination is selected so active
+ * playback/recording hooks are never torn down by navigation. Settings mounts
+ * only while visible because its control tree is comparatively heavy.
  */
 export function SwipeNavigation({
   pages,
   pageLabels,
-  initialPage = 1,
+  initialPage = 0,
   settingsContent,
 }: SwipeNavigationProps) {
+  const settingsIndex = pages.length;
+  const destinationLabels = [...pageLabels, 'Settings'];
   const [currentPage, setCurrentPage] = useState(initialPage);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsTitleId = useId();
+  const [navDragX, setNavDragX] = useState(0);
+  const [capturePhase, setCapturePhase] = useState('idle');
+  const captureLockedRef = useRef(false);
+  const isRecording = ['recording', 'stopping', 'saving'].includes(capturePhase);
 
-  const targetPage = useNavStore((state) => state.targetPage);
-  const clearTarget = useNavStore((state) => state.clearTarget);
+  useEffect(() => {
+    const onCapturePhase = (event: Event) => {
+      const phase = (event as CustomEvent<{ phase: string }>).detail.phase;
+      captureLockedRef.current = ['recording', 'stopping', 'saving'].includes(phase);
+      setCapturePhase(phase);
+      if (captureLockedRef.current) setCurrentPage(initialPage);
+    };
+    window.addEventListener('polypro:recording-phase', onCapturePhase);
+    return () => window.removeEventListener('polypro:recording-phase', onCapturePhase);
+  }, [initialPage]);
+
+  const pointerRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    direction: 'h' | 'v' | null;
+    captured: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const targetPage = useNavStore((s) => s.targetPage);
+  const clearTarget = useNavStore((s) => s.clearTarget);
 
   useEffect(() => {
     if (targetPage === null) return;
-    if (targetPage >= 0 && targetPage < pages.length) setCurrentPage(targetPage);
+    if (!captureLockedRef.current && targetPage >= 0 && targetPage < pages.length) {
+      if (targetPage !== currentPage) window.dispatchEvent(new Event('polypro:navigation'));
+      setCurrentPage(targetPage);
+    }
     clearTarget();
-  }, [targetPage, clearTarget, pages.length]);
+  }, [targetPage, pages.length, clearTarget, isRecording, currentPage]);
 
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+  useEffect(() => { window.dispatchEvent(new Event('polypro:navigation')); }, [currentPage]);
 
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSettingsOpen(false);
+  const navigateTo = (index: number) => {
+    if (captureLockedRef.current) return;
+    const clamped = Math.max(0, Math.min(destinationLabels.length - 1, index));
+    if (clamped !== currentPage) window.dispatchEvent(new Event('polypro:navigation'));
+    setCurrentPage(clamped);
+    setNavDragX(0);
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    if (!event.isPrimary) return;
+    // Do not capture an ordinary tap. Capturing on pointer-down retargets the
+    // eventual click to <nav> in Chromium and prevents the button onClick from
+    // firing. Capture only after a real horizontal drag is established.
+    pointerRef.current = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      direction: null,
+      captured: false,
     };
-    window.addEventListener('keydown', handleKey);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [settingsOpen]);
+    setNavDragX(0);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    const pointer = pointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+
+    const dx = event.clientX - pointer.startX;
+    const dy = event.clientY - pointer.startY;
+
+    if (pointer.direction === null) {
+      if (Math.hypot(dx, dy) < DIRECTION_LOCK) return;
+      pointer.direction = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+      if (pointer.direction === 'h') {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          pointer.captured = true;
+        } catch {}
+      }
+    }
+
+    if (pointer.direction === 'h') {
+      setNavDragX(Math.max(-56, Math.min(56, dx)));
+    }
+  };
+
+  const finishSwipe = (event: React.PointerEvent<HTMLElement>) => {
+    const pointer = pointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+
+    const dx = event.clientX - pointer.startX;
+    const didSwipe = pointer.direction === 'h' && Math.abs(dx) >= SWIPE_DISTANCE;
+
+    if (didSwipe) {
+      suppressClickRef.current = true;
+      navigateTo(currentPage + (dx < 0 ? 1 : -1));
+      window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    } else {
+      setNavDragX(0);
+    }
+
+    if (pointer.captured) {
+      try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
+    }
+    pointerRef.current = null;
+  };
+
+  const cancelSwipe = (event?: React.PointerEvent<HTMLElement>) => {
+    const pointer = pointerRef.current;
+    if (event && pointer?.captured) {
+      try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
+    }
+    pointerRef.current = null;
+    setNavDragX(0);
+  };
 
   return (
-    <div className="relative h-full w-full overflow-hidden flex flex-col">
-      <main className="flex-1 min-h-0 relative" aria-live="polite">
+    <div className="relative h-full w-full overflow-hidden flex flex-col bg-bg-primary">
+      <main className="flex-1 min-h-0 overflow-hidden">
         {pages.map((page, index) => (
-          <div
+          <section
             key={pageLabels[index] ?? index}
-            className="absolute inset-0 overflow-y-auto"
-            style={{ display: index === currentPage ? 'block' : 'none' }}
+            className={index === currentPage ? 'h-full' : 'hidden'}
             aria-hidden={index !== currentPage}
           >
             {page}
-          </div>
+          </section>
         ))}
+
+        {currentPage === settingsIndex && (
+          <section className="h-full overflow-y-auto overscroll-contain bg-bg-primary" aria-label="Settings">
+            <div className="app-page">
+              <PageHeader title="Settings" />
+              {settingsContent || (
+                <div className="flex items-center justify-center h-40 text-text-muted text-sm">
+                  No settings available
+                </div>
+              )}
+            </div>
+          </section>
+        )}
       </main>
 
       <nav
-        className="shrink-0 grid border-t border-border-subtle bg-bg-surface/95 backdrop-blur-sm pb-safe"
-        style={{ gridTemplateColumns: `repeat(${pageLabels.length + 1}, minmax(0, 1fr))` }}
+        className="primary-nav shrink-0 select-none"
         aria-label="Primary navigation"
+        style={{ touchAction: 'pan-y' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishSwipe}
+        onPointerCancel={cancelSwipe}
+        onClickCapture={(event) => {
+          if (!suppressClickRef.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
       >
-        {pageLabels.map((label, index) => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => setCurrentPage(index)}
-            aria-current={index === currentPage ? 'page' : undefined}
-            className={`min-h-[52px] px-1 text-[11px] font-semibold transition-colors
-                        focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white
-              ${index === currentPage
-                ? 'text-text-primary bg-accent-dim'
-                : 'text-text-secondary active:bg-bg-raised'
-              }`}
-          >
-            {label}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
-          aria-haspopup="dialog"
-          aria-expanded={settingsOpen}
-          className="min-h-[52px] px-1 text-[11px] font-semibold text-text-secondary
-                     active:bg-bg-raised focus-visible:outline focus-visible:outline-2
-                     focus-visible:outline-offset-[-2px] focus-visible:outline-white"
-        >
-          Settings
-        </button>
-      </nav>
-
-      {settingsOpen && (
-        <div
-          className="absolute inset-0 z-50 flex flex-col bg-bg-primary animate-fade-in"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={settingsTitleId}
-        >
-          <header className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle shrink-0">
-            <h2 id={settingsTitleId} className="text-lg font-semibold text-text-primary flex-1">
-              Settings
-            </h2>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(false)}
-              aria-label="Close Settings"
-              className="min-w-[44px] min-h-[44px] rounded-xl border border-border-subtle
-                         text-text-primary flex items-center justify-center active:bg-bg-raised
-                         focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                aria-hidden="true"
+        {isRecording && <p role="status" className="pb-2 text-center text-xs font-semibold text-danger">{capturePhase === 'recording' ? 'Recording in progress' : 'Saving your take…'}</p>}
+        <div className="grid grid-cols-4 gap-1.5 max-w-lg mx-auto">
+          {destinationLabels.map((label, index) => {
+            const active = index === currentPage;
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => navigateTo(index)}
+                disabled={isRecording && !active}
+                aria-current={active ? 'page' : undefined}
+                className={`min-h-[52px] flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-xs font-semibold disabled:opacity-40 ${
+                  active
+                    ? 'bg-accent-dim text-text-primary'
+                    : 'text-text-muted active:bg-bg-raised'
+                }`}
+                style={active && navDragX !== 0
+                  ? { transform: `translateX(${navDragX / 12}px)` }
+                  : undefined}
               >
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </header>
-
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-            {settingsContent ?? (
-              <div className="flex items-center justify-center h-full text-text-secondary text-sm">
-                Settings are unavailable.
-              </div>
-            )}
-          </div>
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  {index === 0 ? <><path d="M8 3h8l4 18H4L8 3Z"/><path d="m12 16 5-10M9 17h6"/></> : index === 1 ? <><path d="M4 8v8m4-12v16m4-13v10m4-14v18m4-13v8"/></> : index === 2 ? <><path d="M3 7V5h6l2 2h10v13H3V7Z"/><path d="M8 12h8m-8 4h5"/></> : <><circle cx="12" cy="12" r="3"/><path d="m9 3 6 0 1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1 1-3Z"/></>}
+                </svg>
+                {label}
+              </button>
+            );
+          })}
         </div>
-      )}
+      </nav>
     </div>
   );
 }

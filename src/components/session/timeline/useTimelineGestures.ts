@@ -20,12 +20,14 @@ export interface TimelineGestures {
   handleTouchStart: (e: React.TouchEvent) => void;
   handleTouchMove: (e: React.TouchEvent) => void;
   handleTouchEnd: (e: React.TouchEvent) => void;
+  handleTouchCancel: () => void;
   cancelMomentum: () => void;
 }
 
 export function useTimelineGestures(
   /** Called with clientX when a touch qualifies as a tap (tap-to-seek). */
   onTap: (clientX: number) => void,
+  ready = true,
 ): TimelineGestures {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -46,19 +48,20 @@ export function useTimelineGestures(
   const momentumFrameRef = useRef(0);
   const isTapRef = useRef(true);
   const tapStartTimeRef = useRef(0);
+  const measuredWidthRef = useRef(containerWidth);
 
   const totalWidth = containerWidth * zoom;
 
   // ─── Measure container ───
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
-    const measure = () => setContainerWidth(el.clientWidth);
+    if (!el || !ready) return;
+    const measure = () => { if (el.clientWidth > 0) setContainerWidth(el.clientWidth); };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [ready]);
 
   const cancelMomentum = useCallback(() => {
     if (momentumFrameRef.current) {
@@ -69,6 +72,24 @@ export function useTimelineGestures(
 
   // Cancel momentum on unmount
   useEffect(() => cancelMomentum, [cancelMomentum]);
+
+  // Folding or rotating changes pixel coordinates, not the visible part of a take.
+  useEffect(() => {
+    cancelMomentum();
+    const ratio = containerWidth / measuredWidthRef.current;
+    measuredWidthRef.current = containerWidth;
+    setScrollX((previous) => Math.max(0, Math.min(containerWidth * (zoom - 1), previous * ratio)));
+  }, [containerWidth, zoom, cancelMomentum]);
+
+  const handleTouchCancel = useCallback(() => {
+    cancelMomentum();
+    touchStartRef.current = null;
+    pinchStartDistRef.current = 0;
+    velocityRef.current = 0;
+    isTapRef.current = false;
+  }, [cancelMomentum]);
+
+  useEffect(() => { if (!ready) handleTouchCancel(); }, [ready, handleTouchCancel]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     // Cancel any ongoing momentum scroll
@@ -148,6 +169,17 @@ export function useTimelineGestures(
   }, [containerWidth, totalWidth]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length > 0) {
+      // Continue panning smoothly when one finger is lifted after a pinch.
+      touchStartRef.current = e.touches[0].clientX;
+      scrollStartRef.current = scrollX;
+      lastTouchXRef.current = e.touches[0].clientX;
+      lastTouchTimeRef.current = Date.now();
+      velocityRef.current = 0;
+      pinchStartDistRef.current = 0;
+      isTapRef.current = false;
+      return;
+    }
     // Check for tap-to-seek (short duration, no significant movement)
     if (isTapRef.current && Date.now() - tapStartTimeRef.current < 300) {
       // Get the last touch position from changedTouches
@@ -171,7 +203,7 @@ export function useTimelineGestures(
 
     touchStartRef.current = null;
     pinchStartDistRef.current = 0;
-  }, [onTap, containerWidth, zoom]);
+  }, [onTap, containerWidth, zoom, scrollX]);
 
   // ─── Zoom buttons (center-preserving) ───
   const setZoomLevel = useCallback((newZoom: number) => {
@@ -200,6 +232,7 @@ export function useTimelineGestures(
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
+    handleTouchCancel,
     cancelMomentum,
   };
 }

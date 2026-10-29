@@ -37,5 +37,16 @@ const zustandHost: EngineHost = {
 
 export const audioEngine = new AudioEngine(zustandHost);
 
+// Presets and projects can change sounds without opening a sound picker.
+// Prepare that selection without resuming audio or blocking the transport.
+const prepareSelection = () => { void audioEngine.prepare().catch((error) => console.warn('Sound preparation failed:', error)); };
+const unsubscribeSettings = useSettingsStore.subscribe((state, previous) => {
+  if (state.clickSound !== previous.clickSound || state.accentSound !== previous.accentSound) prepareSelection();
+});
+const unsubscribeTracks = useMetronomeStore.subscribe((state, previous) => {
+  if (state.tracks !== previous.tracks || state.countInBars !== previous.countInBars) prepareSelection();
+});
+if (import.meta.hot) import.meta.hot.dispose(() => { unsubscribeSettings(); unsubscribeTracks(); void audioEngine.dispose(); });
+
 export { AudioEngine } from './engine';
 export type { EngineHost, EngineMetronomeConfig, EngineSoundSettings } from './engine-host';

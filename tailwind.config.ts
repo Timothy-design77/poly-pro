@@ -6,45 +6,43 @@ export default {
     extend: {
       colors: {
         bg: {
-          primary: '#0C0C0E',
-          surface: '#141416',
-          raised: '#1C1C1F',
-          input: '#0A0A0C',
+          primary: '#F2F3F5',
+          surface: '#FFFFFF',
+          raised: '#E7E9ED',
+          input: '#FFFFFF',
         },
         border: {
-          subtle: '#3A3A40',
-          emphasis: '#52525B',
+          subtle: '#D2D6DC',
+          emphasis: '#8B929C',
         },
         text: {
-          primary: '#F1F1F4',
-          secondary: '#B0B0B8',
-          // Both muted and faint remain WCAG AA against the raised surface,
-          // the lightest dark background used by the application.
-          muted: '#8F8F98',
-          faint: '#85858E',
+          primary: '#15171A',
+          secondary: '#454B54',
+          muted: '#5F6670',
+          faint: '#969DA7',
         },
         accent: {
-          DEFAULT: 'rgba(255,255,255,0.88)',
-          hover: 'rgba(255,255,255,0.98)',
-          dim: 'rgba(255,255,255,0.16)',
+          DEFAULT: '#171A1F',
+          hover: '#050607',
+          dim: 'rgba(23, 26, 31, 0.08)',
         },
         success: {
-          DEFAULT: '#4ADE80',
-          dim: 'rgba(74, 222, 128, 0.15)',
+          DEFAULT: '#187A3B',
+          dim: 'rgba(24, 122, 59, 0.11)',
         },
         warning: {
-          DEFAULT: '#FBBF24',
-          dim: 'rgba(251, 191, 36, 0.15)',
+          DEFAULT: '#A45108',
+          dim: 'rgba(164, 81, 8, 0.11)',
         },
         danger: {
-          DEFAULT: '#F87171',
-          dim: 'rgba(248, 113, 113, 0.15)',
+          DEFAULT: '#B4232C',
+          dim: 'rgba(180, 35, 44, 0.10)',
         },
-        recording: '#EF4444',
+        recording: '#D92D3A',
       },
       fontFamily: {
         sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        mono: ['"DM Sans"', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         sm: '8px',

@@ -3,30 +3,19 @@ interface WaveformDisplayProps {
   isRecording: boolean;
 }
 
-/**
- * Recording indicator — shows pulsing bar during recording.
- * No live mic levels (connecting mic to AudioContext causes
- * Android volume ducking).
- */
-export function WaveformDisplay({ isRecording }: WaveformDisplayProps) {
+/** Uses the capture worklet's measured peak; never opens another audio route. */
+export function WaveformDisplay({ micLevel, isRecording }: WaveformDisplayProps) {
   if (!isRecording) return null;
-
+  const level = Math.round(Math.max(0, Math.min(1, Number.isFinite(micLevel) ? micLevel : 0)) * 100);
+  const clipping = level >= 98;
   return (
-    <div className="w-full h-[28px] rounded-lg bg-bg-surface border border-border-subtle
-                    flex items-center justify-center gap-1.5 mt-2 overflow-hidden">
-      <div className="flex items-center gap-[3px] h-full py-2">
-        {[0.4, 0.7, 1.0, 0.6, 0.9, 0.5, 0.8, 1.0, 0.3, 0.7, 0.9, 0.5].map((h, i) => (
-          <div
-            key={i}
-            className="w-[3px] rounded-full bg-danger animate-pulse"
-            style={{
-              height: `${h * 100}%`,
-              animationDelay: `${i * 0.08}s`,
-              opacity: 0.4 + h * 0.4,
-            }}
-          />
-        ))}
+    <div className="flex items-center gap-3 mt-4 text-xs text-text-secondary">
+      <span>Input</span>
+      <div role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={level}
+        aria-valuetext={clipping ? 'Clipping' : `${level}% peak`} className="flex-1 h-2 rounded-full bg-bg-raised overflow-hidden">
+        <div className={`h-full rounded-full ${clipping ? 'bg-danger' : 'bg-text-secondary'}`} style={{ width: `${level}%` }} />
       </div>
+      <span className={clipping ? 'text-danger' : 'text-text-muted'}>{clipping ? 'Clipping' : level === 0 ? 'Quiet' : 'Receiving'}</span>
     </div>
   );
 }

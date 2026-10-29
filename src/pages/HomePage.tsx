@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
-import { useSettingsStore } from '../store/settings-store';
+import { createDefaultTrack } from '../store/types';
+import { DEFAULT_METER_DENOMINATOR, DEFAULT_METER_NUMERATOR, DEFAULT_SUBDIVISION } from '../utils/constants';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { Dial } from '../components/metronome/Dial';
 import { PlayButton } from '../components/metronome/PlayButton';
@@ -11,6 +12,7 @@ import { RecordButton } from '../components/metronome/RecordButton';
 import { WaveformDisplay } from '../components/metronome/WaveformDisplay';
 import { useRecording, type RecordingResult } from '../hooks/useRecording';
 import { useAnalysis } from '../hooks/useAnalysis';
+import { PageHeader } from '../components/ui/PageHeader';
 import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
 import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
@@ -22,96 +24,69 @@ import { PracticeModes, usePracticeBadge } from '../components/metronome/Practic
 import { BackupBanner } from '../components/ui/BackupBanner';
 import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
-import { ReviewScreen } from '../components/session/ReviewScreen';
-import { SessionDetailPage } from './SessionDetailPage';
+import { useSettingsStore } from '../store/settings-store';
+const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module) => ({ default: module.SessionDetailPage })));
 import { useSessionStore } from '../store/session-store';
-import type { SessionAnalysis } from '../analysis/types';
 import type { SessionRecord } from '../store/db';
-
-const PREPARATION_STATUS = {
-  microphone: 'Requesting microphone…',
-  'bluetooth-check': 'Checking audio devices…',
-  'audio-context': 'Starting audio engine…',
-  'audio-worklet': 'Loading raw capture…',
-  storage: 'Preparing recording storage…',
-  'audio-graph': 'Connecting microphone…',
-  transport: 'Starting metronome…',
-} as const;
+import { PREPARATION_DELAYS, TAKE_LENGTHS, readRecordingPreferences, saveRecordingPreferences, takeLengthLabel, type RecordingPreferences } from '../utils/recording-preferences';
 
 export function HomePage() {
-  const bpm = useMetronomeStore((state) => state.bpm);
-  const setBpm = useMetronomeStore((state) => state.setBpm);
-  const playing = useMetronomeStore((state) => state.playing);
-  const playStartTime = useMetronomeStore((state) => state.playStartTime);
-  const liveWaveform = useSettingsStore((state) => state.liveWaveform);
-  const activeProject = useProjectStore((state) => (
-    state.projects.find((project) => project.id === state.activeProjectId) || null
-  ));
+  const bpm = useMetronomeStore((s) => s.bpm);
+  const setBpm = useMetronomeStore((s) => s.setBpm);
+  const playing = useMetronomeStore((s) => s.playing);
+  const playStartTime = useMetronomeStore((s) => s.playStartTime);
+  const activeProject = useProjectStore((s) =>
+    s.projects.find((project) => project.id === s.activeProjectId) || null
+  );
 
   const [showKeypad, setShowKeypad] = useState(false);
+  const openKeypad = useCallback(() => setShowKeypad(true), []);
   const dialContainerRef = useRef<HTMLDivElement>(null);
-  const [dialSize, setDialSize] = useState(200);
+  const [dialSize, setDialSize] = useState(280);
 
   const recording = useRecording();
   const analysis = useAnalysis();
-  const sessions = useSessionStore((state) => state.sessions);
-  const loadSessions = useSessionStore((state) => state.loadFromDB);
+  const sessions = useSessionStore((s) => s.sessions);
+  const loadSessions = useSessionStore((s) => s.loadFromDB);
 
-  const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
-  const [reviewAnalysis, setReviewAnalysis] = useState<SessionAnalysis | null>(null);
+  const [failedSessionId, setFailedSessionId] = useState<string | null>(null);
+  const includeClick = useSettingsStore((state) => state.includeClickInRecording);
+  const setIncludeClick = useSettingsStore((state) => state.setIncludeClickInRecording);
+  const captureBusy = ['preparing', 'countdown', 'recording', 'stopping', 'saving'].includes(recording.phase);
+  const setupLocked = captureBusy;
+  const [recordingPreferences, setRecordingPreferences] = useState(readRecordingPreferences);
+  const updateRecordingPreferences = (updates: Partial<RecordingPreferences>) => {
+    const next = { ...recordingPreferences, ...updates };
+    setRecordingPreferences(next);
+    saveRecordingPreferences(next);
+  };
   const [detailSession, setDetailSession] = useState<SessionRecord | null>(null);
 
+  useEffect(() => { if (setupLocked) setShowKeypad(false); }, [setupLocked]);
+
   const processRecordingResult = useCallback(async (result: RecordingResult) => {
+    setFailedSessionId(null);
     const analysisResult = await analysis.analyze(result.sessionId, {
-      bpm: result.bpm,
-      meterNumerator: result.meterNumerator,
-      meterDenominator: result.meterDenominator,
-      subdivision: result.subdivision,
-      durationMs: result.durationMs,
       scheduledBeats: result.scheduledBeats,
       recordingStartTime: result.recordingStartTime,
       recordingEndTime: result.recordingEndTime,
     });
     if (analysisResult) {
-      setReviewSessionId(result.sessionId);
-      setReviewAnalysis(analysisResult);
+      setDetailSession(useSessionStore.getState().sessions.find((session) => session.id === result.sessionId) ?? null);
     } else {
-      console.warn('Analysis produced no result');
+      setFailedSessionId(result.sessionId);
     }
   }, [analysis.analyze]);
 
   const handleRecordToggle = useCallback(async () => {
-    const result = await recording.toggleRecording();
+    const result = await recording.toggleRecording(recordingPreferences);
     if (result) await processRecordingResult(result);
-  }, [recording.toggleRecording, processRecordingResult]);
+  }, [recording.toggleRecording, recordingPreferences, processRecordingResult]);
 
   useEffect(() => {
     recording.setOnAutoStop(processRecordingResult);
     return () => recording.setOnAutoStop(null);
   }, [recording.setOnAutoStop, processRecordingResult]);
-
-  const handleReviewViewDetails = useCallback(async () => {
-    if (!reviewSessionId) return;
-    await loadSessions();
-    const existing = sessions.find((session) => session.id === reviewSessionId) || null;
-    const fresh = useSessionStore.getState().sessions.find(
-      (session) => session.id === reviewSessionId,
-    ) || existing;
-    setReviewSessionId(null);
-    setReviewAnalysis(null);
-    setDetailSession(fresh);
-  }, [reviewSessionId, sessions, loadSessions]);
-
-  const handleReviewRecordAgain = useCallback(() => {
-    setReviewSessionId(null);
-    setReviewAnalysis(null);
-  }, []);
-
-  const handleReviewDelete = useCallback(async () => {
-    await loadSessions();
-    setReviewSessionId(null);
-    setReviewAnalysis(null);
-  }, [loadSessions]);
 
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -134,167 +109,241 @@ export function HomePage() {
 
   useEffect(() => {
     const measure = () => {
-      const element = dialContainerRef.current;
-      if (!element) return;
-      const size = Math.round(element.clientWidth * 0.8);
-      setDialSize(Math.max(160, Math.min(360, size)));
+      const el = dialContainerRef.current;
+      if (!el) return;
+      const size = Math.round(el.clientWidth);
+      setDialSize(Math.max(240, Math.min(340, size)));
     };
     measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    const observer = new ResizeObserver(measure);
+    if (dialContainerRef.current) observer.observe(dialContainerRef.current);
+    return () => observer.disconnect();
   }, []);
 
-  const isRecordingBusy = recording.phase === 'preparing'
-    || recording.phase === 'stopping'
-    || recording.phase === 'saving';
-  const busyLabel = recording.phase === 'preparing'
-    ? PREPARATION_STATUS[recording.preparationStage ?? 'microphone']
-    : recording.phase === 'stopping'
-      ? 'Finishing recording…'
-      : recording.phase === 'saving'
-        ? 'Saving session…'
-        : null;
+  const resetMeterSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setMeter(DEFAULT_METER_NUMERATOR, DEFAULT_METER_DENOMINATOR);
+    store.setSubdivision(DEFAULT_SUBDIVISION);
+  }, []);
+
+  const resetPatternSection = useCallback(() => {
+    const state = useMetronomeStore.getState();
+    const existingMain = state.tracks.find((track) => track.id === 'track-0');
+    const defaultMain = createDefaultTrack(
+      state.meterNumerator,
+      state.subdivision,
+      'track-0',
+      state.beatGrouping,
+    );
+    const main = existingMain ? {
+      ...defaultMain,
+      normalSound: existingMain.normalSound,
+      normalVolume: existingMain.normalVolume,
+      accentSound: existingMain.accentSound,
+      accentVolume: existingMain.accentVolume,
+    } : defaultMain;
+    useMetronomeStore.setState({
+      tracks: [main, ...state.tracks.filter((track) => track.id !== 'track-0')],
+    });
+  }, []);
+
+  const resetPolyrhythmSection = useCallback(() => {
+    const state = useMetronomeStore.getState();
+    const main = state.tracks.find((track) => track.id === 'track-0');
+    if (main) useMetronomeStore.setState({ tracks: [{ ...main, muted: false, swing: 0 }] });
+  }, []);
+
+  const resetTrainerSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setTrainerEnabled(false);
+    store.setTrainerConfig({
+      trainerStartBpm: 80,
+      trainerEndBpm: 140,
+      trainerBpmStep: 5,
+      trainerBarsPerStep: 4,
+    });
+  }, []);
+
+  const resetPracticeSection = useCallback(() => {
+    const store = useMetronomeStore.getState();
+    store.setCountInBars(0);
+    store.setSwing(0);
+    store.setGapClick(false, 0.3);
+    store.setRandomMute(false, 0.25);
+    store.setPlayMuteCycle(false, 4, 4);
+  }, []);
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto bg-bg-primary">
       <BackupBanner />
-      <div className="px-4 pb-4">
-        <div className="flex items-center gap-2 py-1.5" aria-live="polite">
-          {recording.isRecording ? (
+      <div className="app-page app-page-wide">
+        <PageHeader title="Practice"><div className="flex items-center gap-2 text-sm" aria-live="polite">
+          {recording.phase === 'countdown' ? (
+            <span className="text-sm font-semibold text-accent">Get ready · {recording.countdown}s</span>
+          ) : recording.isRecording ? (
             <>
-              <span className="w-2 h-2 rounded-full bg-danger animate-pulse shrink-0" aria-hidden="true" />
-              <span className="text-sm font-bold text-danger">REC</span>
-              <span className="font-mono text-xs text-text-secondary ml-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
+              <span className="text-sm font-semibold text-danger">Recording</span>
+              <span className="font-mono text-xs text-text-secondary">
                 {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
+                {recording.takeSeconds > 0 && ` / ${Math.floor(recording.takeSeconds / 60)}:${String(recording.takeSeconds % 60).padStart(2, '0')}`}
               </span>
-              {recording.warning && (
-                <span className="text-[9px] text-warning ml-auto">{recording.warning}</span>
-              )}
-            </>
-          ) : isRecordingBusy ? (
-            <>
-              <span className="w-2 h-2 rounded-full bg-warning animate-pulse shrink-0" aria-hidden="true" />
-              <span className="text-xs font-semibold text-warning">{busyLabel}</span>
+              {recording.warning && <span className="text-xs text-warning">{recording.warning}</span>}
             </>
           ) : (
             <>
-              <span className="text-base" aria-hidden="true">{activeProject?.icon || '🥁'}</span>
-              <span className="text-sm font-medium text-text-secondary truncate">
-                {activeProject?.name || 'Poly Pro'}
-              </span>
-              <div className="flex items-center gap-2 ml-auto shrink-0">
-                {playing && elapsed > 0 ? (
-                  <span className="font-mono text-xs text-text-muted">
-                    {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
-                  </span>
-                ) : activeProject ? (
-                  <span className="text-[11px] font-mono text-text-muted">
-                    {activeProject.currentBpm} / {activeProject.goalBpm}
-                  </span>
-                ) : null}
-              </div>
+              {activeProject && <span className="text-sm text-text-secondary truncate max-w-[150px]">{activeProject.name}</span>}
+              {playing && elapsed > 0 ? (
+                <span className="font-mono text-xs text-text-muted">
+                  {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+                </span>
+              ) : activeProject ? (
+                <span className="text-xs font-mono text-text-muted">
+                  {activeProject.currentBpm} / {activeProject.goalBpm}
+                </span>
+              ) : null}
             </>
           )}
+        </div></PageHeader>
+
+        <div className="practice-layout">
+        <section className="practice-instrument" aria-label="Metronome">
+        <div
+          ref={dialContainerRef}
+          className="dial-container"
+          role={setupLocked ? 'img' : undefined}
+          aria-label={setupLocked ? `Tempo ${bpm} BPM` : undefined}
+        >
+          <Dial size={dialSize} onTapBpm={setupLocked ? undefined : openKeypad} />
         </div>
 
-        <div ref={dialContainerRef} className="flex items-center justify-center pt-1 relative">
-          <Dial size={dialSize} onTapBpm={() => setShowKeypad(true)} />
-        </div>
+        <fieldset disabled={setupLocked} className="tempo-controls disabled:opacity-50">
+          <BpmControl disabled={setupLocked}><TapTempo /></BpmControl>
+        </fieldset>
+        <div className="space-y-3">
+          <div className="practice-transport grid grid-cols-2 gap-3">
+            <PlayButton disabled={captureBusy} />
+            <RecordButton phase={recording.phase} countdown={recording.countdown} disabled={analysis.isAnalyzing || ['stopping', 'saving'].includes(recording.phase)} isRecording={recording.isRecording} onToggle={handleRecordToggle} />
 
-        <div className="flex flex-col gap-2 pt-6">
-          <BpmControl />
-          <PlayButton />
-          <div className="flex gap-2 items-center">
-            <RecordButton
-              phase={recording.phase}
-              preparationStage={recording.preparationStage}
-              onToggle={handleRecordToggle}
-            />
-            <TapTempo />
           </div>
+          <details className="recording-setup text-sm">
+            <summary className="min-h-[56px] cursor-pointer py-3 text-text-secondary">
+              <span className="font-semibold">Recording setup</span>
+              <span className="block text-xs text-text-muted mt-1">{includeClick ? 'Click' : 'Silent'} · {recordingPreferences.preparationSeconds ? `${recordingPreferences.preparationSeconds}s delay` : 'No delay'} · {recordingPreferences.takeSeconds ? takeLengthLabel(recordingPreferences.takeSeconds) : 'Manual stop'}</span>
+            </summary>
+          <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-2 disabled:opacity-60">
+            <legend className="text-xs font-semibold text-text-secondary mb-2">Click during recording</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" aria-pressed={includeClick} aria-label="Record with click" onClick={() => setIncludeClick(true)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>With click</button>
+              <button type="button" aria-pressed={!includeClick} aria-label="Record without click" onClick={() => setIncludeClick(false)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${!includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>Silent</button>
+            </div>
+            <p className="text-xs text-text-muted">{includeClick ? 'Use headphones to keep clicks out of your recording.' : 'No audible click. Follow the visual beat; timing feedback stays available.'}</p>
+          </fieldset>
+            <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-3 disabled:opacity-60">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs font-semibold text-text-secondary">Preparation delay
+                  <select aria-label="Preparation delay" value={recordingPreferences.preparationSeconds} onChange={(event) => updateRecordingPreferences({ preparationSeconds: Number(event.target.value) })} className="mt-1 w-full min-h-[44px] rounded-lg border border-border-subtle bg-bg-primary px-2 text-sm text-text-primary">
+                    {PREPARATION_DELAYS.map((seconds) => <option key={seconds} value={seconds}>{seconds ? `${seconds} seconds` : 'None'}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-text-secondary">Take length
+                  <select aria-label="Take length" value={recordingPreferences.takeSeconds} onChange={(event) => updateRecordingPreferences({ takeSeconds: Number(event.target.value) })} className="mt-1 w-full min-h-[44px] rounded-lg border border-border-subtle bg-bg-primary px-2 text-sm text-text-primary">
+                    {TAKE_LENGTHS.map((seconds) => <option key={seconds} value={seconds}>{seconds ? takeLengthLabel(seconds) : 'Stop manually'}</option>)}
+                  </select>
+                </label>
+              </div>
+              <p className="text-xs text-text-muted">Take length includes count-in. You can stop early.</p>
+            </fieldset>
+          </details>
+          {recording.phase === 'countdown' && <p role="status" className="text-center text-xs text-text-secondary">Microphone ready. No audio is saved until the countdown ends.</p>}
+        </div>
 
-          {liveWaveform && (
-            <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
-          )}
+        <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
 
-          {recording.error && (
-            <div
-              className="bg-danger-dim border border-danger/30 rounded-md p-2 mt-1"
-              role="alert"
+        {failedSessionId && <div role="alert" className="my-3 rounded-lg bg-warning-dim p-3 text-sm text-text-primary">
+          <p>{analysis.error || 'Analysis cancelled.'} Your recording is saved.</p>
+          <button className="min-h-[44px] underline font-semibold" onClick={() => setDetailSession(sessions.find((session) => session.id === failedSessionId) ?? null)}>Open saved take to retry</button>
+        </div>}
+        {recording.error && (
+          <div role="alert" className="bg-danger-dim border border-danger/30 rounded-md p-3 mt-2 text-center">
+            <p className="text-danger text-xs">{recording.error}</p>
+            <button
+              type="button"
+              onClick={recording.clearError}
+              className="text-danger text-xs font-semibold mt-2 min-h-[32px] px-3"
             >
-              <p className="text-danger text-xs">{recording.error}</p>
-              <button
-                type="button"
-                onClick={recording.clearError}
-                className="text-danger text-xs underline underline-offset-2 mt-2 min-h-[36px] px-1"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
+              Dismiss
+            </button>
+          </div>
+        )}
 
-          {recording.btTip && (
-            <div className="text-[11px] text-warning bg-warning/10 rounded-lg px-3 py-2 mt-2">
-              {recording.btTip}
-            </div>
-          )}
+        {recording.btTip && (
+          <div className="text-xs text-warning bg-warning-dim border border-warning/20 rounded-lg px-3 py-2 mt-2 text-center">
+            {recording.btTip}
+          </div>
+        )}
+
+        </section>
+        <aside className="practice-settings" aria-label="Practice settings" hidden={captureBusy}>
+          <h2 className="section-heading">Practice settings</h2>
+          <fieldset disabled={setupLocked} ref={(element) => { if (element) element.inert = setupLocked; }} className="settings-list disabled:opacity-50">
+
+            <CollapsibleCard
+              title="Meter & subdivision"
+              badge={meterBadge}
+              onReset={resetMeterSection}
+              help="Set the time signature and subdivision. Reset returns this section to 4/4 with no subdivision."
+            >
+              <div className="space-y-4">
+                <MeterControl />
+                <SubdivisionPicker />
+                <GroupingPicker />
+              </div>
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Pattern"
+              onReset={resetPatternSection}
+              help="Tap cells to set accent levels for each beat. Reset rebuilds the default accent pattern while keeping the selected main-track sounds."
+            >
+              <BeatGrid />
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Practice modes"
+              badge={practiceBadge}
+              onReset={resetPracticeSection}
+              help="Count-in, swing, gap click, random mute, and play/mute cycles. Reset disables all practice modes and restores their default probabilities."
+            >
+              <PracticeModes />
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Trainer"
+              badge={trainerBadge}
+              onReset={resetTrainerSection}
+              help="Automatically increase BPM after a set number of bars. Reset disables Trainer and restores 80→140, +5 BPM every 4 bars."
+            >
+              <TrainerConfig />
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Polyrhythm"
+              badge={polyBadge}
+              onReset={resetPolyrhythmSection}
+              help="Add extra tracks with different beat counts. Reset removes extra tracks and restores the main track to an unmuted, straight state."
+            >
+              <PolyrhythmControl />
+            </CollapsibleCard>
+          </fieldset>
+        </aside>
         </div>
-
-        <div className="mt-4 space-y-2">
-          <CollapsibleCard
-            title="Meter & Subdivision"
-            badge={meterBadge}
-            defaultOpen
-            help="Set the time signature and subdivision. The metronome subdivides each beat into smaller pulses (8ths, triplets, 16ths)."
-          >
-            <div className="space-y-4">
-              <MeterControl />
-              <SubdivisionPicker />
-              <GroupingPicker />
-            </div>
-          </CollapsibleCard>
-
-          <CollapsibleCard
-            title="Pattern"
-            defaultOpen
-            help="Tap cells to set accent levels for each beat. Six levels are available. Long-press a cell to change its sound."
-          >
-            <BeatGrid />
-          </CollapsibleCard>
-
-          <CollapsibleCard
-            title="Polyrhythm"
-            badge={polyBadge}
-            help="Add extra tracks with different beat counts to create polyrhythmic patterns. Each track plays evenly across the measure."
-          >
-            <PolyrhythmControl />
-          </CollapsibleCard>
-
-          <CollapsibleCard
-            title="Trainer"
-            badge={trainerBadge}
-            help="Automatically increase BPM after a set number of bars. Set start BPM, end BPM, step size, and bars per step."
-          >
-            <TrainerConfig />
-          </CollapsibleCard>
-
-          <CollapsibleCard
-            title="Practice Modes"
-            badge={practiceBadge}
-            help="Count-in plays click-only bars before starting. Gap click randomly mutes beats. Random mute silences measures."
-          >
-            <PracticeModes />
-          </CollapsibleCard>
-        </div>
-
-        <div className="h-[60px]" />
       </div>
 
       <NumberInput
         isOpen={showKeypad}
         onClose={() => setShowKeypad(false)}
-        onSubmit={setBpm}
-        onLiveChange={setBpm}
+        onSubmit={(value) => { if (!setupLocked) setBpm(value); }}
         initialValue={bpm}
         min={10}
         max={400}
@@ -304,18 +353,7 @@ export function HomePage() {
 
       <AnalyzingOverlay visible={analysis.isAnalyzing} progress={analysis.progress} />
 
-      {reviewSessionId && reviewAnalysis && (
-        <ReviewScreen
-          visible
-          sessionId={reviewSessionId}
-          analysis={reviewAnalysis}
-          onViewDetails={handleReviewViewDetails}
-          onRecordAgain={handleReviewRecordAgain}
-          onDelete={handleReviewDelete}
-        />
-      )}
-
-      <SessionDetailPage
+      {detailSession && <Suspense fallback={<p role="status">Loading take…</p>}><SessionDetailPage
         session={detailSession}
         visible={detailSession !== null}
         onClose={() => setDetailSession(null)}
@@ -323,7 +361,7 @@ export function HomePage() {
           setDetailSession(null);
           await loadSessions();
         }}
-      />
+      /></Suspense>}
     </div>
   );
 }

@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, type ReactNode } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import {
+  BPM_STEP,
   HOLD_PHASE_1_DURATION,
   HOLD_PHASE_2_DURATION,
   HOLD_PHASE_1_STEP,
@@ -11,126 +12,215 @@ import {
   HOLD_PHASE_3_INTERVAL,
 } from '../../utils/constants';
 
+const HOLD_START_DELAY = 380;
+const SCROLL_CANCEL_DISTANCE = 12;
+
 type Direction = 'up' | 'down';
 
-function phaseForElapsed(elapsed: number): 1 | 2 | 3 {
-  if (elapsed > HOLD_PHASE_2_DURATION) return 3;
-  if (elapsed > HOLD_PHASE_1_DURATION) return 2;
-  return 1;
+interface PointerGesture {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startBpm: number;
+  direction: Direction;
+  cancelled: boolean;
+  holdStarted: boolean;
+  holdStartedAt: number;
 }
 
-function stepForPhase(direction: Direction, phase: 1 | 2 | 3): number {
-  const magnitude = phase === 3
-    ? HOLD_PHASE_3_STEP
-    : phase === 2
-      ? HOLD_PHASE_2_STEP
-      : HOLD_PHASE_1_STEP;
-  return direction === 'up' ? magnitude : -magnitude;
-}
+/**
+ * Large, scroll-safe BPM controls below the dial.
+ *
+ * - Intentional tap: ±0.5 BPM.
+ * - Intentional hold: accelerated continuous adjustment.
+ * - If the finger moves far enough to become a scroll gesture, all changes
+ *   from that press are cancelled and BPM is restored to its starting value.
+ */
+export function BpmControl({ children, disabled = false }: { children?: ReactNode; disabled?: boolean }) {
+  const bpm = useMetronomeStore((s) => s.bpm);
+  const setBpm = useMetronomeStore((s) => s.setBpm);
+  const adjustBpm = useMetronomeStore((s) => s.adjustBpm);
 
-function intervalForPhase(phase: 1 | 2 | 3): number {
-  if (phase === 3) return HOLD_PHASE_3_INTERVAL;
-  if (phase === 2) return HOLD_PHASE_2_INTERVAL;
-  return HOLD_PHASE_1_INTERVAL;
-}
+  const [holdPhase, setHoldPhase] = useState(0);
+  const [activeDir, setActiveDir] = useState<Direction | null>(null);
 
-export function BpmControl() {
-  const adjustBpm = useMetronomeStore((state) => state.adjustBpm);
-  const [holdPhase, setHoldPhase] = useState<0 | 1 | 2 | 3>(0);
-  const [activeDirection, setActiveDirection] = useState<Direction | null>(null);
-  const holdStartRef = useRef(0);
-  const repeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureRef = useRef<PointerGesture | null>(null);
+  const holdDelayRef = useRef<ReturnType<typeof setTimeout>>();
+  const tickRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const clearRepeat = useCallback(() => {
-    if (repeatTimerRef.current) {
-      clearTimeout(repeatTimerRef.current);
-      repeatTimerRef.current = null;
-    }
-    setHoldPhase(0);
-    setActiveDirection(null);
+  const clearTimers = useCallback(() => {
+    if (holdDelayRef.current) clearTimeout(holdDelayRef.current);
+    if (tickRef.current) clearTimeout(tickRef.current);
+    holdDelayRef.current = undefined;
+    tickRef.current = undefined;
   }, []);
 
-  useEffect(() => clearRepeat, [clearRepeat]);
+  const resetVisuals = useCallback(() => {
+    setHoldPhase(0);
+    setActiveDir(null);
+  }, []);
 
-  const scheduleRepeat = useCallback((direction: Direction) => {
-    const repeat = () => {
-      const phase = phaseForElapsed(Date.now() - holdStartRef.current);
-      setHoldPhase(phase);
-      adjustBpm(stepForPhase(direction, phase));
-      repeatTimerRef.current = setTimeout(repeat, intervalForPhase(phase));
+  useEffect(() => {
+    if (disabled) { clearTimers(); gestureRef.current = null; resetVisuals(); }
+  }, [disabled, clearTimers, resetVisuals]);
+
+  useEffect(() => {
+    const stopHold = () => { clearTimers(); gestureRef.current = null; resetVisuals(); };
+    const onVisibility = () => { if (document.hidden) stopHold(); };
+    window.addEventListener('blur', stopHold);
+    window.addEventListener('polypro:navigation', stopHold);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearTimers();
+      gestureRef.current = null;
+      window.removeEventListener('blur', stopHold);
+      window.removeEventListener('polypro:navigation', stopHold);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-    repeatTimerRef.current = setTimeout(repeat, HOLD_PHASE_1_INTERVAL);
+  }, [clearTimers, resetVisuals]);
+
+  const scheduleHoldTick = useCallback((direction: Direction) => {
+    const tick = () => {
+      const gesture = gestureRef.current;
+      if (!gesture || gesture.cancelled || !gesture.holdStarted) return;
+
+      const elapsed = Date.now() - gesture.holdStartedAt;
+      let step: number;
+      let phase: number;
+      let interval: number;
+
+      if (elapsed >= HOLD_PHASE_2_DURATION) {
+        step = HOLD_PHASE_3_STEP;
+        phase = 3;
+        interval = HOLD_PHASE_3_INTERVAL;
+      } else if (elapsed >= HOLD_PHASE_1_DURATION) {
+        step = HOLD_PHASE_2_STEP;
+        phase = 2;
+        interval = HOLD_PHASE_2_INTERVAL;
+      } else {
+        step = HOLD_PHASE_1_STEP;
+        phase = 1;
+        interval = HOLD_PHASE_1_INTERVAL;
+      }
+
+      adjustBpm(direction === 'up' ? step : -step);
+      setHoldPhase(phase);
+      tickRef.current = setTimeout(tick, interval);
+    };
+
+    tick();
   }, [adjustBpm]);
 
-  const startHold = useCallback((direction: Direction, event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!event.isPrimary || event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    clearRepeat();
-    holdStartRef.current = Date.now();
-    setActiveDirection(direction);
-    setHoldPhase(1);
-    adjustBpm(stepForPhase(direction, 1));
-    scheduleRepeat(direction);
-  }, [adjustBpm, clearRepeat, scheduleRepeat]);
+  const startGesture = useCallback((event: React.PointerEvent, direction: Direction) => {
+    if (disabled || !event.isPrimary || event.button !== 0) return;
+    clearTimers();
 
-  const handleKeyboardClick = useCallback((direction: Direction, event: React.MouseEvent<HTMLButtonElement>) => {
-    // Pointer interaction already performs the first step on pointerdown.
-    // detail === 0 identifies keyboard-generated click activation.
-    if (event.detail === 0) adjustBpm(stepForPhase(direction, 1));
-  }, [adjustBpm]);
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startBpm: bpm,
+      direction,
+      cancelled: false,
+      holdStarted: false,
+      holdStartedAt: 0,
+    };
 
-  const speedLabel = holdPhase === 3
-    ? '×10'
-    : holdPhase === 2
-      ? '×5'
-      : holdPhase === 1
-        ? '×1'
-        : null;
+    setActiveDir(direction);
+
+    holdDelayRef.current = setTimeout(() => {
+      const gesture = gestureRef.current;
+      if (!gesture || gesture.cancelled || gesture.pointerId !== event.pointerId) return;
+      gesture.holdStarted = true;
+      gesture.holdStartedAt = Date.now();
+      setHoldPhase(1);
+      scheduleHoldTick(direction);
+    }, HOLD_START_DELAY);
+  }, [bpm, clearTimers, scheduleHoldTick, disabled]);
+
+  const cancelForScroll = useCallback(() => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.cancelled) return;
+    gesture.cancelled = true;
+    clearTimers();
+    if (gesture.holdStarted) setBpm(gesture.startBpm);
+    resetVisuals();
+  }, [clearTimers, resetVisuals, setBpm]);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.cancelled) return;
+
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    if (Math.hypot(dx, dy) >= SCROLL_CANCEL_DISTANCE) {
+      cancelForScroll();
+    }
+  }, [cancelForScroll]);
+
+  const finishGesture = useCallback((event: React.PointerEvent) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+    clearTimers();
+
+    if (!gesture.cancelled && !gesture.holdStarted) {
+      adjustBpm(gesture.direction === 'up' ? BPM_STEP : -BPM_STEP);
+    }
+
+    gestureRef.current = null;
+    resetVisuals();
+  }, [adjustBpm, clearTimers, resetVisuals]);
+
+  const cancelGesture = useCallback((event: React.PointerEvent) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+    clearTimers();
+    if (gesture.holdStarted) setBpm(gesture.startBpm);
+    gestureRef.current = null;
+    resetVisuals();
+  }, [clearTimers, resetVisuals, setBpm]);
+
+  const speedLabel = holdPhase === 3 ? '×10' : holdPhase === 2 ? '×5' : holdPhase === 1 ? '×1' : null;
 
   const buttonClass = (direction: Direction) => `
-    flex-1 flex items-center justify-center rounded-[14px] border-[1.5px]
-    transition-all h-[50px] touch-manipulation select-none
-    focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white
-    ${activeDirection === direction
-      ? 'border-border-emphasis bg-bg-raised shadow-[0_0_12px_rgba(255,255,255,0.06)]'
-      : 'border-border-subtle bg-bg-surface active:bg-bg-raised active:border-border-emphasis'
+    tempo-step flex items-center justify-center rounded-full
+    h-[48px] w-[48px] shrink-0 touch-pan-y select-none disabled:opacity-40
+    ${activeDir === direction
+      ? 'bg-bg-raised'
+      : 'bg-bg-surface active:bg-bg-raised'
     }
   `;
 
   return (
-    <div className="flex gap-2 relative" aria-label="Tempo adjustment controls">
+    <div className="flex items-center justify-center gap-4 relative" aria-label="Tempo adjustment">
       <button
         type="button"
-        aria-label="Decrease tempo. Hold to accelerate."
-        onPointerDown={(event) => startHold('down', event)}
-        onPointerUp={clearRepeat}
-        onPointerLeave={clearRepeat}
-        onPointerCancel={clearRepeat}
-        onClick={(event) => handleKeyboardClick('down', event)}
+        disabled={disabled}
+        aria-label="Decrease tempo"
+        onClick={(event) => { if (event.detail === 0) adjustBpm(-BPM_STEP); }}
+        onPointerDown={(event) => startGesture(event, 'down')}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishGesture}
+        onPointerCancel={cancelGesture}
+        onPointerLeave={(event) => {
+          if (event.buttons !== 0) cancelForScroll();
+        }}
         className={buttonClass('down')}
       >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          className="text-text-secondary"
-          aria-hidden="true"
-        >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+          className="text-text-primary">
           <line x1="6" y1="12" x2="18" y2="12" />
         </svg>
       </button>
 
+      {children}
+
       {speedLabel && (
-        <div
-          className="absolute left-1/2 -translate-x-1/2 -top-6 pointer-events-none"
-          aria-live="polite"
-        >
-          <span className="font-mono text-[10px] font-bold text-text-secondary">
+        <div className="absolute left-1/2 -translate-x-1/2 -top-6 pointer-events-none">
+          <span className="font-mono text-xs font-semibold text-text-muted">
             {speedLabel}
           </span>
         </div>
@@ -138,25 +228,21 @@ export function BpmControl() {
 
       <button
         type="button"
-        aria-label="Increase tempo. Hold to accelerate."
-        onPointerDown={(event) => startHold('up', event)}
-        onPointerUp={clearRepeat}
-        onPointerLeave={clearRepeat}
-        onPointerCancel={clearRepeat}
-        onClick={(event) => handleKeyboardClick('up', event)}
+        disabled={disabled}
+        aria-label="Increase tempo"
+        onClick={(event) => { if (event.detail === 0) adjustBpm(BPM_STEP); }}
+        onPointerDown={(event) => startGesture(event, 'up')}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishGesture}
+        onPointerCancel={cancelGesture}
+        onPointerLeave={(event) => {
+          if (event.buttons !== 0) cancelForScroll();
+        }}
         className={buttonClass('up')}
       >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          className="text-text-secondary"
-          aria-hidden="true"
-        >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+          className="text-text-primary">
           <line x1="12" y1="6" x2="12" y2="18" />
           <line x1="6" y1="12" x2="18" y2="12" />
         </svg>

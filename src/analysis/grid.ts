@@ -36,7 +36,8 @@ export function gridFromScheduledBeats(
     (b) =>
       b.time >= recordingStartTime &&
       b.time <= recordingEndTime &&
-      b.trackId === 'track-0',
+      b.trackId === 'track-0' &&
+      !b.isCountIn,
   );
 
   // Sort by time

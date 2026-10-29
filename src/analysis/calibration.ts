@@ -56,7 +56,7 @@ export function createChirpBuffer(ctx: AudioContext): AudioBuffer {
 /**
  * Play the chirp through the speakers at a given AudioContext time.
  */
-export function playChirp(ctx: AudioContext, buffer: AudioBuffer, time: number): void {
+export function playChirp(ctx: AudioContext, buffer: AudioBuffer, time: number): AudioBufferSourceNode {
   const source = ctx.createBufferSource();
   source.buffer = buffer;
   // Play loud — needs to be clearly picked up by the mic
@@ -64,7 +64,9 @@ export function playChirp(ctx: AudioContext, buffer: AudioBuffer, time: number):
   gain.gain.value = 1.0;
   source.connect(gain);
   gain.connect(ctx.destination);
+  source.onended = () => { source.disconnect(); gain.disconnect(); };
   source.start(time);
+  return source;
 }
 
 /**

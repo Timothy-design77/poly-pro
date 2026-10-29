@@ -57,7 +57,7 @@ export function withTimeout<T>(
       finish(() => reject(new OperationCancelledError(operation)));
     };
 
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       finish(() => reject(new OperationTimeoutError(operation, timeoutMs)));
     }, timeoutMs);
 
@@ -84,13 +84,4 @@ export function withTimeout<T>(
       },
     );
   });
-}
-
-export function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  return withTimeout(
-    new Promise<void>((resolve) => window.setTimeout(resolve, ms)),
-    ms + 1000,
-    'delay',
-    { signal },
-  );
 }

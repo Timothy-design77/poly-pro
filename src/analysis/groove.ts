@@ -164,9 +164,14 @@ export function computeGrooveConsistency(
   // Build a vector of deltas per measure, indexed by beat position
   const measures = new Map<number, Map<number, number>>();
 
-  for (const o of scored) {
-    // Estimate measure number from matchedBeatTime
-    const measureNum = Math.floor(o.matchedBeatIndex / beatsPerMeasure);
+  let inferredMeasure = 0;
+  let previousBeat = -1;
+  for (const o of [...scored].sort((a, b) => a.matchedBeatTime - b.matchedBeatTime)) {
+    // Beat indices restart at zero every bar; dividing them collapses the entire
+    // recording into one measure. Older saved events can infer the wrap instead.
+    if (o.matchedBeatIndex <= previousBeat) inferredMeasure++;
+    previousBeat = o.matchedBeatIndex;
+    const measureNum = o.matchedMeasure ?? inferredMeasure;
     const posInMeasure = o.matchedBeatIndex % beatsPerMeasure;
 
     if (!measures.has(measureNum)) measures.set(measureNum, new Map());
@@ -193,23 +198,22 @@ export function computeGrooveConsistency(
   let totalR = 0;
   let pairCount = 0;
 
-  // Sample pairs if there are too many measures (cap at 100 pairs)
-  const maxPairs = 100;
-  const step = completeMeasures.length > 20
-    ? Math.max(1, Math.floor((completeMeasures.length * (completeMeasures.length - 1) / 2) / maxPairs))
-    : 1;
-
-  let pairIdx = 0;
-  for (let i = 0; i < completeMeasures.length; i++) {
-    for (let j = i + 1; j < completeMeasures.length; j++) {
-      pairIdx++;
-      if (pairIdx % step !== 0) continue;
-
-      const r = pearsonR(completeMeasures[i], completeMeasures[j]);
-      if (!isNaN(r)) {
-        totalR += r;
-        pairCount++;
-      }
+  // Sample pair ordinals directly. Visiting every skipped pair still becomes
+  // quadratic for a long practice recording even with only 100 correlations.
+  const n = completeMeasures.length;
+  const totalPairs = n * (n - 1) / 2;
+  const samples = Math.min(100, totalPairs);
+  const prefix = (row: number) => row * (2 * n - row - 1) / 2;
+  for (let sample = 0; sample < samples; sample++) {
+    const ordinal = Math.floor(sample * (totalPairs - 1) / Math.max(1, samples - 1));
+    let i = Math.floor((2 * n - 1 - Math.sqrt((2 * n - 1) ** 2 - 8 * ordinal)) / 2);
+    while (i > 0 && prefix(i) > ordinal) i--;
+    while (i + 1 < n && prefix(i + 1) <= ordinal) i++;
+    const j = i + 1 + ordinal - prefix(i);
+    const r = pearsonR(completeMeasures[i], completeMeasures[j]);
+    if (!isNaN(r)) {
+      totalR += r;
+      pairCount++;
     }
   }
 
