@@ -127,7 +127,7 @@ test('a reference hit aligns playback precisely and survives undo, save and relo
 
 test('recordings filters show all takes and recover when the selected project is deleted', async ({ page }) => {
   await seedSession(page);
-  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await page.getByRole('button', { name: '+ New Project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Project name' }).fill('Warm-ups');
@@ -139,7 +139,7 @@ test('recordings filters show all takes and recover when the selected project is
   await page.waitForTimeout(500);
   await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
   await page.getByRole('dialog', { name: 'Review take', exact: true }).waitFor();
-  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   const takes = page.getByRole('button', { name: /^Review take.*BPM/ });
   const filter = page.getByRole('combobox', { name: 'Filter recordings by project' });
@@ -151,7 +151,7 @@ test('recordings filters show all takes and recover when the selected project is
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Warm-ups', exact: true }).click();
   await page.getByRole('button', { name: 'Delete Project', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Delete Warm-ups?' }).getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('alertdialog', { name: 'Delete Warm-ups?' }).getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await expect(filter).toHaveValue('all');
   await expect(takes).toHaveCount(2);
