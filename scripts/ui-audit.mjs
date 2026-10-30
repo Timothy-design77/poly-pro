@@ -66,6 +66,7 @@ const screens = [
   ['recordings', nav('Recordings'), true],
   ['recordings-progress', async (p) => { await nav('Recordings')(p); await p.getByRole('button', { name: 'Practice progress' }).click(); await p.waitForTimeout(300); await p.getByRole('heading', { name: 'Recent scores' }).scrollIntoViewIfNeeded(); }, true],
   ['review', openReview, true],
+  ['review-tools', async (p) => { await openReview(p); await p.getByText(/^Waveform view/).click(); await p.getByRole('button', { name: 'Audio cleanup controls' }).click(); await p.waitForTimeout(300); }, true],
   ['charts', async (p) => { await openReview(p); await p.getByRole('tab', { name: 'Charts' }).click(); await p.waitForTimeout(500); }, true],
   ['projects', nav('Projects')],
   ['project-create', async (p) => { await nav('Projects')(p); await p.getByRole('button', { name: /New project/i }).first().click(); }],

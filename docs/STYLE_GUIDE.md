@@ -35,6 +35,10 @@ Use the shared pieces in `src/components/ui` instead of restyling raw elements. 
 | Short decision | `Dialog` (`alert` for destructive) / `Modal` | Recommended action first, Cancel/keep last. |
 | Picker or form | `Sheet` | Bottom panel with a title and Done. |
 | Collapsible group | `CollapsibleCard` | Help and Reset share one row. |
+| Tool toggles in a row | `ui-choice` (grid) or `ui-chip` (wrapping pills) | Pressed state is an ink outline; never a filled primary. 44px targets. |
+| Sliders | `Range` (native) or `PrecisionSlider` (fine drag + exact entry) | Same track and thumb. |
+| Progress | `ProgressRing`, `Spinner`, `StepDots`, `progressbar` | Always labelled. |
+| Canvas colors | `cssVar('--token')`, `withAlpha()` from `styles/tokens.ts` | No hex or dark-theme rgba literals in drawing code. |
 
 Copy on controls is sentence case and names the outcome ("Save changes", "Delete take"). Use icons, not arrow or emoji characters, in controls.
 
