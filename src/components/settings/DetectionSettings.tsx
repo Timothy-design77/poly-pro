@@ -4,6 +4,7 @@ import { DETECTION_PRESETS } from '../../analysis/types';
 import { HelpTip } from '../ui/HelpTip';
 import { PrecisionSlider } from '../ui/PrecisionSlider';
 import { DetectionTestBench } from './DetectionTestBench';
+import { Button } from '../ui/Button';
 
 interface SliderRowProps {
   label: string;
@@ -57,72 +58,51 @@ export function DetectionSettings() {
   const setFluxThreshold = useSettingsStore((s) => s.setFluxThresholdOffset);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="text-xs text-text-muted font-medium  flex items-center gap-1 mb-1.5">
-          Detection Preset
-          <HelpTip text="Presets configure the detection controls at once. Adjusting a control individually switches to Custom." />
-        </label>
-        <div className="flex flex-wrap gap-1.5">
+    <div className="space-y-5">
+      <div className="ui-field">
+        <span className="ui-label flex items-center gap-2">
+          Preset
+          <HelpTip text="Presets set all detection controls at once. Changing a control yourself switches to Custom." />
+        </span>
+        <div role="group" aria-label="Detection preset" className="ui-segmented">
           {DETECTION_PRESETS.map((preset) => (
-            <button
-              type="button"
-              key={preset.name}
-              onClick={() => setDetectionPreset(preset.name)}
-              className={`px-3 min-h-[38px] rounded-lg text-xs font-medium touch-manipulation border
-                ${detectionPreset === preset.name
-                  ? 'bg-accent text-bg-primary border-accent'
-                  : 'bg-bg-surface text-text-secondary border-border-subtle active:bg-bg-raised'}`}
-            >
+            <button type="button" key={preset.name} aria-pressed={detectionPreset === preset.name} onClick={() => setDetectionPreset(preset.name)}>
               {preset.name}
             </button>
           ))}
-          {detectionPreset === 'Custom' && (
-            <span className="px-3 min-h-[38px] flex items-center rounded-lg text-xs font-medium bg-accent-dim text-text-primary border border-border-emphasis">
-              Custom
-            </span>
-          )}
+          {detectionPreset === 'Custom' && <button type="button" aria-pressed disabled className="opacity-100!">Custom</button>}
         </div>
-        {detectionPreset !== 'Custom' && (
-          <p className="text-xs text-text-muted mt-1.5">
-            {DETECTION_PRESETS.find((preset) => preset.name === detectionPreset)?.description}
-          </p>
-        )}
+        <span className="ui-hint">
+          {detectionPreset === 'Custom' ? 'Your own settings.' : DETECTION_PRESETS.find((preset) => preset.name === detectionPreset)?.description}
+        </span>
       </div>
 
-      <SliderRow label="Scoring Window" value={scoringWindowPct} min={0.25} max={25} step={0.25}
+      <SliderRow label="Scoring window" value={scoringWindowPct} min={0.25} max={25} step={0.25}
         format={(value) => `${value}% IOI`} onChange={setScoringWindowPct} />
-      <SliderRow label="Flam Merge" value={flamMergePct} min={5} max={80} step={1}
+      <SliderRow label="Flam merge" value={flamMergePct} min={5} max={80} step={1}
         format={(value) => `${value}% sub`} onChange={setFlamMergePct} />
-      <SliderRow label="Noise Gate" value={noiseGate} min={0.001} max={0.5} step={0.001}
+      <SliderRow label="Noise gate" value={noiseGate} min={0.001} max={0.5} step={0.001}
         format={(value) => value.toFixed(3)} onChange={setNoiseGate} />
-      <SliderRow label="Accent Threshold" value={accentThreshold} min={1} max={6} step={0.05}
+      <SliderRow label="Accent threshold" value={accentThreshold} min={1} max={6} step={0.05}
         format={(value) => `${value.toFixed(2)}×`} onChange={setAccentThreshold} />
-      <SliderRow label="High-Pass" value={highPassHz} min={0} max={2000} step={5}
+      <SliderRow label="High-pass filter" value={highPassHz} min={0} max={2000} step={5}
         format={(value) => value === 0 ? 'Off' : `${value} Hz`} onChange={setHighPassHz} />
 
-      <div className="border-t border-border-subtle pt-3 mt-1 space-y-3">
-        <p className="text-xs text-text-muted font-medium ">Onset Detection</p>
-        <SliderRow label="Noise Floor ×" value={noiseFloorMult} min={1} max={50} step={1}
+      <div className="border-t border-border-subtle pt-4 space-y-3">
+        <h3 className="text-sm font-semibold text-text-primary">Hit detection</h3>
+        <SliderRow label="Noise floor" value={noiseFloorMult} min={1} max={50} step={1}
           format={(value) => `${value}×`} onChange={setNoiseFloorMult} />
-        <SliderRow label="Min Onset Gap" value={minOnsetInterval} min={5} max={300} step={1}
+        <SliderRow label="Minimum gap between hits" value={minOnsetInterval} min={5} max={300} step={1}
           format={(value) => `${value}ms`} onChange={setMinOnsetInterval} />
-        <SliderRow label="Post-Hit Mask" value={postHitMasking} min={0} max={400} step={5}
+        <SliderRow label="Post-hit mask" value={postHitMasking} min={0} max={400} step={5}
           format={(value) => value === 0 ? 'Off' : `${value}ms`} onChange={setPostHitMasking} />
-        <SliderRow label="Mask Strength" value={maskingStrength} min={0} max={60} step={1}
+        <SliderRow label="Mask strength" value={maskingStrength} min={0} max={60} step={1}
           format={(value) => `${value}×`} onChange={setMaskingStrength} />
-        <SliderRow label="Flux Threshold" value={fluxThreshold} min={0.1} max={6} step={0.1}
+        <SliderRow label="Flux threshold" value={fluxThreshold} min={0.1} max={6} step={0.1}
           format={(value) => value.toFixed(1)} onChange={setFluxThreshold} />
       </div>
 
-      <button
-        type="button"
-        onClick={() => setShowTestBench(true)}
-        className="w-full min-h-[44px] bg-bg-surface border border-border-emphasis text-text-primary
-                   rounded-lg text-sm font-semibold active:bg-bg-raised flex items-center justify-center gap-2"
-      >
-        Run Detection Test
-      </button>
+      <Button variant="secondary" block onClick={() => setShowTestBench(true)}>Run detection test</Button>
 
       <DetectionTestBench visible={showTestBench} onClose={() => setShowTestBench(false)} />
     </div>

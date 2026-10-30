@@ -32,7 +32,7 @@ test('practice actions, local typography and destination labels are consistent',
   await expect(page.getByRole('button', { name: 'Cloud Enhancement', exact: true })).toHaveCount(0);
 });
 
-test('first click is prompt on cold and warm starts despite an unavailable unused sound', async ({ browser }) => {
+test('first click is prompt on cold and warm starts despite an unavailable unused sound', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ serviceWorkers: 'block' });
   try {
     const page = await context.newPage();
@@ -51,7 +51,7 @@ test('first click is prompt on cold and warm starts despite an unavailable unuse
         }
       }, true);
     });
-    await page.goto('http://127.0.0.1:4173/poly-pro/');
+    await page.goto(baseURL!);
     for (const budget of [200, 100]) {
       await page.getByRole('button', { name: 'Start metronome', exact: true }).click();
       await expect.poll(() => page.evaluate(() => (window as any).clickStarts.length)).toBeGreaterThan(0);
@@ -127,11 +127,11 @@ test('a reference hit aligns playback precisely and survives undo, save and relo
 
 test('recordings filters show all takes and recover when the selected project is deleted', async ({ page }) => {
   await seedSession(page);
-  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await page.getByRole('button', { name: '+ New Project', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Project name' }).fill('Warm-ups');
-  await page.getByRole('button', { name: 'Create Project', exact: true }).click();
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Practice', exact: true }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
@@ -139,7 +139,7 @@ test('recordings filters show all takes and recover when the selected project is
   await page.waitForTimeout(500);
   await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
   await page.getByRole('dialog', { name: 'Review take', exact: true }).waitFor();
-  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   const takes = page.getByRole('button', { name: /^Review take.*BPM/ });
   const filter = page.getByRole('combobox', { name: 'Filter recordings by project' });
@@ -150,8 +150,8 @@ test('recordings filters show all takes and recover when the selected project is
   await expect(takes).toHaveCount(1);
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Warm-ups', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete Project', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Delete Warm-ups?' }).getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete project', exact: true }).click();
+  await page.getByRole('alertdialog', { name: 'Delete Warm-ups?' }).getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await expect(filter).toHaveValue('all');
   await expect(takes).toHaveCount(2);
