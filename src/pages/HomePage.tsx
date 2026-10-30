@@ -114,7 +114,7 @@ export function HomePage() {
       const el = dialContainerRef.current;
       if (!el) return;
       const size = Math.round(el.clientWidth);
-      setDialSize(Math.max(240, Math.min(340, size)));
+      setDialSize(Math.max(200, Math.min(340, size)));
     };
     measure();
     const observer = new ResizeObserver(measure);
