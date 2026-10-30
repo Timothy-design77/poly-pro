@@ -1,44 +1,46 @@
 import type { Config } from 'tailwindcss';
 
+// Colors resolve to the CSS custom properties in src/styles/globals.css, which
+// are the single source of truth for the palette.
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
         bg: {
-          primary: '#F2F3F5',
-          surface: '#FFFFFF',
-          raised: '#E7E9ED',
-          input: '#FFFFFF',
+          primary: 'var(--bg-primary)',
+          surface: 'var(--bg-surface)',
+          raised: 'var(--bg-raised)',
+          input: 'var(--bg-input)',
         },
         border: {
-          subtle: '#D2D6DC',
-          emphasis: '#8B929C',
+          subtle: 'var(--border-subtle)',
+          emphasis: 'var(--border-emphasis)',
         },
         text: {
-          primary: '#15171A',
-          secondary: '#454B54',
-          muted: '#5F6670',
-          faint: '#969DA7',
+          primary: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
+          faint: 'var(--text-faint)',
         },
         accent: {
-          DEFAULT: '#171A1F',
-          hover: '#050607',
-          dim: 'rgba(23, 26, 31, 0.08)',
+          DEFAULT: 'var(--accent)',
+          hover: 'var(--accent-hover)',
+          dim: 'var(--accent-dim)',
         },
         success: {
-          DEFAULT: '#187A3B',
-          dim: 'rgba(24, 122, 59, 0.11)',
+          DEFAULT: 'var(--success)',
+          dim: 'var(--success-dim)',
         },
         warning: {
-          DEFAULT: '#A45108',
-          dim: 'rgba(164, 81, 8, 0.11)',
+          DEFAULT: 'var(--warning)',
+          dim: 'var(--warning-dim)',
         },
         danger: {
-          DEFAULT: '#B4232C',
-          dim: 'rgba(180, 35, 44, 0.10)',
+          DEFAULT: 'var(--danger)',
+          dim: 'var(--danger-dim)',
         },
-        recording: '#D92D3A',
+        recording: 'var(--recording)',
       },
       fontFamily: {
         sans: ['"DM Sans"', 'system-ui', 'sans-serif'],

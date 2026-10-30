@@ -59,7 +59,7 @@ test('fake microphone recording reaches durable IndexedDB storage', async ({ pag
   expect(captured.analyzed).toBe(true);
   expect(captured.recordingTiming.recordingEndTime - captured.recordingTiming.recordingStartTime).toBeCloseTo(captured.durationMs / 1000, 5);
   expect(captured.analysisConfig.sampleRate).toBe(captured.recordingSampleRate);
-  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeEnabled();
 });
 

@@ -10,6 +10,7 @@
 import { useCallback } from 'react';
 import { ChartCanvas } from './ChartCanvas';
 import type { HitEventsRecord } from '../../store/db';
+import { cssVar } from '../../styles/tokens';
 
 interface Props {
   hitEvents: HitEventsRecord;
@@ -51,7 +52,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
   const draw = useCallback(
     (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       if (pairs.length < 3) {
-        ctx.fillStyle = '#4A4A52';
+        ctx.fillStyle = cssVar('--text-secondary');
         ctx.font = '12px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(
@@ -77,7 +78,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
       const toY = (r: number) => pad.top + (1 - (r - minRatio) / yRange) * plotH;
 
       // Grid lines
-      ctx.strokeStyle = '#2A2A2E';
+      ctx.strokeStyle = cssVar('--border-subtle');
       ctx.lineWidth = 1;
       const gridValues = [1.0, 1.5, 2.0, 2.5];
       for (const v of gridValues) {
@@ -88,7 +89,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
           ctx.lineTo(w - pad.right, y);
           ctx.stroke();
 
-          ctx.fillStyle = '#4A4A52';
+          ctx.fillStyle = cssVar('--text-secondary');
           ctx.font = '11px "DM Sans", sans-serif';
           ctx.textAlign = 'right';
           ctx.fillText(v.toFixed(1), pad.left - 4, y + 3);
@@ -97,7 +98,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
 
       // Straight line at 1.0
       const y1 = toY(1.0);
-      ctx.strokeStyle = '#3A3A40';
+      ctx.strokeStyle = cssVar('--border-subtle');
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(pad.left, y1);
@@ -105,7 +106,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
       ctx.stroke();
 
       // Label "straight"
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('straight', pad.left + 2, y1 - 4);
@@ -135,7 +136,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
 
         // Color: green if close to average, amber if varying
         const dev = Math.abs(pairs[i].ratio - avgRatio);
-        const color = dev < 0.2 ? '#187A3B' : dev < 0.4 ? '#A45108' : '#B4232C';
+        const color = dev < 0.2 ? cssVar('--success') : dev < 0.4 ? cssVar('--warning') : cssVar('--danger');
 
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.7;
@@ -167,7 +168,7 @@ export function SwingChart({ hitEvents, width, height, subdivision }: Props) {
       }
 
       // X axis label
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Beat pair →', w / 2, h - 3);

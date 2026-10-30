@@ -6,6 +6,7 @@
 import { useCallback } from 'react';
 import { ChartCanvas } from './ChartCanvas';
 import type { HitEventsRecord } from '../../store/db';
+import { cssVar } from '../../styles/tokens';
 
 interface Props {
   hitEvents: HitEventsRecord;
@@ -20,7 +21,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
   const draw = useCallback(
     (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       if (scored.length < 5) {
-        ctx.fillStyle = '#4A4A52';
+        ctx.fillStyle = cssVar('--text-secondary');
         ctx.font = '12px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Not enough data', w / 2, h / 2);
@@ -69,7 +70,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
 
       // Color fill (late = above center, early = below)
       ctx.globalAlpha = 0.08;
-      ctx.fillStyle = '#E8E8EC';
+      ctx.fillStyle = cssVar('--bg-raised');
       ctx.lineTo(pad.left + (points[points.length - 1].time / maxTime) * chartW, midY);
       ctx.lineTo(pad.left + (points[0].time / maxTime) * chartW, midY);
       ctx.closePath();
@@ -77,7 +78,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
       ctx.globalAlpha = 1;
 
       // Labels
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(`+${Math.round(maxAbs)}ms`, pad.left - 4, pad.top + 4);
@@ -89,7 +90,7 @@ export function DriftChart({ hitEvents, width, height, durationMs }: Props) {
       ctx.fillText('end', w - pad.right, h - 5);
 
       // Direction labels
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('late ↑', pad.left + 4, pad.top + 12);

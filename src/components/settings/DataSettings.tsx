@@ -19,6 +19,10 @@ import { hydrateStores, flushPersistence, stopPersistence, startPersistence } fr
 import { beginCriticalActivity, isCriticalActivityActive } from '../../utils/critical-activity';
 import * as db from '../../store/db';
 import { HelpTip } from '../ui/HelpTip';
+import { Button } from '../ui/Button';
+import { Notice } from '../ui/Notice';
+import { SettingRow } from '../ui/SettingRow';
+import { Toggle } from '../ui/Toggle';
 
 type DataState = 'idle' | 'exporting-full' | 'exporting-data' | 'preview' | 'importing' | 'deleting';
 
@@ -160,101 +164,109 @@ export function DataSettings() {
   } as const)[progress.stage] : '';
 
   const sessionGroups = [
-    ...projects.map((project) => ({ id: project.id, label: `${project.icon} ${project.name}`, sessions: sessions.filter((session) => session.projectId === project.id) })),
+    ...projects.map((project) => ({ id: project.id, label: project.name, sessions: sessions.filter((session) => session.projectId === project.id) })),
     { id: '__quick', label: 'Quick Start', sessions: sessions.filter((session) => session.projectId === null) },
   ].filter((group) => group.sessions.length > 0);
 
+  const busy = state !== 'idle';
+  const recordingCount = sessions.filter((session) => session.hasRecording).length;
+
   return (
-    <div className="space-y-4 pt-3">
-      {storageInfo && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-text-secondary flex items-center gap-1">Storage <HelpTip text="Recordings use most local storage. Poly Pro requests persistent browser storage but still recommends regular backups." /></span>
-            <span className="text-xs font-mono text-text-muted">{storageInfo.usedLabel} / {storageInfo.quotaLabel}</span>
-          </div>
-          <div className="h-2 rounded-full bg-bg-raised overflow-hidden" role="progressbar" aria-label="Storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(storageInfo.usedPct)}>
-            <div className="h-full bg-accent" style={{ width: `${Math.min(100, storageInfo.usedPct)}%` }} />
-          </div>
-        </div>
-      )}
-
-      {!isPersistent && (
-        <button type="button" className="w-full min-h-[40px] text-left text-xs text-text-muted" onClick={async () => setIsPersistent(await requestPersistentStorage())}>
-          Enable persistent storage →
-        </button>
-      )}
-
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <Stat label="Projects" value={projects.length} />
-        <Stat label="Sessions" value={sessions.length} />
-        <Stat label="Recordings" value={sessions.filter((session) => session.hasRecording).length} />
-      </div>
-
-      {error && <div role="alert" className="rounded-lg border border-danger/30 bg-danger-dim p-2 text-xs text-danger">{error}</div>}
-      {message && <div role="status" className="rounded-lg border border-success/30 bg-success-dim p-2 text-xs text-success">{message}</div>}
-      {state !== 'idle' && state !== 'preview' && <p className="text-xs text-text-muted" role="status">{progressLabel || 'Working…'}</p>}
-
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button" disabled={state !== 'idle'} onClick={() => void runExport(true)} className="min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Full Backup</button>
-        <button type="button" disabled={state !== 'idle'} onClick={() => void runExport(false)} className="min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Data-only Backup</button>
-      </div>
-      <p className="text-xs text-text-muted">Data-only backup includes projects, sessions, settings, hit data, instrument profiles, and custom samples, but omits large recording audio.</p>
-
-      <button type="button" disabled={state !== 'idle'} onClick={() => fileInputRef.current?.click()} className="w-full min-h-[46px] rounded-lg border border-border-subtle bg-bg-surface text-xs font-semibold text-text-primary disabled:opacity-40">Import Backup</button>
-      <input ref={fileInputRef} type="file" accept=".polypro" className="hidden" onChange={handleFileSelect} />
-
-      {state === 'preview' && importPreview && (
-        <div className="rounded-lg border border-border-subtle bg-bg-surface p-3 space-y-2">
-          <p className="text-xs font-semibold text-text-primary">Import preview</p>
-          <p className="text-xs text-text-secondary">{importPreview.newProjects} new projects · {importPreview.newSessions} new sessions</p>
-          <p className="text-xs text-text-muted">{importPreview.duplicateProjects + importPreview.duplicateSessions} duplicates will be skipped. Existing IDs are never overwritten.</p>
-          <label className="flex items-center gap-2 min-h-[44px] text-xs text-text-primary"><input type="checkbox" checked={restoreSettings} onChange={(event) => setRestoreSettings(event.target.checked)} />Restore backed-up settings and active project</label>
-          <div className="flex gap-2">
-            <button type="button" className="flex-1 min-h-[42px] rounded-lg border border-border-subtle text-xs text-text-secondary" onClick={() => { setState('idle'); setImportPreview(null); setImportFile(null); }}>Cancel</button>
-            <button type="button" className="flex-1 min-h-[42px] rounded-lg bg-accent text-xs font-semibold text-bg-primary" onClick={() => void handleImport()}>Import</button>
-          </div>
-        </div>
-      )}
-
-      <div>
-        <p className="text-xs  text-text-muted mb-1">Recording storage</p>
-        <div className="space-y-1">
-          {sessionGroups.map((group) => (
-            <div key={group.id} className="rounded-lg border border-border-subtle bg-bg-surface">
-              <button type="button" aria-expanded={expandedProject === group.id} onClick={() => setExpandedProject(expandedProject === group.id ? null : group.id)} className="w-full min-h-[42px] px-3 flex items-center justify-between text-xs text-text-secondary">
-                <span>{group.label}</span><span>{group.sessions.filter((session) => session.hasRecording).length} audio</span>
-              </button>
-              {expandedProject === group.id && (
-                <div className="border-t border-border-subtle px-2 py-1 space-y-1">
-                  {group.sessions.map((session) => (
-                    <div key={session.id} className="flex items-center gap-2 min-h-[36px] text-xs text-text-muted">
-                      <span className="flex-1 truncate">{new Date(session.date).toLocaleDateString()} · {session.bpm} BPM</span>
-                      {session.hasRecording ? <button type="button" onClick={() => void handleDeleteAudio(session.id)} className="min-h-[32px] px-2 text-warning">Delete audio</button> : <span>No audio</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
+    <div className="space-y-6">
+      <section aria-labelledby="data-storage" className="space-y-3">
+        <h3 id="data-storage" className="text-sm font-semibold text-text-primary">On this device</h3>
+        {storageInfo && (
+          <div className="ui-field">
+            <div className="flex items-center justify-between">
+              <span className="ui-label flex items-center gap-2">Storage used <HelpTip text="Recordings use most local storage. Poly Pro asks the browser to keep its data, but regular backups are still the safe choice." /></span>
+              <span className="text-sm tabular-nums text-text-secondary">{storageInfo.usedLabel} of {storageInfo.quotaLabel}</span>
             </div>
-          ))}
+            <div className="h-2 overflow-hidden rounded-full bg-bg-raised" role="progressbar" aria-label="Storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(storageInfo.usedPct)}>
+              <div className="h-full bg-accent" style={{ width: `${Math.min(100, storageInfo.usedPct)}%` }} />
+            </div>
+          </div>
+        )}
+        <p className="text-sm tabular-nums text-text-secondary">
+          {projects.length} project{projects.length === 1 ? '' : 's'} · {sessions.length} take{sessions.length === 1 ? '' : 's'} · {recordingCount} with audio
+        </p>
+        {!isPersistent && (
+          <SettingRow label="Keep data when storage is low" description="Asks the browser not to clear Poly Pro automatically.">
+            <Button variant="secondary" onClick={async () => setIsPersistent(await requestPersistentStorage())}>Allow</Button>
+          </SettingRow>
+        )}
+      </section>
+
+      {error && <Notice tone="danger">{error}</Notice>}
+      {message && <Notice tone="success">{message}</Notice>}
+      {busy && state !== 'preview' && <p className="text-sm text-text-secondary" role="status">{progressLabel || 'Working…'}</p>}
+
+      <section aria-labelledby="data-backup" className="space-y-3">
+        <h3 id="data-backup" className="text-sm font-semibold text-text-primary">Backup and restore</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" disabled={busy} onClick={() => void runExport(true)}>Full backup</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => void runExport(false)}>Data-only backup</Button>
         </div>
-      </div>
+        <p className="ui-hint">Data-only leaves out recording audio but keeps projects, takes, settings, hit data, instrument profiles and custom samples.</p>
+        <Button variant="secondary" block disabled={busy} onClick={() => fileInputRef.current?.click()}>Import backup</Button>
+        <input ref={fileInputRef} type="file" accept=".polypro" className="hidden" onChange={handleFileSelect} />
+
+        {state === 'preview' && importPreview && (
+          <div className="ui-surface space-y-2 p-4">
+            <p className="text-sm font-semibold text-text-primary">Import preview</p>
+            <p className="text-sm text-text-secondary">{importPreview.newProjects} new projects · {importPreview.newSessions} new sessions</p>
+            <p className="ui-hint">{importPreview.duplicateProjects + importPreview.duplicateSessions} duplicates will be skipped. Existing items are never overwritten.</p>
+            <SettingRow label="Restore settings and active project">
+              <Toggle label="Restore backed-up settings and active project" enabled={restoreSettings} onChange={setRestoreSettings} />
+            </SettingRow>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={() => { setState('idle'); setImportPreview(null); setImportFile(null); }}>Cancel</Button>
+              <Button variant="primary" onClick={() => void handleImport()}>Import</Button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {sessionGroups.length > 0 && (
+        <section aria-labelledby="data-audio" className="space-y-2">
+          <h3 id="data-audio" className="text-sm font-semibold text-text-primary">Recording audio</h3>
+          <p className="ui-hint">Remove audio to free space. Scores and hit data are kept.</p>
+          <div className="ui-rows border-y border-border-subtle">
+            {sessionGroups.map((group) => (
+              <div key={group.id}>
+                <button type="button" aria-expanded={expandedProject === group.id} onClick={() => setExpandedProject(expandedProject === group.id ? null : group.id)} className="flex min-h-[48px] w-full items-center justify-between gap-3 text-left text-sm text-text-primary">
+                  <span className="truncate">{group.label}</span>
+                  <span className="shrink-0 text-text-muted tabular-nums">{group.sessions.filter((session) => session.hasRecording).length} with audio</span>
+                </button>
+                {expandedProject === group.id && (
+                  <div className="pb-2">
+                    {group.sessions.map((session) => (
+                      <div key={session.id} className="flex min-h-[44px] items-center gap-2 pl-3 text-sm text-text-secondary">
+                        <span className="flex-1 truncate tabular-nums">{new Date(session.date).toLocaleDateString()} · {session.bpm} BPM</span>
+                        {session.hasRecording
+                          ? <Button variant="danger-quiet" className="min-h-[36px] px-3 text-xs" onClick={() => void handleDeleteAudio(session.id)}>Delete audio</Button>
+                          : <span className="text-xs text-text-muted">No audio</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {showDeleteConfirm ? (
-        <div role="alertdialog" aria-label="Delete all Poly Pro data" className="rounded-lg border border-danger/30 bg-danger-dim p-3 space-y-2">
-          <p className="text-xs font-semibold text-danger">Delete all local Poly Pro data?</p>
-          <p className="text-xs text-danger/80">This clears settings, projects, sessions, recording chunks, hit data, presets, custom samples, profiles, and cloud-consent/cache records. It cannot be undone.</p>
-          <div className="flex gap-2">
-            <button type="button" className="flex-1 min-h-[42px] rounded-lg border border-border-subtle text-xs text-text-secondary" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
-            <button type="button" disabled={state === 'deleting'} className="flex-1 min-h-[42px] rounded-lg bg-danger text-xs font-semibold text-white" onClick={() => void handleDeleteAll()}>{state === 'deleting' ? 'Deleting…' : 'Delete Everything'}</button>
+        <div role="alertdialog" aria-label="Delete all Poly Pro data" className="ui-notice ui-notice-danger space-y-3">
+          <p className="font-semibold">Delete all Poly Pro data on this device?</p>
+          <p className="text-text-primary">This removes settings, projects, takes, recordings, hit data, presets, custom samples and instrument profiles. It cannot be undone.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+            <Button variant="danger" disabled={state === 'deleting'} onClick={() => void handleDeleteAll()}>{state === 'deleting' ? 'Deleting…' : 'Delete everything'}</Button>
           </div>
         </div>
       ) : (
-        <button type="button" disabled={state !== 'idle'} onClick={() => setShowDeleteConfirm(true)} className="w-full min-h-[44px] text-xs text-danger disabled:opacity-40">Delete All Data</button>
+        <Button variant="danger-quiet" block disabled={busy} onClick={() => setShowDeleteConfirm(true)}>Delete all data</Button>
       )}
     </div>
   );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-lg border border-border-subtle bg-bg-surface p-2"><p className="text-xs text-text-muted">{label}</p><p className="font-mono text-sm text-text-primary">{value}</p></div>;
 }

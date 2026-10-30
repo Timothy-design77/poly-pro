@@ -32,6 +32,9 @@
   --danger: #B4232C;
   --danger-dim: rgba(180, 35, 44, 0.10);
   --recording: #D92D3A;
+  --text-on-accent: #FFFFFF;
+  --radius-control: 12px;
+  --radius-card: 16px;
 }
 
 * {
@@ -99,12 +102,88 @@ input, textarea {
 .page-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 76px; margin-bottom: 8px; }
 .page-heading { font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -0.035em; }
 .section-heading { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
-.ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; touch-action: manipulation; }
-.ui-button:disabled { opacity: 0.45; }
-.ui-button-primary { background: var(--accent); color: white; border: 1px solid var(--accent); }
-.ui-button-secondary { background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); }
-.ui-button-secondary:active { background: var(--bg-raised); }
-.ui-surface { border: 1px solid var(--border-subtle); border-radius: 16px; background: var(--bg-surface); }
+@layer components {
+  /* ── Shared controls ──────────────────────────────────────────────────────
+     One treatment per role. Components in src/components/ui wrap these classes;
+     prefer the components, and use the classes directly only for one-off markup. */
+  .ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid transparent; border-radius: var(--radius-control); font-size: 14px; font-weight: 600; line-height: 1.25; text-align: center; touch-action: manipulation; cursor: pointer; transition: background-color .12s, border-color .12s, color .12s; }
+  .ui-button:disabled, .ui-button[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+  .ui-button-lg { min-height: 52px; padding-inline: 20px; }
+  .ui-button-block { display: flex; width: 100%; }
+  .ui-button-primary { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); }
+  .ui-button-primary:not(:disabled):active { background: var(--accent-hover); }
+  .ui-button-secondary { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border-subtle); }
+  .ui-button-secondary:not(:disabled):active { background: var(--bg-raised); }
+  .ui-button-quiet { background: transparent; color: var(--text-secondary); }
+  .ui-button-quiet:not(:disabled):active { background: var(--bg-raised); color: var(--text-primary); }
+  .ui-button-danger { background: var(--danger); color: var(--text-on-accent); border-color: var(--danger); }
+  .ui-button-danger-quiet { background: var(--bg-surface); color: var(--danger); border-color: color-mix(in oklab, var(--danger) 35%, transparent); }
+  .ui-button-danger-quiet:not(:disabled):active { background: var(--danger-dim); }
+  .ui-icon-button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: var(--radius-control); color: var(--text-secondary); touch-action: manipulation; cursor: pointer; }
+  .ui-icon-button:not(:disabled):active { background: var(--bg-raised); color: var(--text-primary); }
+  .ui-icon-button:disabled { opacity: 0.45; cursor: default; }
+  @media (hover: hover) {
+    .ui-button-primary:not(:disabled):hover { background: var(--accent-hover); }
+    .ui-button-secondary:not(:disabled):hover { border-color: var(--border-emphasis); }
+    .ui-button-quiet:not(:disabled):hover, .ui-icon-button:not(:disabled):hover { background: var(--bg-raised); color: var(--text-primary); }
+    .ui-button-danger-quiet:not(:disabled):hover { background: var(--danger-dim); }
+  }
+
+  /* Choices: a selected option gets an ink outline, never color alone. */
+  .ui-segmented { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ui-segmented > button, .ui-choice { flex: 1 1 0; min-width: max-content; min-height: 44px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-control); background: var(--bg-surface); color: var(--text-secondary); font-size: 14px; font-weight: 600; touch-action: manipulation; }
+  .ui-segmented > button[aria-pressed="true"], .ui-choice[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-dim); color: var(--text-primary); }
+  .ui-segmented > button:disabled, .ui-choice:disabled { opacity: 0.45; }
+  /* Compact toggle pills in scrolling tool rows; still a 44px target. */
+  .ui-chip { display: inline-flex; flex-shrink: 0; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--border-subtle); border-radius: 9999px; background: var(--bg-surface); color: var(--text-secondary); font-size: 12px; font-weight: 600; white-space: nowrap; touch-action: manipulation; }
+  .ui-chip[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-dim); color: var(--text-primary); }
+
+  /* Form fields. */
+  .ui-field { display: grid; gap: 6px; min-width: 0; }
+  .ui-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+  .ui-hint { font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+  .ui-input, .ui-select { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-control); background: var(--bg-input); color: var(--text-primary); font-size: 14px; }
+  .ui-input::placeholder { color: var(--text-muted); }
+  .ui-input:focus, .ui-select:focus { border-color: var(--accent); }
+  .ui-input:disabled, .ui-select:disabled { opacity: 0.55; }
+  .ui-select { appearance: none; padding-right: 36px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235F6670' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+
+  /* Label/value rows inside surfaces and expanded settings. */
+  .ui-rows > * + * { border-top: 1px solid var(--border-subtle); }
+  .ui-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 8px 0; }
+  .ui-row-text { min-width: 0; }
+  .ui-row-label { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+  .ui-row-desc { margin-top: 2px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+  .ui-row-value { flex-shrink: 0; font-size: 14px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+  /* Inline status, warnings and errors. */
+  .ui-notice { border: 1px solid var(--border-subtle); border-radius: var(--radius-control); padding: 12px 14px; background: var(--bg-raised); color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+  .ui-notice-warning { background: var(--warning-dim); border-color: color-mix(in oklab, var(--warning) 25%, transparent); color: var(--text-primary); }
+  .ui-notice-danger { background: var(--danger-dim); border-color: color-mix(in oklab, var(--danger) 30%, transparent); color: var(--danger); }
+  .ui-notice-success { background: var(--success-dim); border-color: color-mix(in oklab, var(--success) 25%, transparent); color: var(--text-primary); }
+
+  /* Native range inputs. --fill (set by the Range component) paints progress. */
+  .ui-range { width: 100%; height: 44px; margin: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; touch-action: pan-y; }
+  .ui-range:disabled { opacity: 0.45; cursor: default; }
+  .ui-range::-webkit-slider-runnable-track { height: 6px; border-radius: 9999px; background: linear-gradient(to right, var(--accent) var(--fill, 0%), var(--bg-raised) var(--fill, 0%)); box-shadow: inset 0 0 0 1px var(--border-subtle); }
+  .ui-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg-surface); box-shadow: 0 0 0 1px var(--accent); }
+  .ui-range::-moz-range-track { height: 6px; border-radius: 9999px; background: var(--bg-raised); }
+  .ui-range::-moz-range-progress { height: 6px; border-radius: 9999px; background: var(--accent); }
+  .ui-range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg-surface); }
+
+  .ui-surface { border: 1px solid var(--border-subtle); border-radius: var(--radius-card); background: var(--bg-surface); }
+
+  /* Full-screen tools (Review, Calibration, Training, Detection test). Fixed
+     layers sit outside #root, so they apply the safe-area insets themselves. */
+  .screen { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; background: var(--bg-primary); outline: none; padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  .screen-header { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; flex-shrink: 0; min-height: 56px; padding: calc(4px + env(safe-area-inset-top)) 8px 4px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); }
+  .screen-header > :last-child { justify-self: end; }
+  .screen-title { font-size: 15px; font-weight: 600; text-align: center; color: var(--text-primary); }
+  .screen-subtitle { font-size: 12px; text-align: center; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .screen-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .screen-content { width: 100%; max-width: 560px; margin: 0 auto; padding: 20px 20px 32px; }
+  @media (max-width: 360px) { .screen-content { padding-inline: 16px; } }
+}
 
 /* One instrument, a quiet settings list, and consistent controls. */
 .practice-layout { display: grid; gap: 24px; }
