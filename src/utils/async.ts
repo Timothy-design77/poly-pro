@@ -1,87 +1,28 @@
 export class OperationTimeoutError extends Error {
-  readonly operation: string;
-  readonly timeoutMs: number;
-
   constructor(operation: string, timeoutMs: number) {
     super(`${operation} timed out after ${timeoutMs}ms`);
     this.name = 'OperationTimeoutError';
-    this.operation = operation;
-    this.timeoutMs = timeoutMs;
   }
 }
 
-export class OperationCancelledError extends Error {
-  readonly operation: string;
-
-  constructor(operation: string) {
-    super(`${operation} was cancelled`);
-    this.name = 'OperationCancelledError';
-    this.operation = operation;
-  }
-}
-
-interface WithTimeoutOptions<T> {
-  signal?: AbortSignal;
-  /** Cleanup a value that resolves after the caller has already timed out/cancelled. */
-  onLateResolve?: (value: T) => void;
-}
-
-/**
- * Bound a browser operation that may otherwise remain pending forever.
- *
- * Browser media promises cannot always be physically cancelled. When a late
- * value arrives after timeout/cancellation, onLateResolve guarantees that
- * resources such as MediaStreams are immediately disposed.
- */
+/** Bound audio startup waits; callers own microphone/context cleanup. */
 export function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   operation: string,
-  options: WithTimeoutOptions<T> = {},
+  { signal }: { signal?: AbortSignal } = {},
 ): Promise<T> {
-  const { signal, onLateResolve } = options;
-
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-
-    const finish = (callback: () => void) => {
-      if (settled) return false;
-      settled = true;
-      clearTimeout(timeoutId);
-      signal?.removeEventListener('abort', handleAbort);
-      callback();
-      return true;
-    };
-
-    const handleAbort = () => {
-      finish(() => reject(new OperationCancelledError(operation)));
-    };
-
-    const timeoutId = setTimeout(() => {
-      finish(() => reject(new OperationTimeoutError(operation, timeoutMs)));
-    }, timeoutMs);
-
-    if (signal?.aborted) {
-      handleAbort();
-    } else {
-      signal?.addEventListener('abort', handleAbort, { once: true });
-    }
-
-    promise.then(
-      (value) => {
-        if (!finish(() => resolve(value))) {
-          try {
-            onLateResolve?.(value);
-          } catch (error) {
-            console.warn(`[async] Late cleanup failed for ${operation}:`, error);
-          }
-        }
-      },
-      (error) => {
-        // A late rejection is intentionally consumed so it cannot become an
-        // unhandled rejection after the caller has already recovered.
-        finish(() => reject(error));
-      },
-    );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const interrupted = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new OperationTimeoutError(operation, timeoutMs)), timeoutMs);
+    onAbort = () => reject(new DOMException(`${operation} was cancelled`, 'AbortError'));
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
+  });
+  // race also consumes a late rejection after timeout or cancellation.
+  return Promise.race([interrupted, promise]).finally(() => {
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
   });
 }

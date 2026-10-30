@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OperationCancelledError, OperationTimeoutError, withTimeout } from './async';
+import { OperationTimeoutError, withTimeout } from './async';
 
 afterEach(() => { vi.useRealTimers(); });
 
@@ -15,35 +15,20 @@ describe('withTimeout', () => {
     await expect(pending).rejects.toBeInstanceOf(OperationTimeoutError);
   });
 
-  it('rejects with OperationCancelledError when aborted', async () => {
+  it('rejects with AbortError when aborted', async () => {
     const controller = new AbortController();
     const pending = withTimeout(new Promise<never>(() => {}), 10_000, 'Audio startup', { signal: controller.signal });
     controller.abort();
-    await expect(pending).rejects.toBeInstanceOf(OperationCancelledError);
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
 
-  it('disposes a value that resolves after the timeout', async () => {
-    vi.useFakeTimers();
-    let resolveLate: (value: string) => void = () => {};
-    const onLateResolve = vi.fn();
-    const pending = withTimeout(new Promise<string>((resolve) => { resolveLate = resolve; }), 100, 'test', { onLateResolve });
-    vi.advanceTimersByTime(100);
-    await expect(pending).rejects.toBeInstanceOf(OperationTimeoutError);
-    resolveLate('stream');
-    await Promise.resolve();
-    expect(onLateResolve).toHaveBeenCalledWith('stream');
+  it('consumes an operation rejection when its signal was already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(withTimeout(Promise.reject(new Error('Late failure')), 1000, 'Audio startup', { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('propagates operation errors', async () => {
     await expect(withTimeout(Promise.reject(new Error('boom')), 1_000, 'test')).rejects.toThrow('boom');
   });
-});
-
-it('cleans up an operation that resolves when its signal was already aborted', async () => {
-  const controller = new AbortController();
-  controller.abort();
-  const cleanup = vi.fn();
-  await expect(withTimeout(Promise.resolve('stream'), 1000, 'Microphone', { signal: controller.signal, onLateResolve: cleanup })).rejects.toBeInstanceOf(OperationCancelledError);
-  await Promise.resolve();
-  expect(cleanup).toHaveBeenCalledWith('stream');
 });
