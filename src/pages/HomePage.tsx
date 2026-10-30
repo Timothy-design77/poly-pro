@@ -245,17 +245,17 @@ export function HomePage() {
 
         <WaveformDisplay micLevel={recording.micLevel} isRecording={recording.isRecording} />
 
-        {failedSessionId && <div role="alert" className="my-3 rounded-lg bg-warning-dim p-3 text-sm text-text-primary">
+        {failedSessionId && <div role="alert" className="ui-notice ui-notice-warning my-3">
           <p>{analysis.error || 'Analysis cancelled.'} Your recording is saved.</p>
-          <button className="min-h-[44px] underline font-semibold" onClick={() => setDetailSession(sessions.find((session) => session.id === failedSessionId) ?? null)}>Open saved take to retry</button>
+          <button type="button" className="ui-button ui-button-secondary mt-2" onClick={() => setDetailSession(sessions.find((session) => session.id === failedSessionId) ?? null)}>Open saved take to retry</button>
         </div>}
         {recording.error && (
-          <div role="alert" className="bg-danger-dim border border-danger/30 rounded-md p-3 mt-2 text-center">
-            <p className="text-danger text-xs">{recording.error}</p>
+          <div role="alert" className="ui-notice ui-notice-danger mt-2">
+            <p>{recording.error}</p>
             <button
               type="button"
               onClick={recording.clearError}
-              className="text-danger text-xs font-semibold mt-2 min-h-[32px] px-3"
+              className="ui-button ui-button-quiet -ml-3 mt-1 px-3 text-danger"
             >
               Dismiss
             </button>
@@ -263,7 +263,7 @@ export function HomePage() {
         )}
 
         {recording.btTip && (
-          <div className="text-xs text-warning bg-warning-dim border border-warning/20 rounded-lg px-3 py-2 mt-2 text-center">
+          <div role="status" className="ui-notice ui-notice-warning mt-2">
             {recording.btTip}
           </div>
         )}

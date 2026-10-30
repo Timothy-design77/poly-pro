@@ -26,14 +26,14 @@ export default function AnalyzingOverlay({ visible, progress }: Props) {
   if (!visible) return null;
 
   return createPortal(
-    <div ref={dialogRef} tabIndex={-1} data-no-swipe role="dialog" aria-modal="true" aria-labelledby="analysis-title" className="fixed inset-0 z-50 flex flex-col items-center justify-center animate-fade-in" style={{ backgroundColor: 'rgba(242,243,245,0.98)' }}>
-      <div className="relative mb-8" aria-hidden="true"><svg className="animate-spin" width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="24" stroke="#2A2A2E" strokeWidth="4" /><path d="M28 4a24 24 0 0 1 24 24" stroke="rgba(21,23,26,0.85)" strokeWidth="4" strokeLinecap="round" /></svg></div>
+    <div ref={dialogRef} tabIndex={-1} data-no-swipe role="dialog" aria-modal="true" aria-labelledby="analysis-title" className="fixed inset-0 z-50 flex flex-col items-center justify-center animate-fade-in" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <div className="relative mb-8" aria-hidden="true"><svg className="animate-spin" width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="24" stroke="var(--bg-raised)" strokeWidth="4" /><path d="M28 4a24 24 0 0 1 24 24" stroke="var(--accent)" strokeWidth="4" strokeLinecap="round" /></svg></div>
       <h2 id="analysis-title" className="text-xl font-semibold mb-3 text-text-primary">Analyzing your session…</h2>
-      <p className="text-sm mb-6 text-text-muted" aria-live="polite">{stageLabel}</p>
+      <p className="text-sm mb-6 text-text-secondary" aria-live="polite">{stageLabel}</p>
       <div className="w-48 h-1.5 rounded-full overflow-hidden bg-bg-raised" role="progressbar" aria-label="Analysis progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(overallProgress * 100)}>
         <div className="h-full rounded-full bg-accent transition-all duration-300" style={{ width: `${overallProgress * 100}%` }} />
       </div>
-      <button type="button" className="mt-6 min-h-[44px] px-5 rounded-lg border border-border-subtle text-sm text-text-secondary" onClick={() => window.dispatchEvent(new CustomEvent('polypro:cancel-analysis'))}>Cancel Analysis</button>
+      <button type="button" className="ui-button ui-button-secondary mt-6" onClick={() => window.dispatchEvent(new CustomEvent('polypro:cancel-analysis'))}>Cancel analysis</button>
     </div>,
     document.body,
   );

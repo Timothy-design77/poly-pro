@@ -51,7 +51,7 @@ test('fake microphone recording reaches durable IndexedDB storage', async ({ pag
 
   await expect.poll(() => sessionCount(page), { timeout: 15_000 }).toBeGreaterThan(0);
 
-  await expect(page.getByRole('button', { name: 'Cancel Analysis' })).toHaveCount(0, { timeout: 30000 });
+  await expect(page.getByRole('button', { name: 'Cancel analysis' })).toHaveCount(0, { timeout: 30000 });
   const captured = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve) => { const req = indexedDB.open('polypro'); req.onsuccess = () => resolve(req.result); });
     return await new Promise<any>((resolve) => { const req = db.transaction('sessions').objectStore('sessions').getAll(); req.onsuccess = () => { resolve(req.result[0]); db.close(); }; });
