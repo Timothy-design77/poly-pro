@@ -43,3 +43,28 @@ for (const capture of ['recording', 'training'] as const) {
     });
   }
 }
+
+test('cancelling training during pending audio startup releases the microphone promptly', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).pendingTrainingStreams = [];
+    const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (constraints) => {
+      const stream = await getUserMedia(constraints);
+      (window as any).pendingTrainingStreams.push(stream);
+      return stream;
+    };
+    AudioContext.prototype.resume = () => { (window as any).trainingResumePending = true; return new Promise(() => {}); };
+  });
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Instruments', exact: true }).click();
+  await page.getByRole('button', { name: 'Train Instruments', exact: true }).click();
+  await page.getByRole('button', { name: /Snare Not trained/ }).click();
+  await page.getByRole('button', { name: 'Train Snare', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).trainingResumePending === true)).toBe(true);
+  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const streams = (window as any).pendingTrainingStreams as MediaStream[];
+    return streams.length > 0 && streams.every((stream) => stream.getTracks().every((track) => track.readyState === 'ended'));
+  }), { timeout: 1500 }).toBe(true);
+});

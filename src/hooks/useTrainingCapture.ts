@@ -12,11 +12,13 @@ export function useTrainingCapture() {
   const [hitCount, setHitCount] = useState(0);
   const [preparing, setPreparing] = useState(false);
   const epoch = useRef(0);
+  const setupAbort = useRef<AbortController | null>(null);
   const resources = useRef<{ context: AudioContext; stream: MediaStream; worklet: AudioWorkletNode; chunks: Float32Array[]; samples: number; done: Promise<void>; finish: () => void } | null>(null);
   const release = useRef<(() => void) | null>(null);
   const cancelWorker = useRef<(() => void) | null>(null);
   const onLimit = useRef<(() => void) | null>(null);
   const stop = useCallback(() => {
+    setupAbort.current?.abort(); setupAbort.current = null;
     epoch.current++; cancelWorker.current?.(); cancelWorker.current = null;
     const capture = resources.current; resources.current = null;
     if (capture) { capture.worklet.port.onmessage = null; capture.worklet.disconnect(); capture.stream.getTracks().forEach((track) => track.stop()); if (capture.context.state !== 'closed') void capture.context.close().catch(() => {}); capture.finish(); }
@@ -27,12 +29,13 @@ export function useTrainingCapture() {
   const start = useCallback(async (onAutoStop: () => void) => {
     if (isCriticalActivityActive()) throw new Error('Finish the current recording, calibration or data operation first.');
     const token = ++epoch.current;
+    const controller = new AbortController(); setupAbort.current = controller;
     release.current = beginCriticalActivity('training'); setPreparing(true); setHitCount(0); onLimit.current = onAutoStop;
     try {
-      const { stream } = await getPreferredMicStream();
+      const { stream } = await getPreferredMicStream(controller.signal);
       if (token !== epoch.current) { stream.getTracks().forEach((track) => track.stop()); return false; }
       const context = new AudioContext();
-      try { await withTimeout(context.resume(), 10_000, 'Audio startup'); await withTimeout(ensurePcmCaptureWorklet(context), 10_000, 'Recording engine load'); }
+      try { await withTimeout(context.resume(), 10_000, 'Audio startup', { signal: controller.signal }); await withTimeout(ensurePcmCaptureWorklet(context), 10_000, 'Recording engine load', { signal: controller.signal }); }
       catch (error) { stream.getTracks().forEach((track) => track.stop()); void context.close().catch(() => {}); throw error; }
       if (token !== epoch.current) { stream.getTracks().forEach((track) => track.stop()); void context.close().catch(() => {}); return false; }
       const worklet = new AudioWorkletNode(context, 'pcm-capture-processor');
@@ -56,7 +59,8 @@ export function useTrainingCapture() {
       worklet.onprocessorerror = () => onLimit.current?.();
       worklet.port.postMessage({ type: 'start' }); setPreparing(false); return true;
     } catch (error) {
-      if (token === epoch.current) stop();
+      if (token !== epoch.current) return false;
+      stop();
       if (error instanceof OperationTimeoutError) throw new Error('Audio did not start in time. Tap Train to try again.');
       throw error;
     }
