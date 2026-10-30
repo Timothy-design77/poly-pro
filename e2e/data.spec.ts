@@ -15,7 +15,7 @@ async function readTake(page: Page) {
 
 test('full backup restores audio, settings, and corrected take data after deletion', async ({ page }) => {
   await seedSession(page);
-  await page.getByRole('button', { name: '← Back' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await page.getByRole('button', { name: '+ New Project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Project name' }).fill('Backup practice plan');
@@ -54,7 +54,7 @@ test('full backup restores audio, settings, and corrected take data after deleti
 
 test('malformed backup is rejected without changing existing takes', async ({ page }) => {
   await seedSession(page);
-  await page.getByRole('button', { name: '← Back' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await openData(page);
   const zip = new JSZip();
   zip.file('manifest.json', JSON.stringify({ version: 3, format: 'polypro-backup', counts: { recordings: 0 } }));
@@ -79,7 +79,7 @@ test('projects create, edit, switch and delete without losing takes', async ({ p
   await page.getByRole('button', { name: /Quick Start Practice without a project/ }).click();
   await page.getByRole('button', { name: 'Edit Rudiments', exact: true }).click();
   await page.getByRole('button', { name: 'Delete Project', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Delete Rudiments?' }).getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('alertdialog', { name: 'Delete Rudiments?' }).getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Edit Rudiments' })).toHaveCount(0);
   await page.reload();
   await page.getByRole('button', { name: 'Projects', exact: true }).click();

@@ -89,17 +89,19 @@ export function CollapsibleCard({
         <div id={contentId} className="settings-section-content">
           {renderContent && (
             <div className="px-3 pb-4 pt-1">
-              {help && <div className="flex justify-end"><HelpTip text={help} /></div>}
-              {onReset && (
-                <div className="flex justify-end mb-2">
-                  <button
-                    type="button"
-                    onClick={onReset}
-                    className="min-h-[32px] rounded-md px-2.5 text-xs font-semibold text-text-muted active:bg-bg-raised active:text-text-primary"
-                    aria-label={`${resetLabel} ${title}`}
-                  >
-                    {resetLabel}
-                  </button>
+              {(help || onReset) && (
+                <div className="flex items-center justify-end gap-3 -mt-1 mb-1">
+                  {help && <HelpTip text={help} />}
+                  {onReset && (
+                    <button
+                      type="button"
+                      onClick={onReset}
+                      className="ui-button ui-button-quiet px-3 text-xs"
+                      aria-label={`${resetLabel} ${title}`}
+                    >
+                      {resetLabel}
+                    </button>
+                  )}
                 </div>
               )}
               {children}

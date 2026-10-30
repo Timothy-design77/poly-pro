@@ -178,10 +178,10 @@ export function PrecisionSlider({
               type="button"
               aria-label={`Edit ${ariaLabel ?? label ?? 'value'}`}
               onClick={handleValueTap}
-              className="font-mono text-xs text-text-primary px-2 py-1 rounded-md border border-transparent
-                         active:bg-bg-raised active:border-border-subtle transition-colors min-h-[32px] flex items-center"
+              className="font-mono text-sm text-text-primary px-2 -mr-2 rounded-md border border-transparent
+                         active:bg-bg-raised active:border-border-subtle transition-colors min-h-[44px] min-w-[44px] flex items-center justify-end"
             >
-              {displayValue}{unit && <span className="text-text-muted ml-0.5">{unit}</span>}
+              {displayValue}{unit && !formatValue && <span className="text-text-muted ml-0.5">{unit}</span>}
             </button>
           )}
           {isEditing && (
