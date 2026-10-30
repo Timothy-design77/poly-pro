@@ -76,7 +76,7 @@ const screens = [
   ['settings-calibration', settings('Calibration')],
   ['settings-instruments', settings('Instruments')],
   ['settings-data', settings('Data')],
-  ['custom-samples', async (p) => { await settings('Sounds')(p); await p.getByRole('button', { name: /custom|record a sample|add sample/i }).first().click(); }],
+  ['custom-samples', async (p) => { await settings('Sounds')(p); await p.getByRole('button', { name: 'Record', exact: true }).click(); await p.getByRole('textbox', { name: 'Sample name' }).waitFor({ timeout: 15000 }); await p.getByRole('textbox', { name: 'Sample name' }).scrollIntoViewIfNeeded(); }],
   ['detection-bench', async (p) => { await settings('Detection')(p); await p.getByRole('button', { name: /Run Detection Test|Test detection/i }).click(); }],
   ['calibration', async (p) => { await settings('Calibration')(p); await p.getByRole('button', { name: /Run Calibration|Recalibrate|Calibrate/i }).first().click(); }],
   ['training', async (p) => { await settings('Instruments')(p); await p.getByRole('button', { name: /Train Instruments|Manage Instruments|Train instruments|Manage instruments/ }).click(); }],
