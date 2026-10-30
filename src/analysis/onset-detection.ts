@@ -507,6 +507,7 @@ export async function runOnsetDetection(
   spectralFeatures: SpectralFeatures[];
 }> {
   const sampleRate = config.sampleRate;
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) throw new Error('The recording sample rate is invalid.');
   const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
 
   // Workers own their decoded PCM; reuse it instead of allocating gain/filter copies.
@@ -515,6 +516,7 @@ export async function runOnsetDetection(
   let previousInput = 0, previousOutput = 0;
   for (let i = 0; i < processedPcm.length; i++) {
     const input = processedPcm[i] * config.inputGain;
+    if (!Number.isFinite(input)) throw new Error('The recording contains invalid audio samples.');
     const output = config.highPassHz > 0 && i > 0 ? alpha * (previousOutput + input - previousInput) : input;
     previousInput = input; previousOutput = output; processedPcm[i] = output;
   }

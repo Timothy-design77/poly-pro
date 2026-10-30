@@ -227,14 +227,14 @@ function extractBandIsolatedFeatures(
   const result: Record<string, BandSubFeatures> = {};
 
   for (const band of SEPARATION_BANDS) {
-    const minBin = Math.floor(band.minHz / binFreq);
-    const maxBin = Math.min(numBins - 1, Math.ceil(band.maxHz / binFreq));
+    const minBin = Math.ceil(band.minHz / binFreq);
+    const maxBin = Math.min(numBins, Math.ceil(band.maxHz / binFreq));
 
     // Band energy
     let bandEnergy = 0;
     let weightedFreqSum = 0;
     let magSum = 0;
-    for (let i = minBin; i <= maxBin; i++) {
+    for (let i = minBin; i < maxBin; i++) {
       const mag = magnitudes[i];
       const freq = i * binFreq;
       bandEnergy += mag * mag;

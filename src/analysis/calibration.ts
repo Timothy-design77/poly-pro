@@ -82,6 +82,7 @@ export function crossCorrelate(
   searchEnd: number,
 ): { lag: number; correlation: number } {
   const tLen = template.length;
+  if (!tLen) return { lag: 0, correlation: 0 };
   let bestLag = 0;
   let bestCorr = -Infinity;
 
@@ -92,9 +93,9 @@ export function crossCorrelate(
   }
   const tNorm = Math.sqrt(tEnergy) || 1;
 
-  const end = Math.min(searchEnd, signal.length - tLen);
+  const end = Math.min(searchEnd, signal.length - tLen + 1);
 
-  for (let lag = searchStart; lag < end; lag++) {
+  for (let lag = Math.max(0, Math.ceil(searchStart)); lag < end; lag++) {
     let dotProduct = 0;
     let sEnergy = 0;
 
@@ -113,7 +114,7 @@ export function crossCorrelate(
     }
   }
 
-  return { lag: bestLag, correlation: bestCorr };
+  return { lag: bestLag, correlation: Number.isFinite(bestCorr) ? bestCorr : 0 };
 }
 
 /**
@@ -190,7 +191,7 @@ export function computeCalibrationResult(
   // Filter by correlation confidence — 0.5 minimum (stricter to reject false matches)
   const valid: number[] = [];
   for (let i = 0; i < latencies.length; i++) {
-    if (correlations[i] >= 0.5 && latencies[i] >= 0 && latencies[i] < 200) {
+    if (Number.isFinite(correlations[i]) && correlations[i] >= 0.5 && latencies[i] >= 0 && latencies[i] < 200) {
       valid.push(latencies[i]);
     }
   }
