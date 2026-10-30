@@ -24,6 +24,8 @@ interface ScreenDialogProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'
   label?: string;
   subtitle?: ReactNode;
   onBack: () => void;
+  /** Escape handler; defaults to onBack. */
+  onEscape?: () => void;
   backLabel?: string;
   backDisabled?: boolean;
   /** Optional trailing header action. */
@@ -31,10 +33,10 @@ interface ScreenDialogProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'
   children: ReactNode;
 }
 
-export function ScreenDialog({ title, label, subtitle, onBack, backLabel = 'Back', backDisabled = false, action, children, className = '', ...props }: ScreenDialogProps) {
+export function ScreenDialog({ title, label, subtitle, onBack, onEscape, backLabel = 'Back', backDisabled = false, action, children, className = '', ...props }: ScreenDialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  useDialogFocus(ref, true, onBack);
+  useDialogFocus(ref, true, onEscape ?? onBack);
   return createPortal(
     <div ref={ref} role="dialog" aria-modal="true" aria-label={label} aria-labelledby={label ? undefined : titleId} tabIndex={-1} data-no-swipe className={`screen ${className}`} {...props}>
       <header className="screen-header">
