@@ -121,6 +121,7 @@ function findBuiltInMicId(devices: MediaDeviceInfo[]): { deviceId: string; label
  *    or if we can't, use the dummy but immediately stop + re-request
  */
 export async function getPreferredMicStream(signal?: AbortSignal): Promise<MicResult> {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access requires a supported browser and a secure connection.');
   try {
     checkCancelled(signal);
     // Step 1: Try enumerating WITHOUT a dummy stream (works if permission was previously granted)

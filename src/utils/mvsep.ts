@@ -98,8 +98,7 @@ async function cacheResult(result: MVSEPResult): Promise<void> {
  * Convert raw PCM blob to WAV format for upload.
  * MVSEP expects standard audio formats, not raw PCM.
  */
-function pcmToWav(pcmBlob: Blob, sampleRate: number = 48000): Promise<Blob> {
-  return new Promise(async (resolve) => {
+async function pcmToWav(pcmBlob: Blob, sampleRate: number = 48000): Promise<Blob> {
     const pcmData = new Float32Array(await pcmBlob.arrayBuffer());
     const numChannels = 1;
     const bitsPerSample = 16;
@@ -139,8 +138,7 @@ function pcmToWav(pcmBlob: Blob, sampleRate: number = 48000): Promise<Blob> {
       offset += 2;
     }
 
-    resolve(new Blob([buffer], { type: 'audio/wav' }));
-  });
+    return new Blob([buffer], { type: 'audio/wav' });
 }
 
 /**
@@ -280,10 +278,11 @@ export async function checkSeparationStatus(sessionId: string): Promise<MVSEPRes
       requestedAt: new Date().toISOString(),
     };
   } catch (err) {
-    return cached ?? {
+    return {
       sessionId,
       completed: false,
       requestedAt: new Date().toISOString(),
+      ...cached,
       error: err instanceof Error ? err.message : 'Status check failed',
     };
   }
