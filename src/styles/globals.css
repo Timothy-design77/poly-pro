@@ -134,6 +134,9 @@ input, textarea {
   .ui-segmented > button, .ui-choice { flex: 1 1 0; min-width: max-content; min-height: 44px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-control); background: var(--bg-surface); color: var(--text-secondary); font-size: 14px; font-weight: 600; touch-action: manipulation; }
   .ui-segmented > button[aria-pressed="true"], .ui-choice[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-dim); color: var(--text-primary); }
   .ui-segmented > button:disabled, .ui-choice:disabled { opacity: 0.45; }
+  /* Compact toggle pills in scrolling tool rows; still a 44px target. */
+  .ui-chip { display: inline-flex; flex-shrink: 0; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--border-subtle); border-radius: 9999px; background: var(--bg-surface); color: var(--text-secondary); font-size: 12px; font-weight: 600; white-space: nowrap; touch-action: manipulation; }
+  .ui-chip[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-dim); color: var(--text-primary); }
 
   /* Form fields. */
   .ui-field { display: grid; gap: 6px; min-width: 0; }
