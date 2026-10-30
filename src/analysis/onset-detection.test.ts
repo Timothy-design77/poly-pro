@@ -127,3 +127,13 @@ it('detects every transient in a three-minute practice take with bounded owned P
   expect(result.spectralFeatures).toHaveLength(times.length);
   result.onsets.forEach((onset, index) => expect(Math.abs(onset.time - times[index])).toBeLessThan(0.02));
 }, 15000);
+
+it.each([NaN, Infinity, -Infinity])('rejects non-finite PCM (%s) instead of reporting successful analysis', async (value) => {
+  const pcm = new Float32Array(48000);
+  pcm[12000] = value;
+  await expect(runOnsetDetection(pcm, DEFAULT_ANALYSIS_CONFIG, 120, 1)).rejects.toThrow('invalid audio samples');
+});
+
+it.each([0, NaN, Infinity])('rejects an invalid sample rate (%s)', async (sampleRate) => {
+  await expect(runOnsetDetection(new Float32Array(), { ...DEFAULT_ANALYSIS_CONFIG, sampleRate }, 120, 1)).rejects.toThrow('sample rate');
+});
