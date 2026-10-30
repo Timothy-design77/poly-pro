@@ -19,7 +19,8 @@ export default defineConfig({
   webServer: {
     command: `npm run preview -- --host 127.0.0.1 --port ${port} --strictPort`,
     url: `http://127.0.0.1:${port}/poly-pro/`,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse a listener: it may be another worktree's build.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
   projects: [
