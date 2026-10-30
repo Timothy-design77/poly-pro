@@ -114,8 +114,8 @@ test('cancelling pending microphone permission discards late probe streams witho
 
 test('recording with Trainer saves the same starting tempo as the captured beat grid', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: /Trainer Off/ }).click();
-  await page.getByRole('switch', { name: 'Enable Trainer' }).click();
+  await page.getByRole('button', { name: /^Trainer.*Off/ }).click();
+  await page.getByRole('switch', { name: 'Enable trainer' }).click();
   await page.getByRole('spinbutton', { name: 'Trainer start BPM' }).fill('80');
   await page.getByRole('spinbutton', { name: 'Trainer start BPM' }).blur();
   await expect(page.getByRole('spinbutton', { name: 'Trainer start BPM' })).toHaveValue('80');

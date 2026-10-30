@@ -1,10 +1,6 @@
 import { useMetronomeStore } from '../../store/metronome-store';
 import { Toggle } from '../ui/Toggle';
-
-const sliderClass = `w-full accent-accent h-2 bg-bg-raised rounded-full appearance-none
-                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
-                     [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
-                     [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer`;
+import { Range } from '../ui/Range';
 
 export function PracticeModes() {
   const countInBars = useMetronomeStore((s) => s.countInBars);
@@ -29,7 +25,7 @@ export function PracticeModes() {
     <div className="space-y-5">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-text-primary">Count-in Bars</span>
+          <span className="text-sm text-text-primary">Count-in bars</span>
         </div>
         <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
           <button type="button" aria-label="Decrease count-in bars" onClick={() => setCountInBars(Math.max(0, countInBars - 1))} className={stepperButton}>−</button>
@@ -47,15 +43,7 @@ export function PracticeModes() {
             {swing === 0 ? 'Straight' : `${Math.round(swing * 100)}%`}
           </span>
         </div>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          aria-label="Swing"
-          value={Math.round(swing * 100)}
-          onChange={(event) => setSwing(Number(event.target.value) / 100)}
-          className={sliderClass}
-        />
+        <Range aria-label="Swing" min={0} max={100} value={Math.round(swing * 100)} onChange={(value) => setSwing(value / 100)} />
         {swing > 0 && subdivision <= 1 && (
           <div className="text-xs text-warning mt-1.5">
             Swing requires a subdivision (8ths, triplets, etc.)
@@ -65,13 +53,13 @@ export function PracticeModes() {
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-text-primary">Play / Mute Cycle</span>
-          <Toggle label="Play / Mute Cycle" enabled={playMuteCycleEnabled} onChange={(value) => setPlayMuteCycle(value)} />
+          <span className="text-sm text-text-primary">Play and mute cycle</span>
+          <Toggle label="Play and mute cycle" enabled={playMuteCycleEnabled} onChange={(value) => setPlayMuteCycle(value)} />
         </div>
         {playMuteCycleEnabled && (
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">Play Bars</label>
+              <label className="ui-label mb-1 block">Play bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button type="button" aria-label="Decrease play bars" onClick={() => setPlayMuteCycle(true, Math.max(1, playMuteCyclePlayBars - 1))} className={stepperButton}>−</button>
                 <span className="flex-1 text-center font-mono text-base text-text-primary font-semibold">{playMuteCyclePlayBars}</span>
@@ -79,7 +67,7 @@ export function PracticeModes() {
               </div>
             </div>
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">Mute Bars</label>
+              <label className="ui-label mb-1 block">Mute bars</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button type="button" aria-label="Decrease mute bars" onClick={() => setPlayMuteCycle(true, undefined, Math.max(1, playMuteCycleMuteBars - 1))} className={stepperButton}>−</button>
                 <span className="flex-1 text-center font-mono text-base text-text-primary font-semibold">{playMuteCycleMuteBars}</span>
@@ -92,68 +80,35 @@ export function PracticeModes() {
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-text-primary">Gap Click</span>
-          <Toggle label="Gap Click" enabled={gapClickEnabled} onChange={(value) => setGapClick(value)} />
+          <span className="text-sm text-text-primary">Gap click</span>
+          <Toggle label="Gap click" enabled={gapClickEnabled} onChange={(value) => setGapClick(value)} />
         </div>
         {gapClickEnabled && (
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-text-muted">Mute probability</span>
+              <span className="ui-label">Mute probability</span>
               <span className="font-mono text-xs text-text-muted">{Math.round(gapClickProbability * 100)}%</span>
             </div>
-            <input
-              type="range"
-              min="5"
-              max="80"
-              aria-label="Gap click mute probability"
-              value={Math.round(gapClickProbability * 100)}
-              onChange={(event) => setGapClick(true, Number(event.target.value) / 100)}
-              className={sliderClass}
-            />
+            <Range aria-label="Gap click mute probability" min={5} max={80} value={Math.round(gapClickProbability * 100)} onChange={(value) => setGapClick(true, value / 100)} />
           </div>
         )}
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-text-primary">Random Mute</span>
-          <Toggle label="Random Mute" enabled={randomMuteEnabled} onChange={(value) => setRandomMute(value)} />
+          <span className="text-sm text-text-primary">Random mute</span>
+          <Toggle label="Random mute" enabled={randomMuteEnabled} onChange={(value) => setRandomMute(value)} />
         </div>
         {randomMuteEnabled && (
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-text-muted">Measure mute %</span>
+              <span className="ui-label">Measures muted</span>
               <span className="font-mono text-xs text-text-muted">{Math.round(randomMuteProbability * 100)}%</span>
             </div>
-            <input
-              type="range"
-              min="10"
-              max="75"
-              aria-label="Random measure mute probability"
-              value={Math.round(randomMuteProbability * 100)}
-              onChange={(event) => setRandomMute(true, Number(event.target.value) / 100)}
-              className={sliderClass}
-            />
+            <Range aria-label="Random measure mute probability" min={10} max={75} value={Math.round(randomMuteProbability * 100)} onChange={(value) => setRandomMute(true, value / 100)} />
           </div>
         )}
       </div>
     </div>
   );
-}
-
-export function usePracticeBadge(): string {
-  const countIn = useMetronomeStore((s) => s.countInBars);
-  const gap = useMetronomeStore((s) => s.gapClickEnabled);
-  const mute = useMetronomeStore((s) => s.randomMuteEnabled);
-  const swing = useMetronomeStore((s) => s.swing);
-  const pmCycle = useMetronomeStore((s) => s.playMuteCycleEnabled);
-  const pmPlay = useMetronomeStore((s) => s.playMuteCyclePlayBars);
-  const pmMute = useMetronomeStore((s) => s.playMuteCycleMuteBars);
-  const parts: string[] = [];
-  if (countIn > 0) parts.push(`${countIn}-bar`);
-  if (swing > 0) parts.push('Swing');
-  if (pmCycle) parts.push(`${pmPlay}/${pmMute}`);
-  if (gap) parts.push('Gap');
-  if (mute) parts.push('Mute');
-  return parts.length > 0 ? parts.join(' · ') : 'Off';
 }

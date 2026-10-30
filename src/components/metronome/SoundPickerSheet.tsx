@@ -84,20 +84,21 @@ export function SoundPickerSheet({
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-border-subtle shrink-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-semibold text-text-primary">{beatLabel} Sound</span>
+            <span className="text-sm font-semibold text-text-primary">{beatLabel} sound</span>
             <button
+              type="button"
               onClick={onClose}
-              className="text-xs text-text-muted font-semibold px-2 py-1 rounded active:bg-bg-raised"
+              className="ui-button ui-button-quiet -mr-3 px-3"
             >
               Done
             </button>
           </div>
           {hasOverride ? (
-            <div className="text-xs text-text-muted">
+            <div className="text-xs text-text-secondary">
               Custom override · Default: {inheritedName}
             </div>
           ) : (
-            <div className="text-xs text-text-muted">
+            <div className="text-xs text-text-secondary">
               Using track default: {inheritedName}
             </div>
           )}

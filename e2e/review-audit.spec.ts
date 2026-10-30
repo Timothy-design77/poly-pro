@@ -49,7 +49,7 @@ test('silent capture silences a running metronome, stores its grid, and restores
   expect(take.recordingTiming.scheduledBeats.length).toBeGreaterThan(1);
   expect(take.recordingTiming.recordingEndTime - take.recordingTiming.recordingStartTime).toBeCloseTo(take.durationMs / 1000, 5);
   expect(JSON.stringify(take.headlines)).not.toContain('Estimated beat grid');
-  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Start metronome', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).clickStarts)).toBeGreaterThan(before);
   await page.getByRole('button', { name: 'Stop metronome', exact: true }).click();

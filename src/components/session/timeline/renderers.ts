@@ -9,6 +9,7 @@ import { gridFromParams } from '../../../analysis/grid';
 import { bandColor } from '../Spectrogram';
 import type { SpectrogramData } from '../Spectrogram';
 import { CANVAS_HEIGHT, MINIMAP_HEIGHT } from './timeline-shared';
+import { cssVar, withAlpha } from '../../../styles/tokens';
 
 /**
  * Minimal onset shape the renderer needs — structurally satisfied by both
@@ -79,7 +80,7 @@ export function renderTimeline({
       const scoringWindowS = ioi * scoringWindowPct / 100;
       const scoringWindowPx = (scoringWindowS / durationS) * totalWidth;
       if (isMainBeat && scoringWindowPx > 1) {
-        ctx.fillStyle = 'rgba(74,222,128,0.06)';
+        ctx.fillStyle = withAlpha(cssVar('--success'), 0.06);
         ctx.fillRect(x - scoringWindowPx, 0, scoringWindowPx * 2, CANVAS_HEIGHT);
       }
 
@@ -164,10 +165,10 @@ export function renderTimeline({
       if (onset.scored) {
         const absDev = Math.abs(onset.delta);
         color = absDev < 10
-          ? 'rgba(74,222,128,0.8)'
+          ? withAlpha(cssVar('--success'), 0.8)
           : absDev < 25
-            ? 'rgba(251,191,36,0.7)'
-            : 'rgba(248,113,113,0.7)';
+            ? withAlpha(cssVar('--warning'), 0.7)
+            : withAlpha(cssVar('--danger'), 0.7);
       } else {
         color = 'rgba(21,23,26,0.15)';
       }
