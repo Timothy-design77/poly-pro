@@ -28,7 +28,7 @@ export function MeterControl() {
 
   return (
     <div>
-      <div className="text-xs text-text-muted  mb-2">Time Signature</div>
+      <div className="ui-label mb-2">Time signature</div>
       <div className="flex items-center justify-center gap-3">
         <button
           type="button" aria-label="Previous beats per measure"

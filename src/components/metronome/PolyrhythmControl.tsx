@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMetronomeStore } from '../../store/metronome-store';
 import { SOUND_CATALOG } from '../../audio/sounds';
 import { audioEngine } from '../../audio';
+import { Range } from '../ui/Range';
 
 const TRACK_COLORS = ['#15171A', '#0D9488', '#B45309', '#BE185D'];
 
@@ -153,12 +154,12 @@ export function PolyrhythmControl() {
               <div className="px-3 pb-3 pt-2 border-t border-border-subtle space-y-3 bg-bg-primary">
                 <div className="grid grid-cols-2 gap-2">
                   <TrackSoundPicker
-                    label="Click Sound"
+                    label="Click sound"
                     currentSound={track.normalSound}
                     onSelect={(id) => setTrackSound(track.id, id, false)}
                   />
                   <TrackSoundPicker
-                    label="Accent Sound"
+                    label="Accent sound"
                     currentSound={track.accentSound}
                     onSelect={(id) => setTrackSound(track.id, id, true)}
                   />
@@ -166,23 +167,12 @@ export function PolyrhythmControl() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs text-text-muted ">Swing</label>
+                    <span className="ui-label">Swing</span>
                     <span className="font-mono text-xs text-text-muted">
                       {track.swing === 0 ? 'Straight' : `${Math.round(track.swing * 100)}%`}
                     </span>
                   </div>
-                  <input
-                    type="range"
-                    aria-label={`Track ${index + 2} swing`}
-                    min="0"
-                    max="100"
-                    value={Math.round(track.swing * 100)}
-                    onChange={(event) => setTrackSwing(track.id, Number(event.target.value) / 100)}
-                    className="w-full accent-accent h-2 bg-bg-raised rounded-full appearance-none
-                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
-                               [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
-                               [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer"
-                  />
+                  <Range aria-label={`Track ${index + 2} swing`} min={0} max={100} value={Math.round(track.swing * 100)} onChange={(value) => setTrackSwing(track.id, value / 100)} />
                 </div>
 
                 <div className="text-xs text-text-muted">
@@ -214,11 +204,10 @@ export function PolyrhythmControl() {
           <button
             type="button"
             onClick={() => addTrack(newBeats)}
-            className="flex-1 h-[44px] rounded-xl border-2 border-dashed border-border-emphasis
-                       text-sm font-semibold text-text-secondary active:bg-bg-raised
-                       flex items-center justify-center gap-2 touch-manipulation"
+            className="ui-button ui-button-secondary flex-1 border-dashed"
           >
-            + Add Track
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            Add track
           </button>
         </div>
       )}

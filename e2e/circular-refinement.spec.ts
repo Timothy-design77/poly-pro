@@ -101,7 +101,7 @@ test('four rhythm rings leave room for a decimal tempo on the narrow screen', as
   for (const key of ['3', '9', '9', 'Decimal point', '5']) await dialog.getByRole('button', { name: key, exact: true }).click();
   await dialog.getByRole('button', { name: 'Set', exact: true }).click();
   await page.getByRole('button', { name: /^Polyrhythm/ }).click();
-  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: '+ Add Track', exact: true }).click();
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Add track', exact: true }).click();
   await page.getByRole('button', { name: /^Polyrhythm/ }).click();
   await page.locator('.metronome-dial').scrollIntoViewIfNeeded();
   const ring = (await page.locator('[data-rhythm-track] > circle').last().boundingBox())!;

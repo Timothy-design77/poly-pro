@@ -207,7 +207,7 @@ export function BeatGrid() {
                       </span>
                       {/* Override indicator dot */}
                       {hasOverride && (
-                        <div className="absolute top-1 right-1 w-[5px] h-[5px] rounded-full bg-[rgba(45,212,191,0.6)]" />
+                        <div className="absolute top-1 right-1 w-[5px] h-[5px] rounded-full bg-accent" />
                       )}
                     </button>
                   );
@@ -259,7 +259,7 @@ export function BeatGrid() {
                         />
                         <span aria-hidden="true" className="relative z-10 text-xs font-mono text-text-primary">{Math.floor(i / subdivision) + 1}.{i % subdivision + 1}</span>
                         {hasOverride && (
-                          <div className="absolute top-0.5 right-0.5 w-[3px] h-[3px] rounded-full bg-[rgba(45,212,191,0.6)]" />
+                          <div className="absolute top-0.5 right-0.5 w-[3px] h-[3px] rounded-full bg-accent" />
                         )}
                       </button>
                     );
