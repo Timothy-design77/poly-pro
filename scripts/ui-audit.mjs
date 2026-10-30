@@ -117,6 +117,8 @@ for (const vp of viewports) {
         for (const el of document.querySelectorAll('button, a[href], input, select, [role="switch"], [role="slider"], [role="tab"]')) {
           const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
           if (el.closest('[hidden],[aria-hidden="true"]') || el.type === 'range') continue;
+          const before = getComputedStyle(el, '::before');
+          if (before.content !== 'none' && before.position === 'absolute') continue; // hit area extended by ::before
           if (r.width < 24 || r.height < 24 || (r.height < 40 && r.width < 40)) out.push(`${(el.getAttribute('aria-label') || el.textContent || el.tagName).trim().slice(0, 28)} ${Math.round(r.width)}x${Math.round(r.height)}`);
         }
         return out.slice(0, 12);
