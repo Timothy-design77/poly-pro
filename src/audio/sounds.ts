@@ -174,7 +174,12 @@ export function loadSound(ctx: AudioContext, soundId: string): Promise<AudioBuff
   if (cached) return Promise.resolve(cached);
   const pending = pendingLoads.get(soundId);
   if (pending) return pending;
-  const request = loadUncachedSound(ctx, soundId).finally(() => pendingLoads.delete(soundId));
+  const request = loadUncachedSound(ctx, soundId).then((buffer) => {
+    if (buffer && pendingLoads.get(soundId) === request) bufferCache.set(soundId, buffer);
+    return buffer;
+  }).finally(() => {
+    if (pendingLoads.get(soundId) === request) pendingLoads.delete(soundId);
+  });
   pendingLoads.set(soundId, request);
   return request;
 }
@@ -204,7 +209,6 @@ async function loadUncachedSound(ctx: AudioContext, soundId: string): Promise<Au
     const audioBuffer = soundId === 'woodblock'
       ? tightGateWoodblock(ctx, decodedBuffer)
       : decodedBuffer;
-    bufferCache.set(soundId, audioBuffer);
     return audioBuffer;
   } catch (err) {
     console.error(`Failed to load sound ${soundId}:`, err);
@@ -227,7 +231,6 @@ async function loadCustomSample(
     }
     const arrayBuffer = await record.blob.arrayBuffer();
     const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-    bufferCache.set(soundId, audioBuffer);
     return audioBuffer;
   } catch (err) {
     console.error(`Failed to load custom sample ${soundId}:`, err);
@@ -240,6 +243,7 @@ async function loadCustomSample(
  * Avoids needing to round-trip through IDB to use it immediately.
  */
 export function registerCustomBuffer(soundId: string, buffer: AudioBuffer): void {
+  pendingLoads.delete(soundId);
   bufferCache.set(soundId, buffer);
 }
 
@@ -261,8 +265,9 @@ export function getSoundsByCategory(category: SoundEntry['category']): SoundEntr
  * Clear buffer cache (for cleanup).
  */
 export function clearBufferCache(): void {
+  pendingLoads.clear();
   bufferCache.clear();
 }
 
 /** Release deleted custom audio so playback falls back immediately. */
-export function forgetCustomBuffer(soundId: string): void { bufferCache.delete(soundId); }
+export function forgetCustomBuffer(soundId: string): void { pendingLoads.delete(soundId); bufferCache.delete(soundId); }
