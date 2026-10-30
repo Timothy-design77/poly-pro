@@ -4,30 +4,13 @@ import { useSessionStore } from '../store/session-store';
 import { usePlayback } from '../hooks/usePlayback';
 const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module) => ({ default: module.SessionDetailPage })));
 import type { SessionRecord } from '../store/db';
-import { TakeComparison } from '../components/progress/TakeComparison';
 import { PageHeader } from '../components/ui/PageHeader';
-import { HelpTip } from '../components/ui/HelpTip';
+import { Button } from '../components/ui/Button';
+import { Notice } from '../components/ui/Notice';
+import { CollapsibleCard } from '../components/ui/CollapsibleCard';
+import { TakeRow } from '../components/recordings/TakeRow';
+import { PracticeProgress } from '../components/recordings/PracticeProgress';
 import { useNavStore, PAGE_HOME } from '../store/nav-store';
-import { getPracticeStreak } from '../utils/practice-streak';
-
-function formatDuration(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const mins = Math.floor(totalSec / 60);
-  const hours = Math.floor(mins / 60);
-  if (hours > 0) return `${hours}h ${mins % 60}m`;
-  if (mins === 0) return `${totalSec}s`;
-  return `${mins}m`;
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 export function ProgressPage() {
   const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
@@ -46,250 +29,50 @@ export function ProgressPage() {
     await loadSessions();
   }, [loadSessions]);
 
-  const totalTime = sessions.reduce((acc, session) => acc + session.durationMs, 0);
-  const scoredSessions = sessions.filter((session) => session.analyzed && (session.totalScored ?? session.totalHits) >= 8);
-  const bestPct = scoredSessions.reduce((best, session) => Math.max(best, session.score ?? 0), 0);
-
-  const streak = getPracticeStreak(sessions.map((session) => session.date));
-
-  const heatmapData = (() => {
-    const cells: number[] = [];
-    const today = new Date();
-    for (let i = 27; i >= 0; i--) {
-      const day = new Date(today);
-      day.setDate(day.getDate() - i);
-      const dayStr = day.toDateString();
-      cells.push(sessions.filter((session) => new Date(session.date).toDateString() === dayStr).length);
-    }
-    return cells;
-  })();
-
-  const bpmProgress = activeProject
-    ? activeProject.goalBpm === activeProject.startBpm
-      ? 100
-      : Math.min(100, Math.max(0,
-          ((activeProject.currentBpm - activeProject.startBpm) /
-          (activeProject.goalBpm - activeProject.startBpm)) * 100
-        ))
-    : 0;
-
   return (
     <div className="h-full overflow-y-auto bg-bg-primary">
       <div className="app-page">
         <PageHeader title="Recordings" />
-        <label className="flex items-center gap-3 mb-4 text-sm text-text-secondary">
-          <span>Project</span>
-          <select aria-label="Filter recordings by project" value={effectiveFilter} onChange={(event) => setProjectFilter(event.target.value)} className="flex-1 min-w-0 min-h-[44px] rounded-xl border border-border-subtle bg-bg-surface px-3">
+        <label className="mb-4 flex items-center gap-3">
+          <span className="ui-label">Project</span>
+          <select aria-label="Filter recordings by project" value={effectiveFilter} onChange={(event) => setProjectFilter(event.target.value)} className="ui-select min-w-0 flex-1">
             <option value="all">All recordings</option><option value="quick">Quick Start</option>
             {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
           </select>
         </label>
-        {playbackError && <p role="alert" className="text-sm text-danger my-3">{playbackError}</p>}
-        <div>
-          {sessions.length > 0 && <h2 className="section-heading">{sessions.length} take{sessions.length === 1 ? '' : 's'}</h2>}
-          {sessions.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-state-icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 9v6m4-10v14m4-12v10m4-14v18m4-12v6" /></svg></span>
-              <h2>{activeProject ? 'No takes in this project' : 'Your practice, recorded'}</h2>
-              <p>Record a take to hear it back and explore your timing.</p>
-              <button type="button" className="ui-button ui-button-primary" onClick={() => useNavStore.getState().navigateTo(PAGE_HOME)}>Go to Practice</button>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {sessions.slice(0, visibleSessions).map((session) => {
-                const isPlaying = playingSessionId === session.id;
-                const score = session.analyzed ? (session.score ?? 0) : session.perfectPct;
-                const sigmaLabel = session.analyzed && session.sigmaLevel ? session.sigmaLevel : null;
-                const sigma = session.analyzed && session.sigma !== undefined ? session.sigma : null;
-                const firstHeadline = session.analyzed && session.headlines?.length ? session.headlines[0] : null;
-                const headline = typeof firstHeadline === 'string' ? firstHeadline : firstHeadline?.text ?? null;
+        {playbackError && <Notice tone="danger" className="mb-3">{playbackError}</Notice>}
 
-                return (
-                  <div
-                    key={session.id}
-                    className="bg-bg-surface rounded-2xl px-4 py-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      {session.hasRecording && (
-                        <button
-                          type="button"
-                          onClick={(event) => { event.stopPropagation(); play(session.id); }}
-                          className={`w-[48px] h-[48px] rounded-full flex items-center justify-center
-                                      shrink-0 touch-manipulation border border-border-subtle
-                            ${isPlaying
-                              ? 'bg-accent text-bg-primary'
-                              : 'bg-bg-raised text-text-primary active:bg-accent-dim'}`}
-                          aria-label={isPlaying ? 'Pause recording playback' : 'Play recording'}
-                        >
-                          {isPlaying ? (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                              <rect x="5" y="4" width="5" height="16" rx="1" />
-                              <rect x="14" y="4" width="5" height="16" rx="1" />
-                            </svg>
-                          ) : (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                              <polygon points="6 3 20 12 6 21" />
-                            </svg>
-                          )}
-                        </button>
-                      )}
-
-                      <button type="button" aria-label={`Review take ${formatDate(session.date)} ${session.bpm} BPM`} onClick={() => { stop(); setSelectedSession(session); }} className="flex-1 min-w-0 flex gap-3 items-center text-left min-h-[44px]">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-text-secondary">{formatDate(session.date)}</span>
-                          <span className="font-mono text-sm text-text-primary font-semibold">{session.bpm} BPM</span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <span className="text-xs text-text-muted">{session.meter}</span>
-                          <span className="text-xs text-text-muted">
-                            {session.analyzed ? (session.totalScored ?? session.totalHits) : session.totalHits} hits
-                          </span>
-                          {sigma !== null && (
-                            <span className="text-xs font-mono text-text-muted">σ {sigma.toFixed(1)}ms</span>
-                          )}
-                          {session.durationMs > 0 && (
-                            <span className="text-xs text-text-muted">
-                              {Math.floor(session.durationMs / 60000)}:{String(Math.floor((session.durationMs / 1000) % 60)).padStart(2, '0')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-end shrink-0">
-                        <span className={`font-mono text-xs font-semibold
-                          ${score >= 85 ? 'text-success'
-                            : score >= 70 ? 'text-warning'
-                            : 'text-danger'}`}
-                        >
-                          {session.analyzed ? `${Math.round(score)}%` : 'Needs analysis'}
-                        </span>
-                        {sigmaLabel && (
-                          <span className="text-xs text-text-muted">{sigmaLabel}</span>
-                        )}
-                      </div>
-                      </button>
-                    </div>
-                    {headline && (
-                      <p className="text-xs text-text-muted mt-1 ml-[60px] truncate">{headline}</p>
-                    )}
-                  </div>
-                );
-              })}
-
-              {sessions.length > visibleSessions && (
-                <button
-                  type="button"
-                  onClick={() => setVisibleSessions((visible) => visible + 20)}
-                  className="w-full min-h-[44px] py-2.5 text-text-secondary text-xs font-semibold active:bg-bg-raised rounded-lg"
-                >
-                  Show more ({sessions.length - visibleSessions} remaining)
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {sessions.length > 0 && <details className="mt-5 ui-surface p-3"><summary className="min-h-[44px] cursor-pointer text-sm font-semibold">Practice progress</summary>
-        <TakeComparison sessions={sessions} />
-        <div className="bg-bg-surface rounded-xl border border-border-subtle p-4 mb-3 shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-text-secondary">Score</span>
+        {sessions.length === 0 ? (
+          <div className="empty-state">
+            <span className="empty-state-icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 9v6m4-10v14m4-12v10m4-14v18m4-12v6" /></svg></span>
+            <h2>{activeProject ? 'No takes in this project' : 'Your practice, recorded'}</h2>
+            <p>Record a take to hear it back and explore your timing.</p>
+            <Button variant="primary" onClick={() => useNavStore.getState().navigateTo(PAGE_HOME)}>Go to Practice</Button>
           </div>
-          {scoredSessions.length > 0 ? (
-            <div className="h-32 flex items-end gap-[2px]" aria-label="Recent session scores">
-              {scoredSessions.slice(0, 20).reverse().map((session) => {
-                const score = session.analyzed ? (session.score ?? 0) : session.perfectPct;
-                return (
-                  <div
-                    key={session.id}
-                    className="flex-1 rounded-t"
-                    title={`${session.analyzed ? `${Math.round(score)}%` : 'Needs analysis'}`}
-                    style={{
-                      height: `${Math.max(4, score)}%`,
-                      backgroundColor: score >= 85
-                        ? 'rgba(24,122,59,0.65)'
-                        : score >= 70
-                          ? 'rgba(164,81,8,0.60)'
-                          : 'rgba(180,35,44,0.55)',
-                    }}
-                  />
-                );
-              })}
-            </div>
-          ) : (
-            <div className="h-32 flex items-end justify-center">
-              <p className="text-text-muted text-xs text-center leading-relaxed">
-                Complete a recorded session<br />to see your stats
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-2.5 mb-3 shrink-0">
-          <div className="flex-1 bg-bg-surface rounded-xl border border-border-subtle p-3">
-            <p className="text-xs text-text-muted  font-semibold mb-2">
-              Consistency
-            </p>
-            <div className="grid grid-cols-7 gap-[2px]">
-              {heatmapData.map((count, index) => (
-                <div
-                  key={index}
-                  className="aspect-square rounded-[2px] border border-border-subtle/50"
-                  style={{
-                    backgroundColor: count === 0
-                      ? 'rgba(21,23,26,0.035)'
-                      : count === 1
-                        ? 'rgba(24,122,59,0.18)'
-                        : count <= 3
-                          ? 'rgba(24,122,59,0.38)'
-                          : 'rgba(24,122,59,0.68)',
-                  }}
-                />
+        ) : (
+          <>
+            <h2 className="section-heading">{sessions.length} take{sessions.length === 1 ? '' : 's'}</h2>
+            <ul className="space-y-2">
+              {sessions.slice(0, visibleSessions).map((session) => (
+                <TakeRow key={session.id} session={session} playing={playingSessionId === session.id}
+                  onTogglePlay={() => play(session.id)} onOpen={() => { stop(); setSelectedSession(session); }} />
               ))}
+            </ul>
+            {sessions.length > visibleSessions && (
+              <Button variant="quiet" block className="mt-2" onClick={() => setVisibleSessions((visible) => visible + 20)}>
+                Show {Math.min(20, sessions.length - visibleSessions)} more of {sessions.length - visibleSessions}
+              </Button>
+            )}
+            <div className="settings-list mt-6">
+              <CollapsibleCard title="Practice progress">
+                <PracticeProgress sessions={sessions} project={activeProject} />
+              </CollapsibleCard>
             </div>
-          </div>
-
-          <div className="flex-1 flex flex-col gap-1.5">
-            {[
-              { label: 'Total Time', value: totalTime > 0 ? formatDuration(totalTime) : '—' },
-              { label: 'Sessions', value: String(sessions.length) },
-              { label: 'Best', value: bestPct > 0 ? `${Math.round(bestPct)}%` : '—' },
-              { label: 'Streak', value: streak > 0 ? `${streak} day${streak > 1 ? 's' : ''}` : '0 days' },
-            ].map(({ label, value }) => (
-              <div key={label} className="bg-bg-surface rounded-lg border border-border-subtle px-2.5 py-1.5">
-                <p className="text-xs text-text-muted font-medium">{label}</p>
-                <p className="text-sm font-mono font-semibold text-text-primary">{value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {activeProject && (
-          <div className="bg-bg-surface rounded-xl border border-border-subtle p-3 mb-3 shrink-0">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs text-text-muted font-medium flex items-center gap-1">
-                BPM Progress
-                <HelpTip text="Tracks your current BPM toward your project goal. Advances automatically when you consistently pass accuracy targets." />
-              </span>
-              <span className="text-xs font-mono text-text-secondary">
-                {activeProject.currentBpm} / {activeProject.goalBpm}
-              </span>
-            </div>
-            <div className="h-2 bg-bg-raised rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-accent transition-all"
-                style={{ width: `${bpmProgress}%` }}
-              />
-            </div>
-          </div>
+          </>
         )}
-
-        </details>}
-        <div className="h-6 shrink-0" />
       </div>
 
-      {selectedSession && <Suspense fallback={<p role="status">Loading take…</p>}><SessionDetailPage
+      {selectedSession && <Suspense fallback={<p role="status" className="sr-only">Loading take…</p>}><SessionDetailPage
         session={selectedSession}
         visible={selectedSession !== null}
         onClose={() => setSelectedSession(null)}

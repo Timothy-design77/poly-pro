@@ -9,8 +9,12 @@ import { useState, useMemo } from 'react';
 import type { SessionRecord, HitEventsRecord } from '../../store/db';
 import { getSigmaLevel } from '../../analysis/types';
 import { HelpTip } from '../ui/HelpTip';
-import { computeInstrumentMetrics, computeInterLimbCorrelation, INSTRUMENT_INFO } from '../../analysis/classification';
-import type { ClassificationResult, InstrumentMetrics } from '../../analysis/classification';
+import { Notice } from '../ui/Notice';
+import { computeInstrumentMetrics, computeInterLimbCorrelation } from '../../analysis/classification';
+import type { ClassificationResult } from '../../analysis/classification';
+import { StatRow, StatSection } from './score/StatRow';
+import { InstrumentBreakdown } from './score/InstrumentBreakdown';
+import { scoreTone } from '../recordings/TakeRow';
 
 interface Props {
   session: SessionRecord;
@@ -21,7 +25,6 @@ interface Props {
 
 export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const [expandedInstrument, setExpandedInstrument] = useState<string | null>(null);
 
   // Compute per-instrument metrics from hitEvents
   const { instrumentMetrics, interLimbCorrelations } = useMemo(() => {
@@ -51,9 +54,9 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
 
   if (!session.analyzed) {
     return (
-      <div className="flex flex-col items-center justify-center h-40 gap-2">
-        <p className="text-text-muted text-sm">This session hasn't been analyzed</p>
-        <p className="text-text-muted text-xs">Use Analyze saved recording above to get timing feedback.</p>
+      <div className="flex h-40 flex-col items-center justify-center gap-2 text-center">
+        <p className="text-sm font-semibold text-text-primary">This take hasn't been analyzed</p>
+        <p className="text-sm text-text-secondary">Use Analyze saved recording in Review to get timing feedback.</p>
       </div>
     );
   }
@@ -87,253 +90,96 @@ export function ScoreTab({ session, hitEvents, onNavigateChart }: Props) {
   const dynamicRange = session.dynamicRange;
   const velocityDecayLabel = session.velocityDecayLabel;
 
-  const scoreColor = score >= 85 ? '#187A3B' : score >= 70 ? '#A45108' : '#B4232C';
-
+  const tone = scoreTone(score);
   const durationMin = Math.floor(session.durationMs / 60000);
   const durationSec = Math.floor((session.durationMs / 1000) % 60);
+  const signed = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(1)} ms`;
 
   return (
     <div className="space-y-4">
-      {(session.totalScored ?? session.totalHits) < 8 && <p role="status" className="rounded-lg bg-warning-dim p-3 text-sm text-text-primary">Fewer than 8 matched hits. Timing consistency and the score are not reliable yet. Check detection in Review or record a longer take.</p>}
-      {/* Score hero */}
-      <div className="flex flex-col items-center py-4">
+      {totalScored < 8 && <Notice tone="warning">Fewer than 8 matched hits, so the score and timing spread aren't reliable yet. Check detection in Review or record a longer take.</Notice>}
+
+      <div className="flex flex-col items-center py-3">
         <div className="flex items-center gap-2">
-          <span
-            className="text-5xl font-semibold font-mono"
-            style={{ color: scoreColor }}
-          >
-            {Math.round(score)}%
-          </span>
-          <HelpTip text="Overall score based on timing consistency (σ). Higher = tighter timing. Hit rate, mean offset, and calibration bonuses also factor in." />
+          <span className={`text-5xl font-semibold tabular-nums tracking-tight ${tone}`}>{Math.round(score)}%</span>
+          <HelpTip text="Overall score from timing consistency (σ); higher means tighter timing. Hit rate, mean offset and accents also count." />
         </div>
-
-        {/* σ badge */}
-        <div
-          className="mt-2 px-3 py-1 rounded-full flex items-center gap-1.5"
-          style={{ backgroundColor: 'rgba(21,23,26,0.06)' }}
-        >
-          <span className="text-xs font-mono text-text-secondary">
-            σ {sigma.toFixed(1)}ms
-          </span>
-          <span className="text-xs text-text-muted">{sigmaLevel}</span>
-          <HelpTip text="σ (sigma) measures how consistent your timing is — the spread of your hit deviations. Professional: ≤10ms, Advanced: ≤20ms, Intermediate: ≤35ms, Developing: ≤50ms." />
+        <div className="mt-2 flex items-center gap-2 rounded-pill bg-accent-dim py-1 pl-3 pr-1 text-sm">
+          <span className="tabular-nums text-text-primary">σ {sigma.toFixed(1)} ms</span>
+          <span className="text-text-secondary">{sigmaLevel}</span>
+          <HelpTip text="σ (sigma) is the spread of your timing around the beat. Professional ≤ 10 ms, advanced ≤ 20 ms, intermediate ≤ 35 ms, developing ≤ 50 ms." />
         </div>
       </div>
 
-      {/* Session metadata */}
-      <div className="flex items-center justify-center gap-4">
-        <MetaItem label="BPM" value={String(session.bpm)} />
-        <MetaItem label="Meter" value={session.meter} />
-        <MetaItem label="Hits" value={`${totalScored}/${totalExpected}`} />
-        <MetaItem label="Duration" value={`${durationMin}:${String(durationSec).padStart(2, '0')}`} />
-      </div>
+      <dl className="grid grid-cols-4 gap-2 text-center">
+        {[['BPM', String(session.bpm)], ['Meter', session.meter], ['Hits', `${totalScored}/${totalExpected}`], ['Length', `${durationMin}:${String(durationSec).padStart(2, '0')}`]].map(([label, value]) => (
+          <div key={label}><dt className="text-xs text-text-secondary">{label}</dt><dd className="text-sm font-semibold tabular-nums text-text-primary">{value}</dd></div>
+        ))}
+      </dl>
 
-      {/* Tappable headlines → jump to chart */}
       {headlines.length > 0 && (
-        <div className="space-y-1.5">
+        <ul className="space-y-2">
           {headlines.map((h, i) => (
-            <button
-              key={i}
-              onClick={() => h.link && onNavigateChart?.(h.link)}
-              className={`w-full text-left bg-bg-surface rounded-lg border border-border-subtle px-3 py-2
-                ${h.link ? 'active:bg-bg-raised touch-manipulation' : ''}`}
-            >
-              <p className="text-xs text-text-secondary">
-                {h.text}
-                {h.link && (
-                  <span className="text-text-muted ml-1">→</span>
-                )}
-              </p>
-            </button>
+            <li key={i}>
+              {h.link ? (
+                <button type="button" onClick={() => onNavigateChart?.(h.link!)} className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-surface px-3 py-2 text-left text-sm text-text-primary active:bg-bg-raised">
+                  <span>{h.text}</span>
+                  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-text-muted"><polyline points="9 18 15 12 9 6" /></svg>
+                </button>
+              ) : <p className="rounded-xl border border-border-subtle bg-bg-surface px-3 py-2 text-sm text-text-primary">{h.text}</p>}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
-      {/* Stats grid */}
-      <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
-        <div className="grid grid-cols-2 gap-2">
-          <StatRow label="Mean Offset" value={`${meanOffset > 0 ? '+' : ''}${meanOffset.toFixed(1)}ms`}
-            sub={Math.abs(meanOffset) < 5 ? 'centered' : meanOffset > 0 ? 'late' : 'early'}
-            help="Average timing deviation from the beat grid. Positive = late, negative = early." />
-          <StatRow label="Hit Rate" value={`${Math.round(hitRate * 100)}%`}
-            help="Percentage of expected beats where a hit was detected within the scoring window." />
-          <StatRow label="Perfect" value={`${Math.round(perfectPct)}%`}
-            sub={scoringWindowMs == null ? 'window unavailable' : `within ±${scoringWindowMs.toFixed(0)}ms`}
-            help="Percentage of your scored hits that landed within the scoring window." />
-          <StatRow label="Good" value={`${Math.round(goodPct)}%`}
-            sub={scoringWindowMs == null ? 'window unavailable' : `within ±${(scoringWindowMs * 1.5).toFixed(0)}ms`}
-            help="Percentage of scored hits within 1.5× the scoring window." />
-          <StatRow label="Fatigue" value={fatigueRatio.toFixed(2) + '×'}
-            sub={fatigueRatio > 1.4 ? 'timing degraded' : fatigueRatio < 0.8 ? 'improved' : 'stable'}
-            help="Compares your timing in the last quarter vs first quarter. >1.0× means timing got looser." />
-          <StatRow label="Max Drift" value={`${maxDrift > 0 ? '+' : ''}${maxDrift.toFixed(1)}ms`}
-            sub={Math.abs(maxDrift) < 10 ? 'minimal' : maxDrift > 0 ? 'drifted late' : 'drifted early'}
-            help="Largest smoothed timing drift during the session. Shows if you gradually speed up or slow down." />
-          <StatRow label="Consistency" value={`σ ${sigma.toFixed(1)}ms`}
-            help="Standard deviation of timing deviations — the primary metric. Lower is better." />
-        </div>
+      <StatSection title="Timing">
+        <StatRow label="Mean offset" value={signed(meanOffset)} sub={Math.abs(meanOffset) < 5 ? 'centered' : meanOffset > 0 ? 'late' : 'early'}
+          help="Average distance from the beat. Positive is late, negative is early." />
+        <StatRow label="Hit Rate" value={`${Math.round(hitRate * 100)}%`} help="Share of expected beats with a hit inside the scoring window." />
+        <StatRow label="Perfect" value={`${Math.round(perfectPct)}%`} sub={scoringWindowMs == null ? 'window unavailable' : `within ±${scoringWindowMs.toFixed(0)} ms`}
+          help="Share of scored hits inside the scoring window." />
+        <StatRow label="Good" value={`${Math.round(goodPct)}%`} sub={scoringWindowMs == null ? 'window unavailable' : `within ±${(scoringWindowMs * 1.5).toFixed(0)} ms`}
+          help="Share of scored hits inside 1.5 times the scoring window." />
+        <StatRow label="Fatigue" value={`${fatigueRatio.toFixed(2)}×`} sub={fatigueRatio > 1.4 ? 'timing loosened' : fatigueRatio < 0.8 ? 'improved' : 'stable'}
+          help="Timing spread in the last quarter compared with the first. Above 1.0× means timing loosened." />
+        <StatRow label="Max drift" value={signed(maxDrift)} sub={Math.abs(maxDrift) < 10 ? 'minimal' : maxDrift > 0 ? 'drifted late' : 'drifted early'}
+          help="Largest smoothed drift during the take: whether you gradually rushed or dragged." />
+        <StatRow label="Consistency" value={`σ ${sigma.toFixed(1)} ms`} help="Spread of your timing around the beat, the main metric. Lower is better." />
+      </StatSection>
+
+      {(swingRatio !== undefined || grooveConsistency != null || accentAdherence != null || dynamicRange != null || velocityDecayLabel) && (
+        <StatSection title="Groove and dynamics">
+          {swingRatio !== undefined && (hasSwing
+            ? <StatRow label="Swing ratio" value={swingRatio.toFixed(2)} sub={swingRatio > 1.5 ? 'heavy swing' : swingRatio > 1.2 ? 'moderate swing' : 'light swing'} help="Long-to-short eighth-note ratio. 1.0 is straight; about 1.67 is standard jazz swing." />
+            : <StatRow label="Swing ratio" value="1.0" sub="straight time" help="No swing detected: straight eighth notes." />)}
+          {grooveConsistency != null && <StatRow label="Groove lock" value={`r = ${grooveConsistency.toFixed(2)}`} sub={grooveConsistency > 0.7 ? 'locked in' : grooveConsistency > 0.4 ? 'moderate' : 'loose'} help="How repeatable your timing pattern is from measure to measure. Needs at least 16 measures." />}
+          {accentAdherence != null && <StatRow label="Accents" value={`${Math.round(accentAdherence * 100)}%`} sub={accentAdherence > 0.7 ? 'clear dynamics' : 'subtle'} help="Share of downbeats played louder than your median hit. Phone microphone gain control can flatten this." />}
+          {dynamicRange != null && <StatRow label="Dynamic range" value={`${dynamicRange.toFixed(1)}×`} sub={dynamicRange > 3 ? 'wide' : dynamicRange > 1.5 ? 'moderate' : 'narrow'} help="Ratio between your loudest and softest hits (95th to 5th percentile). Phone microphone gain control can flatten this." />}
+          {velocityDecayLabel && <StatRow label="Volume" value={velocityDecayLabel} help="How your hit volume changed over the take." />}
+        </StatSection>
+      )}
+
+      <InstrumentBreakdown metrics={instrumentMetrics} correlations={interLimbCorrelations} />
+
+      <div>
+        <button type="button" aria-expanded={showBreakdown} onClick={() => setShowBreakdown(!showBreakdown)} className="ui-button ui-button-quiet -ml-3 px-3">
+          {showBreakdown ? 'Hide score breakdown' : 'How was this computed?'}
+        </button>
+        {showBreakdown && (
+          <div className="ui-surface mt-1 space-y-2 p-4 text-sm text-text-secondary">
+            <p>Base score from σ {sigma.toFixed(1)} ms: about {computeBaseDisplay(sigma)}</p>
+            <p>Hit rate modifier: × {hitRate.toFixed(2)} ({Math.round(hitRate * 100)}% hit rate)</p>
+            {Math.abs(meanOffset) < 5 && totalScored > 10 && <p>Centered timing bonus: +2 (mean offset under 5 ms)</p>}
+            {accentAdherence != null && accentAdherence > 0.80 && <p>Accent bonus: +3 (accents above 80%)</p>}
+            <p>Final: <span className={`font-semibold tabular-nums ${tone}`}>{Math.round(score)}%</span></p>
+            <p className="ui-hint border-t border-border-subtle pt-2">
+              Scoring window {scoringWindowMs == null ? 'not saved' : `±${scoringWindowMs.toFixed(1)} ms`}; flam merge {flamMergeMs == null ? 'not saved' : `${flamMergeMs.toFixed(1)} ms`}.
+              {' '}Both come from the starting tempo ({session.bpm} BPM) and stay fixed through trainer tempo changes. The beat grid follows captured timing when available.
+              {' '}σ measures consistency, so being consistently early or late doesn&apos;t lower it.
+            </p>
+          </div>
+        )}
       </div>
-
-      {/* Phase 9: Groove & Dynamics stats */}
-      {(hasSwing || grooveConsistency != null || accentAdherence != null || dynamicRange != null) && (
-        <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
-          <p className="text-xs text-text-muted font-medium  mb-2">
-            Groove & Dynamics
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {hasSwing && swingRatio !== undefined && (
-              <StatRow label="Swing Ratio" value={swingRatio.toFixed(2)}
-                sub={swingRatio > 1.5 ? 'heavy swing' : swingRatio > 1.2 ? 'moderate swing' : 'light swing'}
-                help="Ratio of long-to-short 8th note intervals. 1.0 = straight. ~1.67 = standard jazz swing." />
-            )}
-            {!hasSwing && swingRatio !== undefined && (
-              <StatRow label="Swing Ratio" value="1.0"
-                sub="straight time"
-                help="No swing detected — playing straight 8th notes." />
-            )}
-            {grooveConsistency != null && (
-              <StatRow label="Groove Lock" value={`r = ${grooveConsistency.toFixed(2)}`}
-                sub={grooveConsistency > 0.7 ? 'locked in' : grooveConsistency > 0.4 ? 'moderate' : 'loose'}
-                help="How consistent your timing pattern is across measures. Higher = more repeatable groove. Requires ≥16 measures." />
-            )}
-            {accentAdherence != null && (
-              <StatRow label="Accents" value={`${Math.round(accentAdherence * 100)}%`}
-                sub={accentAdherence > 0.7 ? 'clear dynamics' : 'subtle'}
-                help="% of accent beats (downbeats) played louder than the median. Higher = clearer dynamic contrast. ⚠️ May be affected by phone mic AGC." />
-            )}
-            {dynamicRange != null && (
-              <StatRow label="Dyn Range" value={`${dynamicRange.toFixed(1)}×`}
-                sub={dynamicRange > 3 ? 'wide' : dynamicRange > 1.5 ? 'moderate' : 'narrow'}
-                help="95th/5th percentile energy ratio. Higher = more dynamic contrast between loud and soft hits. ⚠️ May be affected by AGC." />
-            )}
-            {velocityDecayLabel && (
-              <StatRow label="Volume" value={velocityDecayLabel}
-                help="Trend of your hit energy over the session. Shows if you're fading, building, or staying steady." />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Per-instrument breakdown (Phase 8) */}
-      {instrumentMetrics.length > 0 && (
-        <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
-          <div className="flex items-center gap-1 mb-2">
-            <p className="text-xs text-text-muted font-medium ">
-              Per Instrument
-            </p>
-            <HelpTip text="Timing breakdown by instrument. Only instruments with ≥10 high-confidence hits (≥75% classification confidence) get their own row." />
-          </div>
-          <div className="space-y-1">
-            {instrumentMetrics.map((m) => (
-              <InstrumentRow
-                key={m.name}
-                metrics={m}
-                expanded={expandedInstrument === m.name}
-                onToggle={() =>
-                  setExpandedInstrument(
-                    expandedInstrument === m.name ? null : m.name,
-                  )
-                }
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Inter-limb correlation */}
-      {interLimbCorrelations.length > 0 && (
-        <div className="bg-bg-surface rounded-xl border border-border-subtle p-3">
-          <div className="flex items-center gap-1 mb-2">
-            <p className="text-xs text-text-muted font-medium ">
-              Inter-Limb Correlation
-            </p>
-            <HelpTip text="Pearson r between timing deviations of instruments that hit simultaneously. High positive = limbs rush/drag together. Negative = one rushes when the other drags." />
-          </div>
-          <div className="space-y-1">
-            {interLimbCorrelations.map((c, i) => {
-              const infoA = INSTRUMENT_INFO[c.instrumentA as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
-              const infoB = INSTRUMENT_INFO[c.instrumentB as keyof typeof INSTRUMENT_INFO] || { icon: '❓' };
-              const rColor = Math.abs(c.correlation) > 0.5 ? '#A45108' : '#4A4A52';
-              return (
-                <div key={i} className="flex items-center gap-2 py-1 px-1 text-xs">
-                  <span>{infoA.icon} {c.instrumentA}</span>
-                  <span className="text-text-muted">↔</span>
-                  <span>{infoB.icon} {c.instrumentB}</span>
-                  <span className="font-mono ml-auto" style={{ color: rColor }}>
-                    r = {c.correlation.toFixed(2)}
-                  </span>
-                  <span className="text-text-muted">({c.pairCount} pairs)</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* How was this computed? */}
-      <button
-        onClick={() => setShowBreakdown(!showBreakdown)}
-        className="text-xs text-text-muted underline touch-manipulation"
-      >
-        {showBreakdown ? 'Hide score breakdown' : 'How was this computed?'}
-      </button>
-
-      {showBreakdown && (
-        <div className="bg-bg-surface rounded-xl border border-border-subtle p-3 space-y-2 text-xs text-text-secondary">
-          <p>
-            <span className="text-text-muted">Base score from σ:</span>{' '}
-            σ = {sigma.toFixed(1)}ms → base ≈ {computeBaseDisplay(sigma)}
-          </p>
-          <p>
-            <span className="text-text-muted">Hit rate modifier:</span>{' '}
-            × {(hitRate).toFixed(2)} ({Math.round(hitRate * 100)}% hit rate)
-          </p>
-          {Math.abs(meanOffset) < 5 && totalScored > 10 && (
-            <p>
-              <span className="text-text-muted">NMA bonus:</span> +2 (mean offset &lt; 5ms)
-            </p>
-          )}
-          {accentAdherence !== null && accentAdherence !== undefined && accentAdherence > 0.80 && (
-            <p>
-              <span className="text-text-muted">Accent bonus:</span> +3 (accent adherence &gt; 80%)
-            </p>
-          )}
-          <p>
-            <span className="text-text-muted">Final:</span>{' '}
-            <span className="font-mono font-semibold" style={{ color: scoreColor }}>{Math.round(score)}%</span>
-          </p>
-          <hr className="border-border-subtle" />
-          <p className="text-text-muted leading-relaxed">
-            Scoring window: {scoringWindowMs == null ? 'not saved' : `±${scoringWindowMs.toFixed(1)}ms`}.
-            Flam merge: {flamMergeMs == null ? 'not saved' : `${flamMergeMs.toFixed(1)}ms`}.
-            {' '}Both windows use the starting tempo ({session.bpm} BPM) and remain fixed through tempo-trainer changes. The beat grid follows captured timing when available.
-            σ (standard deviation) measures timing consistency — being
-            consistently early or late doesn&apos;t hurt your σ.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MetaItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="text-center">
-      <p className="text-xs text-text-muted">{label}</p>
-      <p className="text-xs font-mono font-semibold text-text-primary">{value}</p>
-    </div>
-  );
-}
-
-function StatRow({ label, value, sub, help }: { label: string; value: string; sub?: string; help?: string }) {
-  return (
-    <div role="group" aria-label={label} className="px-2 py-1.5">
-      <p className="text-xs text-text-muted flex items-center gap-1">
-        {label}
-        {help && <HelpTip text={help} />}
-      </p>
-      <p className="text-sm font-mono font-semibold text-text-primary">{value}</p>
-      {sub && <p className="text-xs text-text-muted">{sub}</p>}
     </div>
   );
 }
@@ -346,109 +192,4 @@ function computeBaseDisplay(sigma: number): string {
   else if (sigma <= 50) base = 40 + (50 - sigma) * 1.33;
   else base = Math.max(10, 40 - (sigma - 50));
   return Math.round(base) + '%';
-}
-
-function InstrumentRow({
-  metrics,
-  expanded,
-  onToggle,
-}: {
-  metrics: InstrumentMetrics;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const info = metrics.name !== 'Unknown'
-    ? INSTRUMENT_INFO[metrics.name as keyof typeof INSTRUMENT_INFO]
-    : { icon: '❓', color: '#8B8B94' };
-
-  return (
-    <div>
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 py-1.5 px-1 rounded-sm hover:bg-bg-raised transition-colors text-left min-h-[44px]"
-      >
-        {/* Icon + name */}
-        <span className="text-sm w-6 text-center">{info.icon}</span>
-        <span className="text-text-primary text-xs flex-shrink-0 w-14">{metrics.name}</span>
-
-        {/* Hit count */}
-        <span className="text-text-muted text-xs font-mono w-10 text-right">
-          {metrics.hitCount}
-        </span>
-
-        {/* Mean offset */}
-        <span className="text-text-secondary text-xs font-mono w-16 text-right">
-          {metrics.meanOffset > 0 ? '+' : ''}
-          {metrics.meanOffset.toFixed(1)}ms
-        </span>
-
-        {/* σ */}
-        <span className="text-text-primary text-xs font-mono w-16 text-right font-semibold">
-          σ {metrics.sigma.toFixed(1)}
-        </span>
-
-        {/* Mini distribution bar */}
-        <div className="flex-1 h-3 ml-1">
-          <MiniDistBar deltas={metrics.deltas} color={info.color} />
-        </div>
-      </button>
-
-      {/* Expanded detail */}
-      {expanded && (
-        <div className="ml-8 mt-1 mb-2 text-xs text-text-muted space-y-0.5 pl-1 border-l border-border-subtle">
-          <p>Hits: {metrics.hitCount}</p>
-          <p>Mean: {metrics.meanOffset > 0 ? '+' : ''}{metrics.meanOffset.toFixed(2)}ms</p>
-          <p>σ: {metrics.sigma.toFixed(2)}ms</p>
-          <p>Fatigue: {metrics.fatigueRatio.toFixed(2)}×{' '}
-            <span className={metrics.fatigueRatio > 1.3 ? 'text-warning' : 'text-text-muted'}>
-              {metrics.fatigueRatio > 1.3 ? 'degrading' : metrics.fatigueRatio < 0.8 ? 'improving' : 'stable'}
-            </span>
-          </p>
-          <p>Volume: {metrics.balanceRatio.toFixed(2)}×{' '}
-            <span>
-              {metrics.balanceRatio > 1.2 ? 'louder than average' : metrics.balanceRatio < 0.8 ? 'quieter than average' : 'balanced'}
-            </span>
-          </p>
-          <p>
-            {metrics.meanOffset > 3 ? 'Tends late' :
-             metrics.meanOffset < -3 ? 'Tends early' : 'Well centered'}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Mini histogram bar showing distribution of deviations */
-function MiniDistBar({ deltas, color }: { deltas: number[]; color: string }) {
-  if (deltas.length === 0) return null;
-
-  // Create 7 bins from -scoringWindow to +scoringWindow
-  const maxDev = Math.max(50, ...deltas.map(Math.abs));
-  const bins = new Array(7).fill(0);
-  const binWidth = (maxDev * 2) / 7;
-
-  for (const d of deltas) {
-    const binIdx = Math.floor((d + maxDev) / binWidth);
-    const clamped = Math.max(0, Math.min(6, binIdx));
-    bins[clamped]++;
-  }
-
-  const maxBin = Math.max(1, ...bins);
-
-  return (
-    <div className="flex items-end gap-[1px] h-full">
-      {bins.map((count, i) => (
-        <div
-          key={i}
-          className="flex-1 rounded-[1px]"
-          style={{
-            height: `${Math.max(1, (count / maxBin) * 100)}%`,
-            backgroundColor: color,
-            opacity: count > 0 ? 0.6 : 0.1,
-          }}
-        />
-      ))}
-    </div>
-  );
 }

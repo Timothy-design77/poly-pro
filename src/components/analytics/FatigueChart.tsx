@@ -6,6 +6,7 @@
 import { useCallback } from 'react';
 import { ChartCanvas } from './ChartCanvas';
 import type { HitEventsRecord } from '../../store/db';
+import { cssVar, withAlpha } from '../../styles/tokens';
 
 interface Props {
   hitEvents: HitEventsRecord;
@@ -20,7 +21,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
   const draw = useCallback(
     (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       if (scored.length < 20) {
-        ctx.fillStyle = '#4A4A52';
+        ctx.fillStyle = cssVar('--text-secondary');
         ctx.font = '12px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Need ≥20 hits for fatigue curve', w / 2, h / 2);
@@ -75,7 +76,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
 
       // Area fill
       ctx.globalAlpha = 0.1;
-      ctx.fillStyle = '#E8E8EC';
+      ctx.fillStyle = cssVar('--bg-raised');
       ctx.lineTo(pad.left + (points[points.length - 1].time / maxTime) * chartW, pad.top + chartH);
       ctx.lineTo(pad.left + (points[0].time / maxTime) * chartW, pad.top + chartH);
       ctx.closePath();
@@ -97,7 +98,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
         const bx = pad.left + (breakdownPoint.time / maxTime) * chartW;
         const by = pad.top + chartH - (breakdownPoint.sigma / maxSigma) * chartH;
         // Vertical dashed line
-        ctx.strokeStyle = 'rgba(248,113,113,0.4)';
+        ctx.strokeStyle = withAlpha(cssVar('--danger'), 0.4);
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
@@ -106,19 +107,19 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
         ctx.stroke();
         ctx.setLineDash([]);
         // Circle marker
-        ctx.fillStyle = '#B4232C';
+        ctx.fillStyle = cssVar('--danger');
         ctx.beginPath();
         ctx.arc(bx, by, 4, 0, Math.PI * 2);
         ctx.fill();
         // Label
-        ctx.fillStyle = '#B4232C';
+        ctx.fillStyle = cssVar('--danger');
         ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('breakdown', bx, pad.top - 2);
       }
 
       // Y axis labels
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(`${Math.round(maxSigma)}ms`, pad.left - 4, pad.top + 4);
@@ -130,7 +131,7 @@ export function FatigueChart({ hitEvents, width, height, durationMs }: Props) {
       ctx.fillText('end', w - pad.right, h - 5);
 
       // σ label
-      ctx.fillStyle = '#8B8B94';
+      ctx.fillStyle = cssVar('--text-muted');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('σ (ms)', pad.left, pad.top - 4);

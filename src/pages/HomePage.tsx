@@ -15,6 +15,8 @@ import { useAnalysis } from '../hooks/useAnalysis';
 import { PageHeader } from '../components/ui/PageHeader';
 import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { Field } from '../components/ui/Field';
 import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
 import { SubdivisionPicker } from '../components/metronome/SubdivisionPicker';
 import { GroupingPicker } from '../components/metronome/GroupingPicker';
@@ -112,7 +114,7 @@ export function HomePage() {
       const el = dialContainerRef.current;
       if (!el) return;
       const size = Math.round(el.clientWidth);
-      setDialSize(Math.max(240, Math.min(340, size)));
+      setDialSize(Math.max(200, Math.min(340, size)));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -232,27 +234,25 @@ export function HomePage() {
               <span className="block text-xs text-text-muted mt-1">{includeClick ? 'Click' : 'Silent'} · {recordingPreferences.preparationSeconds ? `${recordingPreferences.preparationSeconds}s delay` : 'No delay'} · {recordingPreferences.takeSeconds ? takeLengthLabel(recordingPreferences.takeSeconds) : 'Manual stop'}</span>
             </summary>
           <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-2 disabled:opacity-60">
-            <legend className="text-xs font-semibold text-text-secondary mb-2">Click during recording</legend>
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" aria-pressed={includeClick} aria-label="Record with click" onClick={() => setIncludeClick(true)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>With click</button>
-              <button type="button" aria-pressed={!includeClick} aria-label="Record without click" onClick={() => setIncludeClick(false)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${!includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>Silent</button>
-            </div>
-            <p className="text-xs text-text-muted">{includeClick ? 'Use headphones to keep clicks out of your recording.' : 'No audible click. Follow the visual beat; timing feedback stays available.'}</p>
+            <legend className="ui-label mb-2">Click during recording</legend>
+            <SegmentedControl label="Click during recording" value={includeClick ? 'click' : 'silent'} onChange={(value) => setIncludeClick(value === 'click')}
+              options={[{ value: 'click', label: 'With click', ariaLabel: 'Record with click' }, { value: 'silent', label: 'Silent', ariaLabel: 'Record without click' }]} />
+            <p className="ui-hint">{includeClick ? 'Use headphones to keep clicks out of your recording.' : 'No audible click. Follow the visual beat; timing feedback stays available.'}</p>
           </fieldset>
             <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-3 disabled:opacity-60">
               <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs font-semibold text-text-secondary">Preparation delay
-                  <select aria-label="Preparation delay" value={recordingPreferences.preparationSeconds} onChange={(event) => updateRecordingPreferences({ preparationSeconds: Number(event.target.value) })} className="mt-1 w-full min-h-[44px] rounded-lg border border-border-subtle bg-bg-primary px-2 text-sm text-text-primary">
+                <Field label="Preparation delay">
+                  <select value={recordingPreferences.preparationSeconds} onChange={(event) => updateRecordingPreferences({ preparationSeconds: Number(event.target.value) })} className="ui-select">
                     {PREPARATION_DELAYS.map((seconds) => <option key={seconds} value={seconds}>{seconds ? `${seconds} seconds` : 'None'}</option>)}
                   </select>
-                </label>
-                <label className="text-xs font-semibold text-text-secondary">Take length
-                  <select aria-label="Take length" value={recordingPreferences.takeSeconds} onChange={(event) => updateRecordingPreferences({ takeSeconds: Number(event.target.value) })} className="mt-1 w-full min-h-[44px] rounded-lg border border-border-subtle bg-bg-primary px-2 text-sm text-text-primary">
+                </Field>
+                <Field label="Take length">
+                  <select value={recordingPreferences.takeSeconds} onChange={(event) => updateRecordingPreferences({ takeSeconds: Number(event.target.value) })} className="ui-select">
                     {TAKE_LENGTHS.map((seconds) => <option key={seconds} value={seconds}>{seconds ? takeLengthLabel(seconds) : 'Stop manually'}</option>)}
                   </select>
-                </label>
+                </Field>
               </div>
-              <p className="text-xs text-text-muted">Take length includes count-in. You can stop early.</p>
+              <p className="ui-hint">Take length includes count-in. You can stop early.</p>
             </fieldset>
           </details>
           {recording.phase === 'countdown' && <p role="status" className="text-center text-xs text-text-secondary">Microphone ready. No audio is saved until the countdown ends.</p>}

@@ -7,6 +7,7 @@
 import { useCallback } from 'react';
 import { ChartCanvas } from './ChartCanvas';
 import type { HitEventsRecord } from '../../store/db';
+import { cssVar, withAlpha } from '../../styles/tokens';
 
 interface Props {
   hitEvents: HitEventsRecord;
@@ -20,7 +21,7 @@ export function DistributionChart({ hitEvents, width, height }: Props) {
   const draw = useCallback(
     (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       if (scored.length < 3) {
-        ctx.fillStyle = '#4A4A52';
+        ctx.fillStyle = cssVar('--text-secondary');
         ctx.font = '12px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Not enough data', w / 2, h / 2);
@@ -57,9 +58,9 @@ export function DistributionChart({ hitEvents, width, height }: Props) {
         const absDev = Math.abs(binCenter);
 
         // Color: green near center, amber further, red far
-        if (absDev < range * 0.2) ctx.fillStyle = 'rgba(74,222,128,0.6)';
-        else if (absDev < range * 0.5) ctx.fillStyle = 'rgba(251,191,36,0.5)';
-        else ctx.fillStyle = 'rgba(248,113,113,0.4)';
+        if (absDev < range * 0.2) ctx.fillStyle = withAlpha(cssVar('--success'), 0.6);
+        else if (absDev < range * 0.5) ctx.fillStyle = withAlpha(cssVar('--warning'), 0.5);
+        else ctx.fillStyle = withAlpha(cssVar('--danger'), 0.4);
 
         ctx.fillRect(x + 1, y, barW - 2, barH);
       }
@@ -76,14 +77,14 @@ export function DistributionChart({ hitEvents, width, height }: Props) {
       ctx.setLineDash([]);
 
       // Labels
-      ctx.fillStyle = '#8B8B94';
+      ctx.fillStyle = cssVar('--text-muted');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`-${Math.round(range)}ms`, pad.left, h - 8);
       ctx.fillText('0', zeroX, h - 8);
       ctx.fillText(`+${Math.round(range)}ms`, w - pad.right, h - 8);
 
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.fillText('early', pad.left + chartW * 0.2, pad.top - 6);
       ctx.fillText('late', pad.left + chartW * 0.8, pad.top - 6);

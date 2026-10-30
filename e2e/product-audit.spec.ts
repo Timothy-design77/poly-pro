@@ -35,7 +35,7 @@ test('backup reminders snooze from the current count and clear immediately after
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Data', exact: true }).click();
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Full Backup', exact: true }).click();
+  await page.getByRole('button', { name: 'Full backup', exact: true }).click();
   const file = await download;
   const archive = await JSZip.loadAsync(await readFile((await file.path())!));
   expect(JSON.parse(await archive.file('manifest.json')!.async('string')).appVersion).toBe(version);
@@ -67,7 +67,7 @@ test('a reminder failure does not report a successfully downloaded backup as fai
     };
   });
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Full Backup', exact: true }).click();
+  await page.getByRole('button', { name: 'Full backup', exact: true }).click();
   await download;
   await expect(page.getByRole('status')).toContainText('Full backup created. The backup reminder could not be reset; your downloaded backup is ready.');
   await expect(page.getByRole('alert')).toHaveCount(0);
@@ -100,12 +100,12 @@ test('failed instrument deletion keeps profiles visible and can be retried', asy
       return original.call(this);
     };
   });
-  await page.getByRole('button', { name: 'Clear All Profiles', exact: true }).click();
-  await page.getByRole('button', { name: 'Confirm Clear', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear all profiles', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear profiles', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('Instrument storage unavailable. Please retry.');
   await expect(page.getByText('Kick', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Confirm Clear', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear profiles', exact: true }).click();
   await expect(page.getByText('Kick', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Train Instruments', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Train instruments', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
