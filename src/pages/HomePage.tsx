@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
 import { createDefaultTrack } from '../store/types';
@@ -17,14 +17,15 @@ import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { Field } from '../components/ui/Field';
-import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
-import { SubdivisionPicker } from '../components/metronome/SubdivisionPicker';
-import { GroupingPicker } from '../components/metronome/GroupingPicker';
-import { BeatGrid } from '../components/metronome/BeatGrid';
-import { TrainerConfig, useTrainerBadge } from '../components/metronome/TrainerConfig';
-import { PracticeModes, usePracticeBadge } from '../components/metronome/PracticeModes';
+import { useMeterBadge, usePolyBadge, usePracticeBadge, useTrainerBadge } from '../components/metronome/practiceBadges';
+import { loadPracticeSections } from '../utils/prefetch';
+const MeterSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.MeterSection })));
+const PatternSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.PatternSection })));
+const ModesSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.ModesSection })));
+const TrainerSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.TrainerSection })));
+const PolyrhythmSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.PolyrhythmSection })));
+const sectionFallback = <p role="status" className="py-6 text-center text-sm text-text-secondary">Loading…</p>;
 import { BackupBanner } from '../components/ui/BackupBanner';
-import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
 import { useSettingsStore } from '../store/settings-store';
 const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module) => ({ default: module.SessionDetailPage })));
@@ -89,18 +90,6 @@ export function HomePage() {
     recording.setOnAutoStop(processRecordingResult);
     return () => recording.setOnAutoStop(null);
   }, [recording.setOnAutoStop, processRecordingResult]);
-
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!playing || !playStartTime) {
-      setElapsed(0);
-      return;
-    }
-    const tick = () => setElapsed(Math.floor((Date.now() - playStartTime) / 1000));
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [playing, playStartTime]);
 
   const meterBadge = useMeterBadge();
   const trainerBadge = useTrainerBadge();
@@ -186,7 +175,7 @@ export function HomePage() {
             <>
               <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
               <span className="text-sm font-semibold text-danger">Recording</span>
-              <span className="font-mono text-xs text-text-secondary">
+              <span aria-hidden="true" className="font-mono text-xs text-text-secondary">
                 {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
                 {recording.takeSeconds > 0 && ` / ${Math.floor(recording.takeSeconds / 60)}:${String(recording.takeSeconds % 60).padStart(2, '0')}`}
               </span>
@@ -195,15 +184,11 @@ export function HomePage() {
           ) : (
             <>
               {activeProject && <span className="text-sm text-text-secondary truncate max-w-[150px]">{activeProject.name}</span>}
-              {playing && elapsed > 0 ? (
-                <span className="font-mono text-xs text-text-muted">
-                  {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
-                </span>
-              ) : activeProject ? (
+              <PlayingClock playing={playing} startedAt={playStartTime} fallback={activeProject ? (
                 <span className="text-xs font-mono text-text-muted">
                   {activeProject.currentBpm} / {activeProject.goalBpm}
                 </span>
-              ) : null}
+              ) : null} />
             </>
           )}
         </div></PageHeader>
@@ -294,11 +279,7 @@ export function HomePage() {
               onReset={resetMeterSection}
               help="Set the time signature and subdivision. Reset returns this section to 4/4 with no subdivision."
             >
-              <div className="space-y-4">
-                <MeterControl />
-                <SubdivisionPicker />
-                <GroupingPicker />
-              </div>
+              <Suspense fallback={sectionFallback}><MeterSection /></Suspense>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -306,7 +287,7 @@ export function HomePage() {
               onReset={resetPatternSection}
               help="Tap cells to set accent levels for each beat. Reset rebuilds the default accent pattern while keeping the selected main-track sounds."
             >
-              <BeatGrid />
+              <Suspense fallback={sectionFallback}><PatternSection /></Suspense>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -315,7 +296,7 @@ export function HomePage() {
               onReset={resetPracticeSection}
               help="Count-in, swing, gap click, random mute, and play/mute cycles. Reset disables all practice modes and restores their default probabilities."
             >
-              <PracticeModes />
+              <Suspense fallback={sectionFallback}><ModesSection /></Suspense>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -324,7 +305,7 @@ export function HomePage() {
               onReset={resetTrainerSection}
               help="Automatically increase BPM after a set number of bars. Reset disables Trainer and restores 80→140, +5 BPM every 4 bars."
             >
-              <TrainerConfig />
+              <Suspense fallback={sectionFallback}><TrainerSection /></Suspense>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -333,7 +314,7 @@ export function HomePage() {
               onReset={resetPolyrhythmSection}
               help="Add extra tracks with different beat counts. Reset removes extra tracks and restores the main track to an unmuted, straight state."
             >
-              <PolyrhythmControl />
+              <Suspense fallback={sectionFallback}><PolyrhythmSection /></Suspense>
             </CollapsibleCard>
           </fieldset>
         </aside>
@@ -364,4 +345,22 @@ export function HomePage() {
       /></Suspense>}
     </div>
   );
+}
+
+/**
+ * Elapsed playing time. Owns its one-second tick so the dial and settings do
+ * not re-render with it; hidden from the live region so it isn't announced
+ * every second.
+ */
+function PlayingClock({ playing, startedAt, fallback }: { playing: boolean; startedAt: number | null; fallback: ReactNode }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!playing || !startedAt) { setElapsed(0); return; }
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [playing, startedAt]);
+  if (!playing || elapsed <= 0) return <>{fallback}</>;
+  return <span aria-hidden="true" className="font-mono text-xs text-text-muted">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>;
 }

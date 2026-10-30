@@ -3,13 +3,14 @@ import { SwipeNavigation } from './components/ui/SwipeNavigation';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { HomePage } from './pages/HomePage';
 import { ProgressPage } from './pages/ProgressPage';
-const SettingsContent = lazy(() => import('./components/settings/SettingsOverlay').then((module) => ({ default: module.SettingsContent })));
+const SettingsContent = lazy(() => loadSettings().then((module) => ({ default: module.SettingsContent })));
 import { UpdateBanner } from './components/ui/UpdateBanner';
 import { Button } from './components/ui/Button';
 import { useProjectStore } from './store/project-store';
 import { useSessionStore } from './store/session-store';
 import { useInstrumentStore } from './store/instrument-store';
 import { hydrateStores, startPersistence } from './store/persistence';
+import { prefetchDeferredUi, loadSettings } from './utils/prefetch';
 import { audioEngine } from './audio';
 import * as db from './store/db';
 
@@ -38,6 +39,7 @@ export function App() {
         startPersistence();
         setReady(true);
         void audioEngine.prepare().catch((error) => console.warn('Sound preparation failed:', error));
+        prefetchDeferredUi();
         navigator.storage?.persist?.().catch(() => {});
         delayedRecoveryTimer = window.setTimeout(async () => {
           try {

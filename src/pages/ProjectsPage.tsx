@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useProjectStore } from '../store/project-store';
 import { useSessionStore } from '../store/session-store';
-import { ProjectCreateSheet } from '../components/projects/ProjectCreateSheet';
+import { loadProjectForm } from '../utils/prefetch';
+const ProjectCreateSheet = lazy(() => loadProjectForm().then((module) => ({ default: module.ProjectCreateSheet })));
 import { Modal } from '../components/ui/Modal';
 import { isCriticalActivityActive } from '../utils/critical-activity';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -92,33 +93,36 @@ export function ProjectsPage() {
           })}
         </div>
 
-        <ProjectCreateSheet
-          isOpen={showCreate}
-          onClose={() => setShowCreate(false)}
-          onSubmit={async (data) => {
-            await createProject({ ...data, presetId: null });
-          }}
-        />
+        <Suspense fallback={null}>
+          <ProjectCreateSheet
+            isOpen={showCreate}
+            onClose={() => setShowCreate(false)}
+            onSubmit={async (data) => {
+              await createProject({ ...data, presetId: null });
+            }}
+          />
 
-        <ProjectCreateSheet
-          isOpen={!!editingProject}
-          onClose={() => setEditingProject(null)}
-          isEdit
-          initial={editProject ? {
-            icon: editProject.icon,
-            name: editProject.name,
-            startBpm: editProject.startBpm,
-            goalBpm: editProject.goalBpm,
-            accuracyTarget: editProject.accuracyTarget,
-            autoAdvance: editProject.autoAdvance,
-            advanceAfterN: editProject.advanceAfterN,
-            bpmStep: editProject.bpmStep,
-          } : undefined}
-          onSubmit={async (data) => {
-            if (editingProject) await updateProject(editingProject, data);
-          }}
-          onDelete={editingProject ? () => setDeleteTarget(editingProject) : undefined}
-        />
+          <ProjectCreateSheet
+            isOpen={!!editingProject}
+            onClose={() => setEditingProject(null)}
+            isEdit
+            initial={editProject ? {
+              icon: editProject.icon,
+              name: editProject.name,
+              startBpm: editProject.startBpm,
+              goalBpm: editProject.goalBpm,
+              accuracyTarget: editProject.accuracyTarget,
+              autoAdvance: editProject.autoAdvance,
+              advanceAfterN: editProject.advanceAfterN,
+              bpmStep: editProject.bpmStep,
+            } : undefined}
+            onSubmit={async (data) => {
+              if (editingProject) await updateProject(editingProject, data);
+            }}
+            onDelete={editingProject ? () => setDeleteTarget(editingProject) : undefined}
+          />
+
+        </Suspense>
 
         <Modal
           isOpen={!!deleteTarget}
