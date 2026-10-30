@@ -129,9 +129,9 @@ test('recordings filters show all takes and recover when the selected project is
   await seedSession(page);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await page.getByRole('button', { name: '+ New Project', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Project name' }).fill('Warm-ups');
-  await page.getByRole('button', { name: 'Create Project', exact: true }).click();
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Practice', exact: true }).click();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
@@ -150,7 +150,7 @@ test('recordings filters show all takes and recover when the selected project is
   await expect(takes).toHaveCount(1);
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Warm-ups', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete Project', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete project', exact: true }).click();
   await page.getByRole('alertdialog', { name: 'Delete Warm-ups?' }).getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('button', { name: 'Recordings', exact: true }).click();
   await expect(filter).toHaveValue('all');

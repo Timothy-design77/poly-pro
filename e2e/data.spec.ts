@@ -17,9 +17,9 @@ test('full backup restores audio, settings, and corrected take data after deleti
   await seedSession(page);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await page.getByRole('button', { name: '+ New Project', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Project name' }).fill('Backup practice plan');
-  await page.getByRole('button', { name: 'Create Project', exact: true }).click();
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: /Quick Start Practice without a project/ }).click();
   await page.getByRole('button', { name: 'Practice', exact: true }).click();
@@ -67,18 +67,18 @@ test('malformed backup is rejected without changing existing takes', async ({ pa
 test('projects create, edit, switch and delete without losing takes', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await page.getByRole('button', { name: '+ New Project', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Project name' }).fill('Rudiments');
   await page.getByRole('spinbutton', { name: 'Passing takes' }).fill('2');
-  await page.getByRole('button', { name: 'Create Project', exact: true }).click();
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Edit Rudiments', exact: true }).click();
   await expect(page.getByRole('spinbutton', { name: 'Passing takes' })).toHaveValue('2');
   await page.getByRole('spinbutton', { name: 'Goal BPM' }).fill('130');
-  await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.getByRole('button', { name: /Quick Start Practice without a project/ }).click();
   await page.getByRole('button', { name: 'Edit Rudiments', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete Project', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete project', exact: true }).click();
   await page.getByRole('alertdialog', { name: 'Delete Rudiments?' }).getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Edit Rudiments' })).toHaveCount(0);
   await page.reload();

@@ -186,7 +186,7 @@ test('advanced dialogs fit a narrow display and expose complete accessible contr
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('./');
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await page.getByRole('button', { name: '+ New Project', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Project name' }).fill('Quiet rudiments');
   await auditVisibleScreen(page);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('project-320.png') });
