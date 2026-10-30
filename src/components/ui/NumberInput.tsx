@@ -66,7 +66,7 @@ export function NumberInput({ isOpen, onClose, onSubmit, initialValue, min = 10,
         }
       }} role="dialog" aria-modal="true" aria-labelledby={labelId} tabIndex={-1} className="w-full max-w-[400px] bg-bg-surface rounded-t-2xl p-4 pb-safe animate-slide-up outline-none">
         <div className="text-center mb-4">
-          <div id={labelId} className="text-text-muted text-xs tracking-wider mb-2">{label}</div>
+          <div id={labelId} className="text-text-secondary text-xs mb-2">{label}</div>
           <div className="font-mono text-4xl font-semibold text-text-primary min-h-[48px]" aria-live="polite">{input || '—'}</div>
           {input && !isValid && <div className="text-danger text-xs mt-1" role="alert">{parsed < min ? `Min ${min}` : parsed > max ? `Max ${max}` : 'Invalid'}</div>}
         </div>
@@ -85,8 +85,8 @@ export function NumberInput({ isOpen, onClose, onSubmit, initialValue, min = 10,
           ))}
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onClose} className="flex-1 h-[48px] rounded-xl bg-bg-raised text-text-secondary text-sm font-semibold">Cancel</button>
-          <button type="button" onClick={handleSubmit} disabled={!isValid} className={`flex-1 h-[48px] rounded-xl text-sm font-semibold ${isValid ? 'bg-accent text-bg-primary' : 'bg-bg-raised text-text-muted cursor-not-allowed'}`}>Set</button>
+          <button type="button" onClick={onClose} className="ui-button ui-button-secondary ui-button-lg flex-1">Cancel</button>
+          <button type="button" onClick={handleSubmit} disabled={!isValid} className="ui-button ui-button-primary ui-button-lg flex-1">Set</button>
         </div>
       </div>
     </div>,
