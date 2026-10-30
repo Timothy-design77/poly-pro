@@ -1,6 +1,5 @@
 import type { DetectedOnset } from '../../../analysis/types';
 import { Button } from '../../ui/Button';
-import { Notice } from '../../ui/Notice';
 import { Spinner } from '../../ui/Progress';
 import type { TestPattern, TestResult } from './patterns';
 
@@ -72,7 +71,7 @@ export function ResultView({ result, detections, waveform, isLast, onRetry, onNe
         <p className="text-base font-semibold text-text-primary">{result.label}</p>
         <p className="text-text-secondary">{result.detail}</p>
       </div>
-      {result.suggestion && <Notice tone="warning" live={false}>Try: {result.suggestion}</Notice>}
+      {result.suggestion && <p className="ui-notice ui-notice-warning">Try: {result.suggestion}</p>}
       {waveform}
       {detections.length > 0 && (
         <details className="text-sm">
