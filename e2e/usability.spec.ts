@@ -18,7 +18,7 @@ test('practice surfaces fit phone widths and expose usable focus navigation', as
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Calibration', exact: true }).click();
-  await page.getByRole('button', { name: 'Run Calibration', exact: true }).click();
+  await page.getByRole('button', { name: 'Run calibration', exact: true }).click();
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('calibration.png') });
   await page.keyboard.press('Tab');
   expect(await page.evaluate(() => !!document.activeElement?.closest('[role=dialog]'))).toBe(true);
@@ -55,7 +55,7 @@ test('instrument training starts and cancelling releases the microphone', async 
   await page.goto('./');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Instruments', exact: true }).click();
-  await page.getByRole('button', { name: 'Train Instruments', exact: true }).click();
+  await page.getByRole('button', { name: 'Train instruments', exact: true }).click();
   await page.getByRole('button', { name: /Snare Not trained/ }).click();
   await page.getByRole('button', { name: 'Train Snare', exact: true }).click();
   await expect(page.getByText('Listening… auto-stops at 60 seconds. Count is approximate.')).toBeVisible();
@@ -70,7 +70,7 @@ test('detection bench advances patterns and safely closes during countdown', asy
   await page.goto('./');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Detection', exact: true }).click();
-  await page.getByRole('button', { name: 'Run Detection Test', exact: true }).click();
+  await page.getByRole('button', { name: 'Run detection test', exact: true }).click();
   await page.getByRole('button', { name: 'Start (3s)', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Next Test', exact: true })).toBeVisible({ timeout: 20000 });
   await page.getByRole('button', { name: 'Next Test', exact: true }).click();
@@ -109,7 +109,7 @@ test('instrument training saves detected features and survives reload', async ({
   await page.goto('./');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Instruments', exact: true }).click();
-  await page.getByRole('button', { name: 'Train Instruments', exact: true }).click();
+  await page.getByRole('button', { name: 'Train instruments', exact: true }).click();
   await page.getByRole('button', { name: /Snare Not trained/ }).click();
   await page.getByRole('button', { name: 'Train Snare', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Done ✓', exact: true })).toBeVisible({ timeout: 15000 });

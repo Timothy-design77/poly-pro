@@ -3,15 +3,17 @@
  *
  * Shows:
  * - List of trained instruments with accuracy and hit count
- * - "Train Instruments" button → opens InstrumentTrainingPage
- * - "Clear All" button to reset all profiles
+ * - "Train instruments" → opens InstrumentTrainingPage
+ * - "Clear all profiles" with inline confirmation
  */
 
 import { useState } from 'react';
 import { useInstrumentStore } from '../../store/instrument-store';
-import { INSTRUMENT_INFO } from '../../analysis/classification';
 import { InstrumentTrainingPage } from '../../pages/InstrumentTrainingPage';
 import { HelpTip } from '../ui/HelpTip';
+import { Button } from '../ui/Button';
+import { Notice } from '../ui/Notice';
+import { SettingRow } from '../ui/SettingRow';
 
 export function InstrumentSettings() {
   const profiles = useInstrumentStore((s) => s.profiles);
@@ -37,98 +39,44 @@ export function InstrumentSettings() {
   const classifierReady = isReady();
 
   return (
-    <div className="space-y-3">
-      {/* Status */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-text-secondary flex items-center gap-1">
-          Classifier Status
-          <HelpTip text="Train at least two instruments with 20+ hits each to enable automatic instrument labeling. The classifier uses your kit's unique sound to identify drums in recordings." />
-        </span>
-        <span className={`text-xs font-mono ${classifierReady ? 'text-success' : 'text-text-muted'}`}>
-          {classifierReady
-            ? `${profiles.length} instrument${profiles.length !== 1 ? 's' : ''}`
-            : 'Not trained'}
-        </span>
+    <div className="space-y-4">
+      <div className="ui-rows">
+        <SettingRow label={<span className="flex items-center gap-2">Instrument recognition <HelpTip text="Train at least two instruments with 20 or more hits each to label instruments in recordings. Training learns your own kit's sound." /></span>}>
+          <span className={`ui-row-value ${classifierReady ? 'text-success' : ''}`}>
+            {classifierReady ? `${profiles.length} instrument${profiles.length !== 1 ? 's' : ''}` : 'Off'}
+          </span>
+        </SettingRow>
+        {profiles.map((profile) => {
+          const accPct = Math.round(profile.accuracy * 100);
+          const validated = profiles.length >= 2 && profile.accuracy >= 0;
+          return (
+            <SettingRow key={profile.name} label={profile.name} description={`${profile.samples.length} training hits`}>
+              <span className={`ui-row-value ${!validated ? '' : accPct >= 80 ? 'text-success' : accPct >= 60 ? 'text-warning' : 'text-danger'}`}>
+                {validated ? `${accPct}% validated` : 'Not validated'}
+              </span>
+            </SettingRow>
+          );
+        })}
       </div>
 
-      {/* Trained instruments list */}
-      {profiles.length > 0 && (
-        <div className="space-y-1">
-          {profiles.map((p) => {
-            const info = INSTRUMENT_INFO[p.name] || INSTRUMENT_INFO['Other'];
-            const accPct = Math.round(p.accuracy * 100);
-            return (
-              <div
-                key={p.name}
-                className="flex items-center justify-between py-2 px-2 bg-bg-surface rounded-sm"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">{info.icon}</span>
-                  <span className="text-text-primary text-xs">{p.name}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-text-muted text-xs font-mono">
-                    {p.samples.length} hits
-                  </span>
-                  <span
-                    className={`text-xs font-mono ${
-                      accPct >= 80 ? 'text-success' : accPct >= 60 ? 'text-warning' : 'text-danger'
-                    }`}
-                  >
-                    {profiles.length < 2 || p.accuracy < 0 ? 'Not validated' : `${accPct}%`}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+      <Button variant="secondary" block disabled={clearing} onClick={() => setShowTraining(true)}>
+        {profiles.length > 0 ? 'Manage instruments' : 'Train instruments'}
+      </Button>
+
+      {error && <Notice tone="danger">{error}</Notice>}
+      {profiles.length > 0 && (showClearConfirm ? (
+        <div role="group" aria-label="Clear all instrument profiles?" className="ui-notice ui-notice-danger space-y-3">
+          <p>Clear all instrument profiles? Training must be repeated afterwards.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" disabled={clearing} onClick={() => setShowClearConfirm(false)}>Cancel</Button>
+            <Button variant="danger" disabled={clearing} onClick={() => void handleClear()}>{clearing ? 'Clearing…' : 'Clear profiles'}</Button>
+          </div>
         </div>
-      )}
+      ) : (
+        <Button variant="danger-quiet" block onClick={() => setShowClearConfirm(true)}>Clear all profiles</Button>
+      ))}
 
-      {/* Train button */}
-      <button
-        onClick={() => setShowTraining(true)}
-        disabled={clearing}
-        className="w-full py-2.5 bg-bg-raised border border-border-subtle text-text-primary rounded-md text-sm min-h-[44px] hover:bg-border-subtle transition-colors"
-      >
-        {profiles.length > 0 ? 'Manage Instruments' : 'Train Instruments'}
-      </button>
-
-      {/* Clear all */}
-      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
-      {profiles.length > 0 && (
-        <>
-          {showClearConfirm ? (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowClearConfirm(false)}
-                disabled={clearing}
-                className="flex-1 py-2 border border-border-subtle text-text-secondary rounded-md text-xs min-h-[44px]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleClear()}
-                disabled={clearing}
-                className="flex-1 py-2 bg-danger-dim border border-danger/30 text-danger rounded-md text-xs min-h-[44px]"
-              >
-                {clearing ? 'Clearing…' : 'Confirm Clear'}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              className="w-full py-2 text-danger text-xs min-h-[44px]"
-            >
-              Clear All Profiles
-            </button>
-          )}
-        </>
-      )}
-
-      {/* Training page overlay */}
-      {showTraining && (
-        <InstrumentTrainingPage onClose={() => setShowTraining(false)} />
-      )}
+      {showTraining && <InstrumentTrainingPage onClose={() => setShowTraining(false)} />}
     </div>
   );
 }

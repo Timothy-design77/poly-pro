@@ -98,7 +98,7 @@ test('cancelling calibration during microphone setup releases late-arriving stre
   await page.goto('./');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Calibration', exact: true }).click();
-  await page.getByRole('button', { name: 'Run Calibration', exact: true }).click();
+  await page.getByRole('button', { name: 'Run calibration', exact: true }).click();
   await page.getByRole('button', { name: 'Calibrate', exact: true }).click();
   await page.getByRole('dialog', { name: 'Audio calibration' }).getByRole('button', { name: /Back|Cancel/ }).first().click();
   await expect.poll(() => page.evaluate(() => (window as any).mics.length)).toBeGreaterThan(0);

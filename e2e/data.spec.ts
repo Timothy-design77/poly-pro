@@ -29,13 +29,13 @@ test('full backup restores audio, settings, and corrected take data after deleti
   await page.getByRole('button', { name: 'Set', exact: true }).click();
   await openData(page);
   const downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Full Backup', exact: true }).click();
+  await page.getByRole('button', { name: 'Full backup', exact: true }).click();
   const download = await downloadEvent;
   const path = await download.path();
   expect(path).toBeTruthy();
   await expect(page.getByText('Full backup created.', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Delete All Data', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete Everything', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete all data', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete everything', exact: true }).click();
   await expect(page.getByText('All Poly Pro local data was deleted.')).toBeVisible();
   expect(await readTake(page)).toBeUndefined();
   await page.locator('input[accept=".polypro"]').setInputFiles({ name: 'restore.polypro', mimeType: 'application/zip', buffer: await import('node:fs/promises').then((fs) => fs.readFile(path!)) });
