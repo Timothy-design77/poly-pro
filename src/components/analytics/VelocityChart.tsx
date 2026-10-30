@@ -9,6 +9,7 @@
 import { useCallback } from 'react';
 import { ChartCanvas } from './ChartCanvas';
 import type { HitEventsRecord } from '../../store/db';
+import { cssVar } from '../../styles/tokens';
 
 interface Props {
   hitEvents: HitEventsRecord;
@@ -25,7 +26,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
   const draw = useCallback(
     (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       if (scored.length < 10) {
-        ctx.fillStyle = '#4A4A52';
+        ctx.fillStyle = cssVar('--text-secondary');
         ctx.font = '12px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Not enough data', w / 2, h / 2);
@@ -46,7 +47,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
       const toY = (p: number) => pad.top + (1 - p / maxPeak) * plotH;
 
       // Grid
-      ctx.strokeStyle = '#2A2A2E';
+      ctx.strokeStyle = cssVar('--border-subtle');
       ctx.lineWidth = 1;
       for (let i = 0; i <= 4; i++) {
         const y = pad.top + (i / 4) * plotH;
@@ -57,7 +58,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
       }
 
       // Y axis labels
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText('loud', pad.left - 4, pad.top + 8);
@@ -72,7 +73,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
         const isAccent = o.matchedBeatIndex % subdivision === 0 &&
           Math.floor(o.matchedBeatIndex / subdivision) === 0;
 
-        ctx.fillStyle = isAccent ? '#A45108' : 'rgba(21,23,26,0.4)';
+        ctx.fillStyle = isAccent ? cssVar('--warning') : 'rgba(21,23,26,0.4)';
         ctx.beginPath();
         ctx.arc(x, y, isAccent ? 3.5 : 2.5, 0, Math.PI * 2);
         ctx.fill();
@@ -95,7 +96,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
         const y1 = toY(intercept + slope * minTime);
         const y2 = toY(intercept + slope * maxTime);
 
-        ctx.strokeStyle = slope < -0.001 ? '#B4232C' : slope > 0.001 ? '#187A3B' : 'rgba(21,23,26,0.3)';
+        ctx.strokeStyle = slope < -0.001 ? cssVar('--danger') : slope > 0.001 ? cssVar('--success') : 'rgba(21,23,26,0.3)';
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 3]);
         ctx.beginPath();
@@ -106,18 +107,18 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
 
         // Label
         const label = slope < -0.001 ? 'fading' : slope > 0.001 ? 'building' : 'stable';
-        ctx.fillStyle = '#8B8B94';
+        ctx.fillStyle = cssVar('--text-muted');
         ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText(label, w - pad.right, y2 - 6);
       }
 
       // Legend
-      ctx.fillStyle = '#A45108';
+      ctx.fillStyle = cssVar('--warning');
       ctx.beginPath();
       ctx.arc(pad.left + 8, h - 8, 3, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('accent', pad.left + 15, h - 5);
@@ -126,7 +127,7 @@ export function VelocityChart({ hitEvents, width, height, subdivision }: Props) 
       ctx.beginPath();
       ctx.arc(pad.left + 65, h - 8, 2.5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#4A4A52';
+      ctx.fillStyle = cssVar('--text-secondary');
       ctx.fillText('other', pad.left + 72, h - 5);
     },
     [scored, subdivision],
