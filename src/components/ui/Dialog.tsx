@@ -87,10 +87,9 @@ interface SheetProps {
   children: ReactNode;
   /** Trailing header control; defaults to a Done button. */
   headerAction?: ReactNode;
-  closeLabel?: string;
 }
 
-export function Sheet({ title, onClose, children, headerAction, closeLabel = 'Done' }: SheetProps) {
+export function Sheet({ title, onClose, children, headerAction }: SheetProps) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   useDialogFocus(ref, true, onClose);
@@ -99,7 +98,7 @@ export function Sheet({ title, onClose, children, headerAction, closeLabel = 'Do
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="flex max-h-[92dvh] w-full max-w-[560px] flex-col rounded-t-2xl bg-bg-surface outline-none animate-slide-up">
         <div className="flex min-h-[56px] shrink-0 items-center justify-between gap-3 border-b border-border-subtle pl-5 pr-2">
           <h2 id={titleId} className="text-base font-semibold text-text-primary">{title}</h2>
-          {headerAction ?? <button type="button" onClick={onClose} className="ui-button ui-button-quiet">{closeLabel}</button>}
+          {headerAction ?? <button type="button" onClick={onClose} className="ui-button ui-button-quiet">Done</button>}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4 pb-[max(20px,env(safe-area-inset-bottom))]">{children}</div>
       </div>
