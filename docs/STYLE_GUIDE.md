@@ -25,7 +25,7 @@ Use the shared pieces in `src/components/ui` instead of restyling raw elements. 
 | Need | Use | Notes |
 | --- | --- | --- |
 | Action | `Button` (`primary`, `secondary`, `quiet`, `danger`, `danger-quiet`; `size="lg"`, `block`) | One primary (dark ink) action per view. `danger` only inside a confirmation; `danger-quiet` for the entry point to a destructive action. |
-| Icon-only action | `IconButton` | 44px square, `aria-label` required. |
+| Icon-only action | `ui-icon-button` class | 44px square, `aria-label` required. |
 | Few exclusive choices | `SegmentedControl` | Pressed buttons; selection shows an ink outline, not color alone. |
 | Labelled input/select | `Field` with `ui-input` / `ui-select` | Visible label names the control; hints sit below. |
 | Label + value/control | `SettingRow` inside `ui-rows` | Rows are divided by one hairline. |
