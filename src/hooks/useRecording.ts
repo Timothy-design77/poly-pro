@@ -10,10 +10,13 @@ import { beginCriticalActivity, isCriticalActivityActive } from '../utils/critic
 import * as db from '../store/db';
 import type { ScheduledBeat } from '../audio/types';
 import { PREPARATION_DELAYS, TAKE_LENGTHS, type RecordingPreferences } from '../utils/recording-preferences';
+import { OperationTimeoutError, withTimeout } from '../utils/async';
 
 const MAX_RECORDING_MS = 30 * 60 * 1000;
 const WARNING_MS = 25 * 60 * 1000;
 const WORKLET_FLUSH_TIMEOUT_MS = 2_000;
+// AudioContext.resume() and addModule() can stay pending forever (no gesture, suspended device).
+const AUDIO_STARTUP_TIMEOUT_MS = 10_000;
 
 export type RecordingPhase = 'idle' | 'preparing' | 'countdown' | 'recording' | 'stopping' | 'saving' | 'error';
 
@@ -208,9 +211,9 @@ export function useRecording() {
           : `Using "${micResult.deviceLabel}" — Bluetooth may switch to call mode.`
         : null;
 
-      const ctx = await audioEngine.initContext();
+      const ctx = await withTimeout(audioEngine.initContext(), AUDIO_STARTUP_TIMEOUT_MS, 'Audio startup', { signal: setupAbort.signal });
       if (generation !== generationRef.current) return;
-      await ensurePcmCaptureWorklet(ctx);
+      await withTimeout(ensurePcmCaptureWorklet(ctx), AUDIO_STARTUP_TIMEOUT_MS, 'Recording engine load', { signal: setupAbort.signal });
       if (generation !== generationRef.current) return;
 
       if (preparationSeconds > 0) {
@@ -364,6 +367,7 @@ export function useRecording() {
       releaseCritical();
 
       let message = error instanceof Error ? error.message : 'Recording failed. Please try again.';
+      if (error instanceof OperationTimeoutError) message = 'Audio did not start in time. Tap Record to try again.';
       if (error instanceof DOMException) {
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') message = 'Microphone access denied. Enable microphone permission and try again.';
         else if (error.name === 'NotFoundError') message = 'No microphone found.';
