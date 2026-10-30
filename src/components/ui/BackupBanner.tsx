@@ -56,24 +56,26 @@ export function BackupBanner() {
   if (!visible) return null;
 
   return (
-    <div className="mx-2 mb-2 bg-bg-surface border border-border-subtle rounded-md p-3">
+    <div className="mx-2 mb-2 ui-surface p-3">
       <p className="text-xs text-text-primary mb-1">
         You have {sessionsSinceBackup} sessions since your last backup.
       </p>
-      <p className="text-xs text-text-muted mb-2">
-        Back up in Settings → Data → Full Backup.
+      <p className="text-xs text-text-secondary mb-1">
+        Back up in Settings, Data, Full backup.
       </p>
       {error && <p role="alert" className="text-xs text-danger">{error}</p>}
       <div className="flex gap-2">
         <button
+          type="button"
           onClick={handleRemindLater}
-          className="text-xs text-text-muted min-h-[36px] px-2"
+          className="ui-button ui-button-quiet px-3 text-xs"
         >
           Remind me later
         </button>
         <button
+          type="button"
           onClick={handleDismiss}
-          className="text-xs text-text-muted min-h-[36px] px-2"
+          className="ui-button ui-button-quiet px-3 text-xs"
         >
           Don't remind me
         </button>

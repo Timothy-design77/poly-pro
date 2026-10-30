@@ -28,7 +28,7 @@ export function MeterControl() {
 
   return (
     <div>
-      <div className="text-xs text-text-muted  mb-2">Time Signature</div>
+      <div className="ui-label mb-2">Time signature</div>
       <div className="flex items-center justify-center gap-3">
         <button
           type="button" aria-label="Previous beats per measure"
@@ -66,14 +66,4 @@ export function MeterControl() {
       </div>
     </div>
   );
-}
-
-/** Badge text for the collapsed header */
-export function useMeterBadge(): string {
-  const num = useMetronomeStore((s) => s.meterNumerator);
-  const den = useMetronomeStore((s) => s.meterDenominator);
-  const sub = useMetronomeStore((s) => s.subdivision);
-  const subLabels: Record<number, string> = { 1: '', 2: '8ths', 3: 'Triplets', 4: '16ths', 5: 'Quints', 6: 'Sextuplets' };
-  const subText = subLabels[sub] || '';
-  return `${num}/${den}${subText ? ' · ' + subText : ''}`;
 }
