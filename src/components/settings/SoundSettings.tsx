@@ -8,6 +8,8 @@ import { DEFAULT_ACCENT_SOUND, DEFAULT_CLICK_SOUND, DEFAULT_VOLUME } from '../..
 import * as db from '../../store/db';
 import type { CustomSampleRecord } from '../../store/db';
 import { CustomSampleManager } from './CustomSampleManager';
+import { Button } from '../ui/Button';
+import { Range } from '../ui/Range';
 
 export function SoundSettings() {
   const clickSound = useSettingsStore((s) => s.clickSound);
@@ -33,7 +35,7 @@ export function SoundSettings() {
 
   const getSoundName = (id: string) => {
     if (id.startsWith('custom:')) {
-      return customSamples.find((sample) => sample.id === id)?.name || 'Custom Sample';
+      return customSamples.find((sample) => sample.id === id)?.name || 'Custom sample';
     }
     return SOUND_CATALOG.find((sound) => sound.id === id)?.name || id;
   };
@@ -54,71 +56,52 @@ export function SoundSettings() {
   };
 
   const renderPicker = (
+    label: string,
     current: string,
     onSelect: (id: string) => void,
     pickerKey: 'click' | 'accent',
   ) => {
     const isExpanded = expandedPicker === pickerKey;
+    const option = (id: string, name: string, detail?: string) => (
+      <button
+        type="button"
+        key={id}
+        aria-pressed={id === current}
+        onClick={() => chooseSound(pickerKey, id, onSelect)}
+        className={`flex w-full min-h-[44px] items-center gap-2 px-3 text-left text-sm ${id === current ? 'bg-accent-dim font-semibold text-text-primary' : 'text-text-secondary active:bg-bg-raised'}`}
+      >
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={id === current ? '' : 'invisible'}><polyline points="20 6 9 17 4 12" /></svg>
+        <span>{name}{detail && <span className="ml-1 text-xs font-normal text-text-muted">{detail}</span>}</span>
+      </button>
+    );
 
     return (
-      <div>
+      <div role="group" aria-label={label} className="ui-field">
+        <span className="ui-label" aria-hidden="true">{label}</span>
         <button
           type="button"
           onClick={() => {
             setExpandedPicker(isExpanded ? null : pickerKey);
             lastPickerRef.current = pickerKey;
           }}
-          className="w-full min-h-[44px] flex items-center justify-between py-2.5 px-3 rounded-lg
-                     bg-bg-surface border border-border-subtle text-sm active:bg-bg-raised"
+          className="ui-select flex items-center text-left"
           aria-expanded={isExpanded}
         >
-          <span className="text-text-primary truncate">{getSoundName(current)}</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-            className={`text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
+          <span className="truncate">{getSoundName(current)}</span>
         </button>
 
         {isExpanded && (
-          <div className="mt-1 bg-bg-surface border border-border-subtle rounded-lg overflow-hidden max-h-[320px] overflow-y-auto shadow-sm">
+          <div className="max-h-[320px] overflow-y-auto rounded-xl border border-border-subtle bg-bg-surface py-1">
             {customSamples.length > 0 && (
               <div>
-                <div className="text-xs text-text-muted  px-3 pt-2 pb-1">My Samples</div>
-                {customSamples.map((sample) => (
-                  <button
-                    type="button"
-                    key={sample.id}
-                    onClick={() => chooseSound(pickerKey, sample.id, onSelect)}
-                    className={`w-full min-h-[42px] text-left px-3 py-2 text-sm flex items-center gap-2
-                      ${sample.id === current ? 'text-text-primary bg-accent-dim font-semibold' : 'text-text-secondary active:bg-bg-raised'}`}
-                  >
-                    {sample.id === current && <span aria-hidden="true">✓</span>}
-                    <span className={sample.id === current ? '' : 'pl-[18px]'}>
-                      {sample.name}<span className="text-text-muted text-xs ml-1">{sample.durationMs}ms</span>
-                    </span>
-                  </button>
-                ))}
+                <div className="px-3 pt-2 pb-1 text-xs font-semibold text-text-muted">My samples</div>
+                {customSamples.map((sample) => option(sample.id, sample.name, `${sample.durationMs}ms`))}
               </div>
             )}
-
             {categories.map((category) => (
               <div key={category}>
-                <div className="text-xs text-text-muted  px-3 pt-2 pb-1">
-                  {categoryLabels[category]}
-                </div>
-                {SOUND_CATALOG.filter((sound) => sound.category === category).map((sound) => (
-                  <button
-                    type="button"
-                    key={sound.id}
-                    onClick={() => chooseSound(pickerKey, sound.id, onSelect)}
-                    className={`w-full min-h-[42px] text-left px-3 py-2 text-sm flex items-center gap-2
-                      ${sound.id === current ? 'text-text-primary bg-accent-dim font-semibold' : 'text-text-secondary active:bg-bg-raised'}`}
-                  >
-                    {sound.id === current && <span aria-hidden="true">✓</span>}
-                    <span className={sound.id === current ? '' : 'pl-[18px]'}>{sound.name}</span>
-                  </button>
-                ))}
+                <div className="px-3 pt-2 pb-1 text-xs font-semibold text-text-muted">{categoryLabels[category]}</div>
+                {SOUND_CATALOG.filter((sound) => sound.category === category).map((sound) => option(sound.id, sound.name))}
               </div>
             ))}
           </div>
@@ -128,7 +111,7 @@ export function SoundSettings() {
   };
 
   const previewSoundId = lastPickerRef.current === 'accent' ? accentSound : clickSound;
-  const previewLabel = lastPickerRef.current === 'accent' ? 'Preview Accent' : 'Preview Click';
+  const previewLabel = lastPickerRef.current === 'accent' ? 'Preview accent' : 'Preview click';
 
   const resetSounds = () => {
     setClickSound(DEFAULT_CLICK_SOUND);
@@ -138,87 +121,48 @@ export function SoundSettings() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="text-xs text-text-muted  mb-1.5 block">Click Sound</label>
-        {renderPicker(clickSound, setClickSound, 'click')}
-      </div>
+    <div className="space-y-5">
+      {renderPicker('Click sound', clickSound, setClickSound, 'click')}
+      {renderPicker('Accent sound', accentSound, setAccentSound, 'accent')}
 
-      <div>
-        <label className="text-xs text-text-muted  mb-1.5 block">Accent Sound</label>
-        {renderPicker(accentSound, setAccentSound, 'accent')}
-      </div>
-
-      <div>
-        <label className="text-xs text-text-muted  mb-1.5 block">Accent Sound Plays At</label>
-        <div className="text-xs text-text-muted mb-2">Levels at or above this use the accent sound</div>
-        <div className="flex gap-1">
+      <div className="ui-field">
+        <span className="ui-label">Use the accent sound from</span>
+        <div role="group" aria-label="Use the accent sound from" className="ui-segmented">
           {([
             { state: VolumeState.GHOST, label: 'Ghost' },
             { state: VolumeState.SOFT, label: 'Soft' },
             { state: VolumeState.MED, label: 'Med' },
             { state: VolumeState.LOUD, label: 'Loud' },
             { state: VolumeState.ACCENT, label: 'Accent' },
-          ]).map(({ state, label }) => {
-            const isActive = accentSoundThreshold === state;
-            const isAbove = state >= accentSoundThreshold;
-            return (
-              <button
-                type="button"
-                key={state}
-                onClick={() => setAccentSoundThreshold(state)}
-                className={`flex-1 min-h-[42px] rounded-lg text-xs font-semibold touch-manipulation border
-                  ${isActive
-                    ? 'bg-accent text-bg-primary border-accent'
-                    : isAbove
-                      ? 'bg-accent-dim text-text-primary border-border-emphasis'
-                      : 'bg-bg-surface text-text-muted border-border-subtle active:bg-bg-raised'}`}
-              >
-                {label}
-              </button>
-            );
-          })}
+          ]).map(({ state, label }) => (
+            <button
+              type="button"
+              key={state}
+              aria-pressed={accentSoundThreshold === state}
+              onClick={() => setAccentSoundThreshold(state)}
+              className={accentSoundThreshold !== state && state > accentSoundThreshold ? 'bg-accent-dim! text-text-primary!' : ''}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+        <span className="ui-hint">Beats at this level and above play the accent sound.</span>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-text-muted ">Click Volume</label>
-          <span className="font-mono text-xs text-text-secondary">{Math.round(clickVolume * 100)}%</span>
+      <div className="ui-field">
+        <div className="flex items-center justify-between">
+          <span className="ui-label">Click volume</span>
+          <span className="text-sm tabular-nums text-text-secondary">{Math.round(clickVolume * 100)}%</span>
         </div>
-        <input aria-label="Click volume"
-          type="range"
-          min="0"
-          max="100"
-          value={Math.round(clickVolume * 100)}
-          onChange={(event) => setClickVolume(Number(event.target.value) / 100)}
-          className="w-full accent-accent h-2 bg-bg-raised rounded-full appearance-none
-                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5
-                     [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full
-                     [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:cursor-pointer"
-        />
+        <Range aria-label="Click volume" min={0} max={100} value={Math.round(clickVolume * 100)} onChange={(value) => setClickVolume(value / 100)} />
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => audioEngine.previewSound(previewSoundId)}
-          className="min-h-[44px] rounded-lg border border-border-subtle bg-bg-surface
-                     text-text-primary text-xs font-semibold active:bg-bg-raised"
-        >
-          {previewLabel}
-        </button>
-        <button
-          type="button"
-          onClick={resetSounds}
-          className="min-h-[44px] rounded-lg border border-border-subtle bg-bg-surface
-                     text-text-secondary text-xs font-semibold active:bg-bg-raised"
-        >
-          Reset Sounds
-        </button>
+        <Button variant="secondary" onClick={() => audioEngine.previewSound(previewSoundId)}>{previewLabel}</Button>
+        <Button variant="quiet" onClick={resetSounds}>Reset sounds</Button>
       </div>
 
-      <div className="border-t border-border-subtle pt-4 mt-2">
+      <div className="border-t border-border-subtle pt-4">
         <CustomSampleManager onSamplesChanged={refreshCustomSamples} />
       </div>
     </div>

@@ -102,10 +102,3 @@ export function TrainerConfig() {
     </div>
   );
 }
-
-export function useTrainerBadge(): string {
-  const enabled = useMetronomeStore((s) => s.trainerEnabled);
-  const start = useMetronomeStore((s) => s.trainerStartBpm);
-  const end = useMetronomeStore((s) => s.trainerEndBpm);
-  return enabled ? `${start}→${end}` : 'Off';
-}

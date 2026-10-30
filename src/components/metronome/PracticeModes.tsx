@@ -140,20 +140,3 @@ export function PracticeModes() {
     </div>
   );
 }
-
-export function usePracticeBadge(): string {
-  const countIn = useMetronomeStore((s) => s.countInBars);
-  const gap = useMetronomeStore((s) => s.gapClickEnabled);
-  const mute = useMetronomeStore((s) => s.randomMuteEnabled);
-  const swing = useMetronomeStore((s) => s.swing);
-  const pmCycle = useMetronomeStore((s) => s.playMuteCycleEnabled);
-  const pmPlay = useMetronomeStore((s) => s.playMuteCyclePlayBars);
-  const pmMute = useMetronomeStore((s) => s.playMuteCycleMuteBars);
-  const parts: string[] = [];
-  if (countIn > 0) parts.push(`${countIn}-bar`);
-  if (swing > 0) parts.push('Swing');
-  if (pmCycle) parts.push(`${pmPlay}/${pmMute}`);
-  if (gap) parts.push('Gap');
-  if (mute) parts.push('Mute');
-  return parts.length > 0 ? parts.join(' · ') : 'Off';
-}

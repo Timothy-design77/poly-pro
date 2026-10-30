@@ -8,6 +8,7 @@
 
 import { useRef, useEffect } from 'react';
 import type { HitEventsRecord } from '../../store/db';
+import { cssVar, withAlpha } from '../../styles/tokens';
 
 interface Props {
   hitEvents: HitEventsRecord;
@@ -73,7 +74,7 @@ export function PushPullChart({ hitEvents, width, height }: Props) {
     ctx.stroke();
 
     // Zero label
-    ctx.fillStyle = '#4A4A52';
+    ctx.fillStyle = cssVar('--text-secondary');
     ctx.font = '11px "DM Sans", sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText('0ms', padL - 4, zeroY + 3);
@@ -83,7 +84,7 @@ export function PushPullChart({ hitEvents, width, height }: Props) {
     ctx.fillText(`+${maxAbs.toFixed(0)}`, padL - 4, padT + chartH);
 
     // "Early"/"Late" labels
-    ctx.fillStyle = '#4A4A52';
+    ctx.fillStyle = cssVar('--text-secondary');
     ctx.font = '11px "DM Sans", sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('early', padL + 2, padT + 8);
@@ -97,15 +98,15 @@ export function PushPullChart({ hitEvents, width, height }: Props) {
 
       // Color: green if close to 0, blue if early, amber if late
       if (mean > 0) {
-        ctx.fillStyle = 'rgba(251,191,36,0.6)'; // late = amber
+        ctx.fillStyle = withAlpha(cssVar('--warning'), 0.6); // late = amber
       } else {
-        ctx.fillStyle = 'rgba(96,165,250,0.6)'; // early = blue
+        ctx.fillStyle = withAlpha(cssVar('--text-secondary'), 0.6); // early = blue
       }
 
       ctx.fillRect(x, zeroY, barW, -barH);
 
       // Beat label
-      ctx.fillStyle = '#8B8B94';
+      ctx.fillStyle = cssVar('--text-muted');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(String(index + 1), x + barW / 2, height - 6);

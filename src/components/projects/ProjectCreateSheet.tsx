@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { useDialogFocus } from '../../hooks/useDialogFocus';
-import { createPortal } from 'react-dom';
+import { Sheet } from '../ui/Dialog';
+import { Button } from '../ui/Button';
+import { Field } from '../ui/Field';
+import { Notice } from '../ui/Notice';
+import { SettingRow } from '../ui/SettingRow';
+import { Toggle } from '../ui/Toggle';
 
-const EMOJIS = ['🥁', '🎵', '🎸', '🎹', '🎷', '🎺', '🎻', '🪘', '🎤', '🔥', '⚡', '🎯', '💪', '🏆', '⭐', '🎶'];
+// Project icons are user-chosen labels stored with the project.
+const ICONS = ['🥁', '🎵', '🎸', '🎹', '🎷', '🎺', '🎻', '🪘', '🎤', '🔥', '⚡', '🎯', '💪', '🏆', '⭐', '🎶'];
 
 interface ProjectFormData {
   icon: string;
@@ -24,213 +29,93 @@ interface ProjectCreateSheetProps {
   onDelete?: () => void;
 }
 
-export function ProjectCreateSheet({
-  isOpen,
-  onClose,
-  onSubmit,
-  initial,
-  isEdit = false,
-  onDelete,
-}: ProjectCreateSheetProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useDialogFocus(dialogRef, isOpen, onClose);
-  const initialRef = useRef(initial); initialRef.current = initial;
+export function ProjectCreateSheet(props: ProjectCreateSheetProps) {
+  return props.isOpen ? <ProjectForm {...props} /> : null;
+}
+
+function ProjectForm({ onClose, onSubmit, initial, isEdit = false, onDelete }: ProjectCreateSheetProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(initial?.autoAdvance ?? true);
   const [accuracyTarget, setAccuracyTarget] = useState(initial?.accuracyTarget ?? 85);
   const [advanceAfterN, setAdvanceAfterN] = useState(initial?.advanceAfterN ?? 3);
   const [bpmStep, setBpmStep] = useState(initial?.bpmStep ?? 5);
-  const [icon, setIcon] = useState(initial?.icon || '🥁');
+  const [icon, setIcon] = useState(initial?.icon || ICONS[0]);
   const [name, setName] = useState(initial?.name || '');
   const [startBpm, setStartBpm] = useState(initial?.startBpm || 80);
   const [goalBpm, setGoalBpm] = useState(initial?.goalBpm || 120);
-  const [showEmojiGrid, setShowEmojiGrid] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
-  const openTimeRef = useRef(0);
 
   useEffect(() => {
-    if (isOpen) {
-      const initial = initialRef.current;
-      setError(null); setSaving(false);
-      setAutoAdvance(initial?.autoAdvance ?? true); setAccuracyTarget(initial?.accuracyTarget ?? 85); setAdvanceAfterN(initial?.advanceAfterN ?? 3); setBpmStep(initial?.bpmStep ?? 5);
-      setIcon(initial?.icon || '🥁');
-      setName(initial?.name || '');
-      setStartBpm(initial?.startBpm || 80);
-      setGoalBpm(initial?.goalBpm || 120);
-      setShowEmojiGrid(false);
-      openTimeRef.current = Date.now();
-      const timer = setTimeout(() => nameRef.current?.focus(), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
+    // After the dialog takes focus, move it to the first field for new projects.
+    if (isEdit) return;
+    const timer = setTimeout(() => nameRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, [isEdit]);
 
-  if (!isOpen) return null;
-
-  const isValid = name.trim().length > 0 && goalBpm >= startBpm && startBpm >= 10 && goalBpm <= 400 && accuracyTarget >= 1 && accuracyTarget <= 100 && advanceAfterN >= 1 && advanceAfterN <= 100 && Number.isInteger(advanceAfterN) && bpmStep >= 0.5 && bpmStep <= 100;
+  const rangeError = goalBpm < startBpm ? 'Goal tempo must be at least the start tempo.' : startBpm < 10 || goalBpm > 400 ? 'Tempos must be between 10 and 400 BPM.' : null;
+  const isValid = name.trim().length > 0 && !rangeError && accuracyTarget >= 1 && accuracyTarget <= 100 && advanceAfterN >= 1 && advanceAfterN <= 100 && Number.isInteger(advanceAfterN) && bpmStep >= 0.5 && bpmStep <= 100;
 
   const handleSubmit = async () => {
     if (!isValid || saving) return;
     setSaving(true); setError(null);
     try { await onSubmit({ icon, name: name.trim(), startBpm, goalBpm, accuracyTarget, autoAdvance, advanceAfterN, bpmStep }); onClose(); }
-    catch (error) { setError(error instanceof Error ? error.message : 'Could not save this project.'); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not save this project.'); }
     finally { setSaving(false); }
   };
 
-  const handleBackdrop = () => {
-    if (Date.now() - openTimeRef.current > 300) onClose();
-  };
+  return (
+    <Sheet title={isEdit ? 'Edit project' : 'New project'} onClose={onClose} headerAction={<Button variant="quiet" onClick={onClose}>Cancel</Button>}>
+      <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void handleSubmit(); }}>
+        <Field label="Name">
+          <input aria-label="Project name" ref={nameRef} type="text" value={name} onChange={(event) => setName(event.target.value)}
+            placeholder="For example, Paradiddles" maxLength={40} className="ui-input" />
+        </Field>
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60"
-      onClick={handleBackdrop}
-    >
-      <div
-        ref={dialogRef} role="dialog" aria-modal="true" aria-label={isEdit ? 'Edit Project' : 'New Project'} tabIndex={-1}
-        className="w-full max-h-[85vh] bg-bg-surface rounded-t-2xl flex flex-col animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-4 pt-4 pb-3 border-b border-border-subtle shrink-0 flex items-center justify-between">
-          <span className="text-base font-semibold text-text-primary">
-            {isEdit ? 'Edit Project' : 'New Project'}
-          </span>
-          <button onClick={onClose} className="text-xs text-text-muted font-semibold px-2 py-1 rounded active:bg-bg-raised">
-            Cancel
-          </button>
+        <div className="ui-field">
+          <span className="ui-label">Icon</span>
+          <div role="group" aria-label="Project icon" className="grid grid-cols-8 gap-1">
+            {ICONS.map((choice) => (
+              <button key={choice} type="button" aria-pressed={choice === icon} onClick={() => setIcon(choice)}
+                className={`flex h-11 items-center justify-center rounded-lg text-lg ${choice === icon ? 'bg-accent-dim shadow-[inset_0_0_0_2px_var(--accent)]' : 'active:bg-bg-raised'}`}>
+                {choice}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Form */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {/* Live preview card */}
-          <div className={`rounded-xl border p-3 flex items-center gap-3
-            bg-bg-raised border-border-subtle border-l-[3px] border-l-[rgba(21,23,26,0.5)]`}>
-            <span className="text-xl">{icon}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-text-primary truncate">
-                {name || 'Project Name'}
-              </p>
-              <p className="text-xs font-mono text-text-secondary mt-0.5">
-                {startBpm} → {goalBpm} BPM
-              </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Start BPM">
+            <input type="number" aria-label="Start BPM" min={10} max={400} step={0.5} value={startBpm} onChange={(event) => setStartBpm(Number(event.target.value))} className="ui-input tabular-nums" />
+          </Field>
+          <Field label="Goal BPM">
+            <input type="number" aria-label="Goal BPM" min={10} max={400} step={0.5} value={goalBpm} onChange={(event) => setGoalBpm(Number(event.target.value))} className="ui-input tabular-nums" />
+          </Field>
+        </div>
+        {name.trim() && rangeError && <p role="status" className="text-sm text-warning">{rangeError}</p>}
+
+        <div className="ui-rows border-y border-border-subtle">
+          <SettingRow label="Advance tempo automatically" description="Raise the practice tempo after enough successful takes.">
+            <Toggle label="Advance tempo after successful takes" enabled={autoAdvance} onChange={setAutoAdvance} />
+          </SettingRow>
+          {autoAdvance && (
+            <div className="grid grid-cols-3 gap-2 py-3">
+              <Field label="Target %"><input aria-label="Target score" type="number" min={1} max={100} value={accuracyTarget} onChange={(event) => setAccuracyTarget(Number(event.target.value))} className="ui-input tabular-nums" /></Field>
+              <Field label="Passing takes"><input aria-label="Passing takes" type="number" min={1} max={100} value={advanceAfterN} onChange={(event) => setAdvanceAfterN(Number(event.target.value))} className="ui-input tabular-nums" /></Field>
+              <Field label="BPM step"><input aria-label="BPM step" type="number" min={0.5} max={100} step={0.5} value={bpmStep} onChange={(event) => setBpmStep(Number(event.target.value))} className="ui-input tabular-nums" /></Field>
             </div>
-          </div>
-
-          {/* Emoji picker */}
-          <div>
-            <label className="text-xs text-text-muted  mb-1.5 block">Icon</label>
-            <button
-              onClick={() => setShowEmojiGrid(!showEmojiGrid)}
-              className="w-[56px] h-[56px] rounded-xl bg-bg-primary border border-border-subtle
-                         flex items-center justify-center text-2xl active:bg-bg-raised touch-manipulation"
-            >
-              {icon}
-            </button>
-            {showEmojiGrid && (
-              <div className="grid grid-cols-8 gap-1 mt-2">
-                {EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    onClick={() => { setIcon(e); setShowEmojiGrid(false); }}
-                    className={`h-[40px] rounded-lg flex items-center justify-center text-lg
-                      touch-manipulation active:bg-bg-raised
-                      ${e === icon ? 'bg-[rgba(21,23,26,0.1)] border border-[rgba(21,23,26,0.15)]' : ''}`}
-                  >
-                    {e}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Name */}
-          <div>
-            <label className="text-xs text-text-muted  mb-1.5 block">Name</label>
-            <input
-              aria-label="Project name" ref={nameRef}
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Paradiddles, Jazz Comping..."
-              maxLength={40}
-              className="w-full h-[48px] bg-bg-primary border border-border-subtle rounded-xl
-                         px-3 text-sm text-text-primary placeholder-text-muted outline-none
-                         focus:border-border-emphasis"
-            />
-          </div>
-
-          {/* BPM range */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <label className="text-xs text-text-muted  mb-1.5 block">Start BPM</label>
-              <input
-                type="number"
-                aria-label="Start BPM" min={10} max={400} step={0.5}
-                value={startBpm}
-                onChange={(e) => setStartBpm(Number(e.target.value))}
-                className="w-full h-[48px] bg-bg-primary border border-border-subtle rounded-xl
-                           px-3 font-mono text-base text-text-primary text-center outline-none
-                           focus:border-border-emphasis"
-              />
-            </div>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-              className="text-text-muted mt-5 shrink-0">
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
-            </svg>
-            <div className="flex-1">
-              <label className="text-xs text-text-muted  mb-1.5 block">Goal BPM</label>
-              <input
-                type="number"
-                aria-label="Goal BPM" min={10} max={400} step={0.5}
-                value={goalBpm}
-                onChange={(e) => setGoalBpm(Number(e.target.value))}
-                className="w-full h-[48px] bg-bg-primary border border-border-subtle rounded-xl
-                           px-3 font-mono text-base text-text-primary text-center outline-none
-                           focus:border-border-emphasis"
-              />
-            </div>
-          </div>
-
-          <label className="flex items-center gap-3 min-h-[44px] text-sm text-text-primary"><input type="checkbox" checked={autoAdvance} onChange={(event) => setAutoAdvance(event.target.checked)} />Advance tempo after successful takes</label>
-          {autoAdvance && <div className="grid grid-cols-3 gap-2 text-xs text-text-secondary">
-            <label>Target score %<input aria-label="Target score" type="number" min={1} max={100} value={accuracyTarget} onChange={(event) => setAccuracyTarget(Number(event.target.value))} className="w-full min-h-[44px] border border-border-subtle rounded-lg bg-bg-input p-2" /></label>
-            <label>Passing takes<input aria-label="Passing takes" type="number" min={1} max={100} value={advanceAfterN} onChange={(event) => setAdvanceAfterN(Number(event.target.value))} className="w-full min-h-[44px] border border-border-subtle rounded-lg bg-bg-input p-2" /></label>
-            <label>BPM step<input aria-label="BPM step" type="number" min={0.5} max={100} step={0.5} value={bpmStep} onChange={(event) => setBpmStep(Number(event.target.value))} className="w-full min-h-[44px] border border-border-subtle rounded-lg bg-bg-input p-2" /></label>
-          </div>}
-          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-          {!isValid && name.trim().length > 0 && goalBpm < startBpm && (
-            <div className="text-xs text-warning">Goal BPM must be at least Start BPM</div>
           )}
         </div>
 
-        {/* Submit + Delete */}
-        <div className="px-4 pb-4 pt-2 shrink-0 space-y-2">
-          <button
-            onClick={handleSubmit}
-            disabled={!isValid || saving}
-            className={`w-full h-[50px] rounded-xl text-sm font-semibold touch-manipulation
-              ${isValid
-                ? 'bg-[rgba(21,23,26,0.85)] text-bg-primary active:bg-[rgba(21,23,26,0.95)]'
-                : 'bg-bg-raised text-text-muted cursor-not-allowed'
-              }`}
-          >
-            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Project'}
-          </button>
-          {isEdit && onDelete && (
-            <button
-              onClick={onDelete}
-              className="w-full h-[44px] rounded-xl text-sm font-semibold touch-manipulation
-                         text-danger border border-danger/20 active:bg-danger-dim"
-            >
-              Delete Project
-            </button>
-          )}
+        {error && <Notice tone="danger">{error}</Notice>}
+
+        <div className="grid gap-2">
+          <Button type="submit" variant="primary" size="lg" disabled={!isValid || saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create project'}
+          </Button>
+          {isEdit && onDelete && <Button variant="danger-quiet" onClick={onDelete}>Delete project</Button>}
         </div>
-      </div>
-    </div>,
-    document.body
+      </form>
+    </Sheet>
   );
 }

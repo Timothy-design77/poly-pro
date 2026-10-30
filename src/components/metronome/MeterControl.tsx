@@ -67,13 +67,3 @@ export function MeterControl() {
     </div>
   );
 }
-
-/** Badge text for the collapsed header */
-export function useMeterBadge(): string {
-  const num = useMetronomeStore((s) => s.meterNumerator);
-  const den = useMetronomeStore((s) => s.meterDenominator);
-  const sub = useMetronomeStore((s) => s.subdivision);
-  const subLabels: Record<number, string> = { 1: '', 2: '8ths', 3: 'Triplets', 4: '16ths', 5: 'Quints', 6: 'Sextuplets' };
-  const subText = subLabels[sub] || '';
-  return `${num}/${den}${subText ? ' · ' + subText : ''}`;
-}

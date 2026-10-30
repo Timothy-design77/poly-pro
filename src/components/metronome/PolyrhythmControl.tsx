@@ -225,10 +225,3 @@ export function PolyrhythmControl() {
     </div>
   );
 }
-
-export function usePolyBadge(): string {
-  const tracks = useMetronomeStore((s) => s.tracks);
-  const numerator = useMetronomeStore((s) => s.meterNumerator);
-  if (tracks.length <= 1) return `${numerator}`;
-  return `${numerator}:${tracks.filter((track) => track.id !== 'track-0').map((track) => track.beats).join(':')}`;
-}

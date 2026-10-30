@@ -1,7 +1,7 @@
 /**
  * HelpTip — contextual help icon.
  *
- * Small "?" circle that shows/hides an explanation on tap.
+ * Small "?" circle (44px hit area) that shows/hides an explanation on tap.
  * Tooltip rendered via Portal at document.body to avoid clipping
  * from parent overflow:hidden containers.
  * Auto-positions: prefers below the button, flips above if no room.
@@ -90,10 +90,7 @@ export function HelpTip({ text, children }: Props) {
           }
         }}
         onBlur={() => setOpen(false)}
-        className="w-6 h-6 rounded-full flex items-center justify-center
-                   text-xs font-semibold touch-manipulation select-none shrink-0
-                   bg-[rgba(21,23,26,0.06)] text-text-muted
-                   active:bg-[rgba(21,23,26,0.12)]"
+        className="relative w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold touch-manipulation select-none shrink-0 bg-accent-dim text-text-muted active:text-text-primary before:absolute before:-inset-[10px] before:content-['']"
         aria-label="Help"
         aria-expanded={open}
         aria-describedby={open ? tooltipId : undefined}
@@ -106,7 +103,7 @@ export function HelpTip({ text, children }: Props) {
           ref={tooltipRef}
           id={tooltipId}
           role="tooltip"
-          className="fixed z-[60] w-56 bg-bg-raised border border-border-emphasis rounded-lg p-2.5 shadow-lg"
+          className="fixed z-[200] w-56 bg-bg-surface border border-border-emphasis rounded-lg p-3 shadow-lg"
           style={{
             left: pos.x,
             top: pos.above ? undefined : pos.y,
