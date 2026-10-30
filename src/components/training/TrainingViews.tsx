@@ -34,7 +34,7 @@ export function InstrumentGrid({ profiles, selected, onSelect, onDelete, onStart
               className="ui-choice flex min-h-[72px] flex-col items-start justify-center gap-0.5 px-3 text-left"
             >
               <span className="text-sm font-semibold text-text-primary">{name}</span>
-              <span className="text-xs font-normal text-text-muted">{profile ? `${profile.samples.length} hits` : 'Not trained'}</span>
+              <span className="text-xs font-normal text-text-secondary">{profile ? `${profile.samples.length} hits` : 'Not trained'}</span>
             </button>
           );
         })}
