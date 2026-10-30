@@ -94,3 +94,14 @@ test('recordings progress, project form and review tools pass axe', async ({ pag
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+test('deferred practice sections and screens are prefetched after startup', async ({ page }) => {
+  const chunks: string[] = [];
+  page.on('response', (response) => { if (response.url().endsWith('.js')) chunks.push(response.url()); });
+  await page.goto('./');
+  await expect.poll(() => chunks.some((url) => /PracticeSections-/.test(url)), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => chunks.some((url) => /SessionDetailPage-/.test(url)), { timeout: 10_000 }).toBe(true);
+  await page.getByRole('button', { name: /^Pattern/ }).click();
+  await expect(page.getByRole('button', { name: /^Track 1 beat 1,/ })).toBeVisible();
+  await expect(page.getByText('Loading…')).toHaveCount(0);
+});
