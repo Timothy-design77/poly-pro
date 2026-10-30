@@ -125,7 +125,7 @@ test('cancelled slider gestures preserve values and exact entry keeps keyboard f
   await page.goto('./');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Detection', exact: true }).click();
-  const slider = page.getByRole('slider', { name: 'Scoring Window', exact: true });
+  const slider = page.getByRole('slider', { name: 'Scoring window', exact: true });
   await slider.scrollIntoViewIfNeeded();
   const bounds = (await slider.boundingBox())!;
   const x = bounds.x + bounds.width * 0.8;
@@ -140,9 +140,9 @@ test('cancelled slider gestures preserve values and exact entry keeps keyboard f
   await slider.focus();
   await slider.press('ArrowRight');
   await expect(slider).toHaveAttribute('aria-valuenow', '5.25');
-  const edit = page.getByRole('button', { name: 'Edit Scoring Window', exact: true });
+  const edit = page.getByRole('button', { name: 'Edit Scoring window', exact: true });
   await edit.click();
-  const input = page.getByRole('spinbutton', { name: 'Scoring Window', exact: true });
+  const input = page.getByRole('spinbutton', { name: 'Scoring window', exact: true });
   await input.fill('7.5');
   await input.press('Enter');
   await expect(slider).toHaveAttribute('aria-valuenow', '7.5');
@@ -193,7 +193,7 @@ test('advanced dialogs fit a narrow display and expose complete accessible contr
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Instruments', exact: true }).click();
-  await page.getByRole('button', { name: 'Train Instruments', exact: true }).click();
+  await page.getByRole('button', { name: 'Train instruments', exact: true }).click();
   const snare = page.getByRole('button', { name: /Snare Not trained/ });
   await snare.click();
   await expect(snare).toHaveAttribute('aria-pressed', 'true');
@@ -201,7 +201,7 @@ test('advanced dialogs fit a narrow display and expose complete accessible contr
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('training-320.png') });
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Detection', exact: true }).click();
-  await page.getByRole('button', { name: 'Run Detection Test', exact: true }).click();
+  await page.getByRole('button', { name: 'Run detection test', exact: true }).click();
   await auditVisibleScreen(page);
   await page.screenshot({ animations: 'disabled', path: testInfo.outputPath('detection-320.png') });
   await page.keyboard.press('Escape');
