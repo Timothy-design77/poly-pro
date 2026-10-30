@@ -30,9 +30,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   updateSession: async (id, updates) => {
     const existing = get().sessions.find((session) => session.id === id);
     if (!existing) return;
-    const updated = { ...existing, ...updates };
-    await db.putSession(updated);
-    set((state) => ({ sessions: state.sessions.map((session) => session.id === id ? updated : session) }));
+    const updated = await db.patchSession(id, updates);
+    set((state) => ({ sessions: updated
+      ? state.sessions.map((session) => session.id === id ? updated : session)
+      : state.sessions.filter((session) => session.id !== id) }));
   },
 
   deleteSession: async (id) => {
