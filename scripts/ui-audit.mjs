@@ -64,6 +64,7 @@ const screens = [
   ['keypad', async (p) => { await p.getByRole('button', { name: /^Tempo .* Open tempo keypad/ }).click(); }],
   ['recordings-empty', nav('Recordings')],
   ['recordings', nav('Recordings'), true],
+  ['recordings-progress', async (p) => { await nav('Recordings')(p); await p.getByRole('button', { name: 'Practice progress' }).click(); await p.waitForTimeout(300); await p.getByRole('heading', { name: 'Recent scores' }).scrollIntoViewIfNeeded(); }, true],
   ['review', openReview, true],
   ['charts', async (p) => { await openReview(p); await p.getByRole('tab', { name: 'Charts' }).click(); await p.waitForTimeout(500); }, true],
   ['projects', nav('Projects')],

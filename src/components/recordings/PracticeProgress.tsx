@@ -62,8 +62,8 @@ export function PracticeProgress({ sessions, project }: { sessions: SessionRecor
 
       <section aria-labelledby="progress-days" className="space-y-2">
         <h3 id="progress-days" className="text-sm font-semibold text-text-primary">Practice days</h3>
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
-          <div role="img" aria-label={`Practiced on ${activeDays} of the last 28 days`} className="grid grid-cols-7 content-start gap-[3px]">
+        <div className="grid gap-3 min-[380px]:grid-cols-2">
+          <div role="img" aria-label={`Practiced on ${activeDays} of the last 28 days`} className="grid w-full max-w-[220px] grid-cols-7 content-start gap-[3px]">
             {days.map(({ day, count }) => (
               <div key={day.toDateString()} title={`${day.toLocaleDateString()}: ${count} take${count === 1 ? '' : 's'}`}
                 className={`aspect-square rounded-[3px] ${count === 0 ? 'bg-bg-raised' : 'bg-success'}`}
