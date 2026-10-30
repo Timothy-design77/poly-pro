@@ -34,17 +34,3 @@ export function Spinner({ label }: { label: string }) {
     </div>
   );
 }
-
-/** Step indicator: done steps carry pass/fail, the current step is outlined. */
-export function StepDots({ total, current, results, label }: { total: number; current: number; results: (boolean | undefined)[]; label: string }) {
-  return (
-    <ol aria-label={label} className="flex justify-center gap-2">
-      {Array.from({ length: total }, (_, index) => {
-        const result = results[index];
-        const state = result === true ? 'passed' : result === false ? 'needs attention' : index === current ? 'current' : 'not started';
-        const tone = result === true ? 'bg-success' : result === false ? 'bg-danger' : index === current ? 'bg-accent' : 'bg-bg-raised shadow-[inset_0_0_0_1px_var(--border-emphasis)]';
-        return <li key={index} aria-label={`Test ${index + 1}: ${state}`} aria-current={index === current ? 'step' : undefined} className={`h-2.5 w-2.5 rounded-full ${tone} ${index === current ? 'scale-125' : ''}`} />;
-      })}
-    </ol>
-  );
-}

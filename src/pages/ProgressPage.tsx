@@ -9,8 +9,7 @@ import { Button } from '../components/ui/Button';
 import { Notice } from '../components/ui/Notice';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
 import { TakeRow } from '../components/recordings/TakeRow';
-import { loadPracticeProgress } from '../utils/prefetch';
-const PracticeProgress = lazy(() => loadPracticeProgress().then((module) => ({ default: module.PracticeProgress })));
+import { PracticeProgress } from '../components/recordings/PracticeProgress';
 import { useNavStore, PAGE_HOME } from '../store/nav-store';
 
 export function ProgressPage() {
@@ -66,9 +65,7 @@ export function ProgressPage() {
             )}
             <div className="settings-list mt-6">
               <CollapsibleCard title="Practice progress">
-                <Suspense fallback={<p role="status" className="py-6 text-center text-sm text-text-secondary">Loading…</p>}>
-                  <PracticeProgress sessions={sessions} project={activeProject} />
-                </Suspense>
+                <PracticeProgress sessions={sessions} project={activeProject} />
               </CollapsibleCard>
             </div>
           </>

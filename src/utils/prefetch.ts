@@ -3,12 +3,10 @@
 export const loadPracticeSections = () => import('../components/metronome/PracticeSections');
 export const loadSettings = () => import('../components/settings/SettingsOverlay');
 export const loadSessionDetail = () => import('../pages/SessionDetailPage');
-export const loadPracticeProgress = () => import('../components/recordings/PracticeProgress');
-export const loadProjectForm = () => import('../components/projects/ProjectCreateSheet');
 
 export function prefetchDeferredUi() {
   const run = () => {
-    for (const load of [loadPracticeSections, loadSessionDetail, loadSettings, loadPracticeProgress, loadProjectForm]) {
+    for (const load of [loadPracticeSections, loadSessionDetail, loadSettings]) {
       load().catch(() => { /* offline or evicted: loads again on demand */ });
     }
   };
