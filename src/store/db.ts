@@ -198,7 +198,7 @@ function getDB(): Promise<IDBPDatabase> {
       reject(new Error('Poly Pro storage is locked by another app tab or an older app instance. Close other Poly Pro tabs/windows, then retry. Your data has not been deleted.'));
     }, 8000);
 
-    openDB(DB_NAME, DB_VERSION, {
+    Promise.resolve().then(() => openDB(DB_NAME, DB_VERSION, {
       upgrade(db) {
         upgradeDatabase(db);
       },
@@ -215,7 +215,7 @@ function getDB(): Promise<IDBPDatabase> {
         activeDb = null;
         dbPromise = null;
       },
-    }).then((db) => {
+    })).then((db) => {
       if (settled) {
         db.close();
         return;

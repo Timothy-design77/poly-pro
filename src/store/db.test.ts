@@ -82,3 +82,37 @@ it('rolls back the score when writing corrected hits fails synchronously', async
   expect((await db.getAllSessions())[0].score).toBe(100);
   expect(await db.getHitEvents(session.id)).toEqual(events);
 });
+
+it('retries storage after a synchronous IndexedDB open failure', async () => {
+  db.resetDBConnection();
+  const open = vi.spyOn(indexedDB, 'open').mockImplementationOnce(() => { throw new DOMException('Storage unavailable', 'SecurityError'); });
+  try {
+    await expect(db.getSetting('retry')).rejects.toThrow('Storage unavailable');
+    await expect(db.setSetting('retry', 'saved')).resolves.toBeUndefined();
+    expect(await db.getSetting('retry')).toBe('saved');
+  } finally { open.mockRestore(); db.resetDBConnection(); }
+});
+
+it('preserves legacy takes and audio when adding chunk stores during a v4 upgrade', async () => {
+  const { IDBFactory } = await import('fake-indexeddb');
+  const { openDB } = await import('idb');
+  const originalIndexedDB = indexedDB;
+  db.resetDBConnection();
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  try {
+    const legacy = await openDB('polypro', 4, { upgrade(database) {
+      const sessions = database.createObjectStore('sessions', { keyPath: 'id' });
+      sessions.createIndex('projectId', 'projectId'); sessions.createIndex('date', 'date');
+      database.createObjectStore('recordings');
+    } });
+    await legacy.put('sessions', session);
+    await legacy.put('recordings', new Blob([new Float32Array([0.25]).buffer]), session.id);
+    legacy.close();
+    expect(await db.getAllSessions()).toEqual([session]);
+    expect((await db.getRecording(session.id))?.size).toBe(4);
+    await db.beginChunkedRecording('new-take', 48000, { projectId: null, bpm: 120, meterNumerator: 4, meterDenominator: 4, subdivision: 1 });
+    await db.appendRecordingChunk('new-take', 0, new Float32Array(128));
+    expect(await db.recoverOrphanedRecordings(0, 'new-take')).toBe(1);
+    expect(await db.getAllSessions()).toHaveLength(2);
+  } finally { db.resetDBConnection(); vi.stubGlobal('indexedDB', originalIndexedDB); }
+});
