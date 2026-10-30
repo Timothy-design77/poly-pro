@@ -25,7 +25,7 @@ export function SetupStep({ onStart }: { onStart: () => void }) {
       <p className="text-sm leading-relaxed text-text-secondary">Poly Pro plays {CHIRP_COUNT} short chirps and listens for them, which takes about 12 seconds. The result lines up timing scores with what you hear.</p>
       <ul className="mx-auto max-w-[340px] list-disc space-y-1 pl-5 text-left text-sm text-text-secondary">
         <li>Put the phone where you normally practice.</li>
-        <li>Use the speaker or headphones you practice with.</li>
+        <li>The microphone has to hear the chirps. With headphones, hold an earcup or earbud next to the microphone.</li>
         <li>Keep the room quiet until it finishes.</li>
       </ul>
     </StepLayout>

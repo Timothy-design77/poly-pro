@@ -53,7 +53,7 @@ test('empty library leads to Practice and cancelled pointer gestures do not swal
   await page.getByRole('button', { name: 'Go to Practice', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Practice', exact: true })).toHaveAttribute('aria-current', 'page');
   const start = page.getByRole('button', { name: 'Start metronome', exact: true });
-  await start.click({ button: 'right' });
+  await start.dispatchEvent('pointerdown', { isPrimary: true, button: 2, pointerId: 1 });
   await expect(start).toBeVisible();
   await start.dispatchEvent('pointerdown', { isPrimary: true, button: 0, pointerId: 1 });
   const stop = page.getByRole('button', { name: 'Stop metronome', exact: true });
