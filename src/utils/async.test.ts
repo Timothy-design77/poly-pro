@@ -38,3 +38,12 @@ describe('withTimeout', () => {
     await expect(withTimeout(Promise.reject(new Error('boom')), 1_000, 'test')).rejects.toThrow('boom');
   });
 });
+
+it('cleans up an operation that resolves when its signal was already aborted', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const cleanup = vi.fn();
+  await expect(withTimeout(Promise.resolve('stream'), 1000, 'Microphone', { signal: controller.signal, onLateResolve: cleanup })).rejects.toBeInstanceOf(OperationCancelledError);
+  await Promise.resolve();
+  expect(cleanup).toHaveBeenCalledWith('stream');
+});

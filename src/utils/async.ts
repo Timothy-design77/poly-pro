@@ -63,9 +63,9 @@ export function withTimeout<T>(
 
     if (signal?.aborted) {
       handleAbort();
-      return;
+    } else {
+      signal?.addEventListener('abort', handleAbort, { once: true });
     }
-    signal?.addEventListener('abort', handleAbort, { once: true });
 
     promise.then(
       (value) => {

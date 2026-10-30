@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ensurePcmCaptureWorklet } from '../audio/worklets';
 import { getPreferredMicStream } from '../utils/mic';
-import { withTimeout } from '../utils/async';
+import { OperationTimeoutError, withTimeout } from '../utils/async';
 import { beginCriticalActivity, isCriticalActivityActive } from '../utils/critical-activity';
 import { runAnalysisInWorker } from '../analysis/worker-client';
 import { currentAnalysisConfig } from './useAnalysis';
@@ -55,7 +55,11 @@ export function useTrainingCapture() {
       stream.getAudioTracks().forEach((track) => { track.onended = () => onLimit.current?.(); });
       worklet.onprocessorerror = () => onLimit.current?.();
       worklet.port.postMessage({ type: 'start' }); setPreparing(false); return true;
-    } catch (error) { if (token === epoch.current) stop(); throw error; }
+    } catch (error) {
+      if (token === epoch.current) stop();
+      if (error instanceof OperationTimeoutError) throw new Error('Audio did not start in time. Tap Train to try again.');
+      throw error;
+    }
   }, [stop]);
 
   const finish = useCallback(async (options: { bpm?: number; subdivision?: number } = {}): Promise<{ features: SpectralFeatures[]; onsets: DetectedOnset[]; pcmBlob: Blob; sampleRate: number; config: AnalysisConfig }> => {
