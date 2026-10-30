@@ -201,7 +201,7 @@ export function TimelineTab({ session, hitEvents, editableEvents, config, active
           <button type="button" aria-pressed={showMid} onClick={() => setShowMid(!showMid)} className="ui-chip">Mid</button>
           <button type="button" aria-pressed={showHigh} onClick={() => setShowHigh(!showHigh)} className="ui-chip">High</button>
           <div aria-hidden="true" className="w-px h-6 bg-border-subtle mx-1 shrink-0" />
-          {ZOOM_LEVELS.map((z) => <button type="button" key={z} aria-pressed={Math.abs(zoom - z) < 0.5} onClick={() => gestures.setZoomLevel(z)} aria-label={`Zoom ${z}×`} className="ui-chip tabular-nums">{z}×</button>)}
+          <div role="group" aria-label="Zoom" className="contents">{ZOOM_LEVELS.map((z) => <button type="button" key={z} aria-pressed={Math.abs(zoom - z) < 0.5} onClick={() => gestures.setZoomLevel(z)} className="ui-chip tabular-nums">{z}×</button>)}</div>
           <button type="button" aria-pressed={playback.followPlayhead} onClick={() => playback.setFollowPlayhead(!playback.followPlayhead)} className="ui-chip ml-auto">Follow playhead</button>
         </div>
 
