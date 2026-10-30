@@ -32,7 +32,7 @@ test('practice actions, local typography and destination labels are consistent',
   await expect(page.getByRole('button', { name: 'Cloud Enhancement', exact: true })).toHaveCount(0);
 });
 
-test('first click is prompt on cold and warm starts despite an unavailable unused sound', async ({ browser }) => {
+test('first click is prompt on cold and warm starts despite an unavailable unused sound', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ serviceWorkers: 'block' });
   try {
     const page = await context.newPage();
@@ -51,7 +51,7 @@ test('first click is prompt on cold and warm starts despite an unavailable unuse
         }
       }, true);
     });
-    await page.goto('http://127.0.0.1:4173/poly-pro/');
+    await page.goto(baseURL!);
     for (const budget of [200, 100]) {
       await page.getByRole('button', { name: 'Start metronome', exact: true }).click();
       await expect.poll(() => page.evaluate(() => (window as any).clickStarts.length)).toBeGreaterThan(0);
