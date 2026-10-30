@@ -171,17 +171,17 @@ export function PrecisionSlider({
     <div data-no-swipe className={`space-y-1 ${className}`}>
       {(label || showValue) && (
         <div className="flex items-center justify-between gap-2">
-          {label && <span className="text-xs text-text-muted ">{label}</span>}
+          {label && <span className="ui-label">{label}</span>}
           {showValue && !isEditing && (
             <button
               ref={valueButtonRef}
               type="button"
               aria-label={`Edit ${ariaLabel ?? label ?? 'value'}`}
               onClick={handleValueTap}
-              className="font-mono text-xs text-text-primary px-2 py-1 rounded-md border border-transparent
-                         active:bg-bg-raised active:border-border-subtle transition-colors min-h-[32px] flex items-center"
+              className="ml-auto font-mono text-sm text-text-primary px-2 -mr-2 rounded-md border border-transparent
+                         active:bg-bg-raised active:border-border-subtle transition-colors min-h-[44px] min-w-[44px] flex items-center justify-end"
             >
-              {displayValue}{unit && <span className="text-text-muted ml-0.5">{unit}</span>}
+              {displayValue}{unit && !formatValue && <span className="text-text-muted ml-0.5">{unit}</span>}
             </button>
           )}
           {isEditing && (
@@ -232,19 +232,19 @@ export function PrecisionSlider({
         onLostPointerCapture={(event) => { if (touchIdRef.current === event.pointerId) finishPointer(); }}
       >
         <div
-          className="absolute inset-x-0 h-2 rounded-full overflow-hidden bg-bg-raised border border-border-subtle"
+          className="absolute inset-x-0 h-1.5 rounded-full overflow-hidden bg-bg-raised shadow-[inset_0_0_0_1px_var(--border-subtle)]"
           style={{ top: '50%', transform: 'translateY(-50%)' }}
         >
           <div
             className="absolute inset-y-0 left-0 rounded-full transition-none bg-accent"
-            style={{ width: `${fraction * 100}%`, opacity: isDragging ? 0.8 : 0.55 }}
+            style={{ width: `${fraction * 100}%` }}
           />
         </div>
 
         <div
-          className="absolute w-5 h-5 rounded-full bg-accent border-2 border-bg-surface shadow-sm transition-transform"
+          className="absolute w-[22px] h-[22px] rounded-full bg-accent border-2 border-bg-surface shadow-[0_0_0_1px_var(--accent)] transition-transform"
           style={{
-            left: `calc(${fraction * 100}% - 10px)`,
+            left: `calc(${fraction * 100}% - 11px)`,
             top: '50%',
             transform: `translateY(-50%) scale(${isDragging ? 1.2 : 1})`,
           }}
@@ -252,8 +252,8 @@ export function PrecisionSlider({
 
         {isDragging && precisionLevel < 0.8 && (
           <div
-            className="absolute left-1/2 -translate-x-1/2 text-[8px] text-text-primary font-mono pointer-events-none"
-            style={{ top: -12 }}
+            className="absolute left-1/2 -translate-x-1/2 text-[11px] text-text-primary font-mono pointer-events-none"
+            style={{ top: -14 }}
           >
             {precisionLevel < 0.3 ? '10×' : precisionLevel < 0.6 ? '4×' : '2×'} fine
           </div>

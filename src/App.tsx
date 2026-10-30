@@ -3,12 +3,14 @@ import { SwipeNavigation } from './components/ui/SwipeNavigation';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { HomePage } from './pages/HomePage';
 import { ProgressPage } from './pages/ProgressPage';
-const SettingsContent = lazy(() => import('./components/settings/SettingsOverlay').then((module) => ({ default: module.SettingsContent })));
+const SettingsContent = lazy(() => loadSettings().then((module) => ({ default: module.SettingsContent })));
 import { UpdateBanner } from './components/ui/UpdateBanner';
+import { Button } from './components/ui/Button';
 import { useProjectStore } from './store/project-store';
 import { useSessionStore } from './store/session-store';
 import { useInstrumentStore } from './store/instrument-store';
 import { hydrateStores, startPersistence } from './store/persistence';
+import { prefetchDeferredUi, loadSettings } from './utils/prefetch';
 import { audioEngine } from './audio';
 import * as db from './store/db';
 
@@ -37,6 +39,7 @@ export function App() {
         startPersistence();
         setReady(true);
         void audioEngine.prepare().catch((error) => console.warn('Sound preparation failed:', error));
+        prefetchDeferredUi();
         navigator.storage?.persist?.().catch(() => {});
         delayedRecoveryTimer = window.setTimeout(async () => {
           try {
@@ -65,9 +68,9 @@ export function App() {
         <h1 className="text-lg font-semibold text-text-primary">Local data is temporarily unavailable</h1>
         <p className="text-sm text-text-secondary max-w-sm">{loadError}</p>
         <p className="text-xs text-text-muted max-w-sm">Poly Pro will not delete the database automatically. Your existing data is left untouched.</p>
-        <button type="button" className="min-h-[44px] px-5 rounded-xl bg-accent text-bg-primary text-sm font-semibold" onClick={() => { db.resetDBConnection(); setLoadAttempt((value) => value + 1); }}>
+        <Button variant="primary" onClick={() => { db.resetDBConnection(); setLoadAttempt((value) => value + 1); }}>
           Retry storage
-        </button>
+        </Button>
       </div>
     );
   }
@@ -76,10 +79,10 @@ export function App() {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4">
         <div className="flex items-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[rgba(21,23,26,0.85)] animate-splash-pulse" />
-          <span className="text-lg font-bold tracking-wide text-text-primary">Poly Pro</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-accent animate-splash-pulse" />
+          <span className="text-lg font-semibold text-text-primary">Poly Pro</span>
         </div>
-        <span className="text-xs text-text-muted">Loading your setup</span>
+        <span role="status" className="text-xs text-text-muted">Loading your setup</span>
       </div>
     );
   }

@@ -18,8 +18,8 @@ export function TrainerConfig() {
     <div>
       {/* Enable toggle */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-text-primary">Enable Trainer</span>
-        <Toggle label="Enable Trainer" enabled={enabled} onChange={setEnabled} />
+        <span className="text-sm text-text-primary">Trainer</span>
+        <Toggle label="Enable trainer" enabled={enabled} onChange={setEnabled} />
       </div>
 
       {enabled && (
@@ -27,7 +27,7 @@ export function TrainerConfig() {
           {/* Start → End BPM */}
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">Start BPM</label>
+              <label className="ui-label mb-1 block">Start BPM</label>
               <input
                 type="number"
                 aria-label="Trainer start BPM" min={10} max={400} step={0.5}
@@ -45,7 +45,7 @@ export function TrainerConfig() {
               <polyline points="12 5 19 12 12 19" />
             </svg>
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">End BPM</label>
+              <label className="ui-label mb-1 block">End BPM</label>
               <input
                 type="number"
                 aria-label="Trainer end BPM" min={10} max={400} step={0.5}
@@ -61,7 +61,7 @@ export function TrainerConfig() {
           {/* Step + Bars — large stepper buttons */}
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">BPM Step</label>
+              <label className="ui-label mb-1 block">BPM step</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button
                   type="button" aria-label="Decrease trainer BPM step"
@@ -79,7 +79,7 @@ export function TrainerConfig() {
               </div>
             </div>
             <div className="flex-1">
-              <label className="text-xs text-text-muted mb-1 block">Every N Bars</label>
+              <label className="ui-label mb-1 block">Bars per step</label>
               <div className="flex items-center bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
                 <button
                   type="button" aria-label="Decrease trainer bars per step"
@@ -101,11 +101,4 @@ export function TrainerConfig() {
       )}
     </div>
   );
-}
-
-export function useTrainerBadge(): string {
-  const enabled = useMetronomeStore((s) => s.trainerEnabled);
-  const start = useMetronomeStore((s) => s.trainerStartBpm);
-  const end = useMetronomeStore((s) => s.trainerEndBpm);
-  return enabled ? `${start}→${end}` : 'Off';
 }

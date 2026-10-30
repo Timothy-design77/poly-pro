@@ -6,6 +6,7 @@
 import { useCallback } from 'react';
 import { ChartCanvas } from './ChartCanvas';
 import type { HitEventsRecord } from '../../store/db';
+import { cssVar, withAlpha } from '../../styles/tokens';
 
 interface Props {
   hitEvents: HitEventsRecord;
@@ -19,7 +20,7 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
   const draw = useCallback(
     (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       if (scored.length < 4) {
-        ctx.fillStyle = '#4A4A52';
+        ctx.fillStyle = cssVar('--text-secondary');
         ctx.font = '12px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Not enough data', w / 2, h / 2);
@@ -60,9 +61,9 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
         const y = pad.top + chartH - barH;
 
         // Color by sigma quality
-        if (s.sigma < maxSigma * 0.3) ctx.fillStyle = 'rgba(74,222,128,0.5)';
-        else if (s.sigma < maxSigma * 0.6) ctx.fillStyle = 'rgba(251,191,36,0.4)';
-        else ctx.fillStyle = 'rgba(248,113,113,0.4)';
+        if (s.sigma < maxSigma * 0.3) ctx.fillStyle = withAlpha(cssVar('--success'), 0.5);
+        else if (s.sigma < maxSigma * 0.6) ctx.fillStyle = withAlpha(cssVar('--warning'), 0.4);
+        else ctx.fillStyle = withAlpha(cssVar('--danger'), 0.4);
 
         ctx.fillRect(x + 2, y, barW - 4, barH);
 
@@ -74,7 +75,7 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
         ctx.fill();
 
         // Beat label
-        ctx.fillStyle = '#4A4A52';
+        ctx.fillStyle = cssVar('--text-secondary');
         ctx.font = '11px "DM Sans", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(String(s.beatIndex + 1), x + barW / 2, h - 8);
@@ -91,7 +92,7 @@ export function PerBeatChart({ hitEvents, width, height }: Props) {
       ctx.setLineDash([]);
 
       // Legend
-      ctx.fillStyle = '#8B8B94';
+      ctx.fillStyle = cssVar('--text-muted');
       ctx.font = '11px "DM Sans", sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('bars = σ, dots = mean offset', pad.left, pad.top - 6);

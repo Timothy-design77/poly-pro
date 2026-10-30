@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { useMetronomeStore } from '../store/metronome-store';
 import { useProjectStore } from '../store/project-store';
 import { createDefaultTrack } from '../store/types';
@@ -15,14 +15,17 @@ import { useAnalysis } from '../hooks/useAnalysis';
 import { PageHeader } from '../components/ui/PageHeader';
 import { NumberInput } from '../components/ui/NumberInput';
 import { CollapsibleCard } from '../components/ui/CollapsibleCard';
-import { MeterControl, useMeterBadge } from '../components/metronome/MeterControl';
-import { SubdivisionPicker } from '../components/metronome/SubdivisionPicker';
-import { GroupingPicker } from '../components/metronome/GroupingPicker';
-import { BeatGrid } from '../components/metronome/BeatGrid';
-import { TrainerConfig, useTrainerBadge } from '../components/metronome/TrainerConfig';
-import { PracticeModes, usePracticeBadge } from '../components/metronome/PracticeModes';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { Field } from '../components/ui/Field';
+import { useMeterBadge, usePolyBadge, usePracticeBadge, useTrainerBadge } from '../components/metronome/practiceBadges';
+import { loadPracticeSections } from '../utils/prefetch';
+const MeterSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.MeterSection })));
+const PatternSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.PatternSection })));
+const ModesSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.ModesSection })));
+const TrainerSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.TrainerSection })));
+const PolyrhythmSection = lazy(() => loadPracticeSections().then((m) => ({ default: m.PolyrhythmSection })));
+const sectionFallback = <p role="status" className="py-6 text-center text-sm text-text-secondary">Loading…</p>;
 import { BackupBanner } from '../components/ui/BackupBanner';
-import { PolyrhythmControl, usePolyBadge } from '../components/metronome/PolyrhythmControl';
 import AnalyzingOverlay from '../components/session/AnalyzingOverlay';
 import { useSettingsStore } from '../store/settings-store';
 const SessionDetailPage = lazy(() => import('./SessionDetailPage').then((module) => ({ default: module.SessionDetailPage })));
@@ -88,18 +91,6 @@ export function HomePage() {
     return () => recording.setOnAutoStop(null);
   }, [recording.setOnAutoStop, processRecordingResult]);
 
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!playing || !playStartTime) {
-      setElapsed(0);
-      return;
-    }
-    const tick = () => setElapsed(Math.floor((Date.now() - playStartTime) / 1000));
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [playing, playStartTime]);
-
   const meterBadge = useMeterBadge();
   const trainerBadge = useTrainerBadge();
   const practiceBadge = usePracticeBadge();
@@ -112,7 +103,7 @@ export function HomePage() {
       const el = dialContainerRef.current;
       if (!el) return;
       const size = Math.round(el.clientWidth);
-      setDialSize(Math.max(240, Math.min(340, size)));
+      setDialSize(Math.max(200, Math.min(340, size)));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -184,7 +175,7 @@ export function HomePage() {
             <>
               <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
               <span className="text-sm font-semibold text-danger">Recording</span>
-              <span className="font-mono text-xs text-text-secondary">
+              <span aria-hidden="true" className="font-mono text-xs text-text-secondary">
                 {Math.floor(recording.elapsed / 60)}:{String(recording.elapsed % 60).padStart(2, '0')}
                 {recording.takeSeconds > 0 && ` / ${Math.floor(recording.takeSeconds / 60)}:${String(recording.takeSeconds % 60).padStart(2, '0')}`}
               </span>
@@ -193,15 +184,11 @@ export function HomePage() {
           ) : (
             <>
               {activeProject && <span className="text-sm text-text-secondary truncate max-w-[150px]">{activeProject.name}</span>}
-              {playing && elapsed > 0 ? (
-                <span className="font-mono text-xs text-text-muted">
-                  {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
-                </span>
-              ) : activeProject ? (
+              <PlayingClock playing={playing} startedAt={playStartTime} fallback={activeProject ? (
                 <span className="text-xs font-mono text-text-muted">
                   {activeProject.currentBpm} / {activeProject.goalBpm}
                 </span>
-              ) : null}
+              ) : null} />
             </>
           )}
         </div></PageHeader>
@@ -232,27 +219,25 @@ export function HomePage() {
               <span className="block text-xs text-text-muted mt-1">{includeClick ? 'Click' : 'Silent'} · {recordingPreferences.preparationSeconds ? `${recordingPreferences.preparationSeconds}s delay` : 'No delay'} · {recordingPreferences.takeSeconds ? takeLengthLabel(recordingPreferences.takeSeconds) : 'Manual stop'}</span>
             </summary>
           <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-2 disabled:opacity-60">
-            <legend className="text-xs font-semibold text-text-secondary mb-2">Click during recording</legend>
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" aria-pressed={includeClick} aria-label="Record with click" onClick={() => setIncludeClick(true)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>With click</button>
-              <button type="button" aria-pressed={!includeClick} aria-label="Record without click" onClick={() => setIncludeClick(false)} className={`min-h-[44px] rounded-xl border text-sm font-semibold ${!includeClick ? 'bg-accent-dim text-accent border-accent' : 'bg-bg-surface text-text-secondary border-border-subtle'}`}>Silent</button>
-            </div>
-            <p className="text-xs text-text-muted">{includeClick ? 'Use headphones to keep clicks out of your recording.' : 'No audible click. Follow the visual beat; timing feedback stays available.'}</p>
+            <legend className="ui-label mb-2">Click during recording</legend>
+            <SegmentedControl label="Click during recording" value={includeClick ? 'click' : 'silent'} onChange={(value) => setIncludeClick(value === 'click')}
+              options={[{ value: 'click', label: 'With click', ariaLabel: 'Record with click' }, { value: 'silent', label: 'Silent', ariaLabel: 'Record without click' }]} />
+            <p className="ui-hint">{includeClick ? 'Use headphones to keep clicks out of your recording.' : 'No audible click. Follow the visual beat; timing feedback stays available.'}</p>
           </fieldset>
             <fieldset disabled={captureBusy || analysis.isAnalyzing} className="p-3 pt-0 space-y-3 disabled:opacity-60">
               <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs font-semibold text-text-secondary">Preparation delay
-                  <select aria-label="Preparation delay" value={recordingPreferences.preparationSeconds} onChange={(event) => updateRecordingPreferences({ preparationSeconds: Number(event.target.value) })} className="mt-1 w-full min-h-[44px] rounded-lg border border-border-subtle bg-bg-primary px-2 text-sm text-text-primary">
+                <Field label="Preparation delay">
+                  <select value={recordingPreferences.preparationSeconds} onChange={(event) => updateRecordingPreferences({ preparationSeconds: Number(event.target.value) })} className="ui-select">
                     {PREPARATION_DELAYS.map((seconds) => <option key={seconds} value={seconds}>{seconds ? `${seconds} seconds` : 'None'}</option>)}
                   </select>
-                </label>
-                <label className="text-xs font-semibold text-text-secondary">Take length
-                  <select aria-label="Take length" value={recordingPreferences.takeSeconds} onChange={(event) => updateRecordingPreferences({ takeSeconds: Number(event.target.value) })} className="mt-1 w-full min-h-[44px] rounded-lg border border-border-subtle bg-bg-primary px-2 text-sm text-text-primary">
+                </Field>
+                <Field label="Take length">
+                  <select value={recordingPreferences.takeSeconds} onChange={(event) => updateRecordingPreferences({ takeSeconds: Number(event.target.value) })} className="ui-select">
                     {TAKE_LENGTHS.map((seconds) => <option key={seconds} value={seconds}>{seconds ? takeLengthLabel(seconds) : 'Stop manually'}</option>)}
                   </select>
-                </label>
+                </Field>
               </div>
-              <p className="text-xs text-text-muted">Take length includes count-in. You can stop early.</p>
+              <p className="ui-hint">Take length includes count-in. You can stop early.</p>
             </fieldset>
           </details>
           {recording.phase === 'countdown' && <p role="status" className="text-center text-xs text-text-secondary">Microphone ready. No audio is saved until the countdown ends.</p>}
@@ -294,11 +279,7 @@ export function HomePage() {
               onReset={resetMeterSection}
               help="Set the time signature and subdivision. Reset returns this section to 4/4 with no subdivision."
             >
-              <div className="space-y-4">
-                <MeterControl />
-                <SubdivisionPicker />
-                <GroupingPicker />
-              </div>
+              <Suspense fallback={sectionFallback}><MeterSection /></Suspense>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -306,7 +287,7 @@ export function HomePage() {
               onReset={resetPatternSection}
               help="Tap cells to set accent levels for each beat. Reset rebuilds the default accent pattern while keeping the selected main-track sounds."
             >
-              <BeatGrid />
+              <Suspense fallback={sectionFallback}><PatternSection /></Suspense>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -315,7 +296,7 @@ export function HomePage() {
               onReset={resetPracticeSection}
               help="Count-in, swing, gap click, random mute, and play/mute cycles. Reset disables all practice modes and restores their default probabilities."
             >
-              <PracticeModes />
+              <Suspense fallback={sectionFallback}><ModesSection /></Suspense>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -324,7 +305,7 @@ export function HomePage() {
               onReset={resetTrainerSection}
               help="Automatically increase BPM after a set number of bars. Reset disables Trainer and restores 80→140, +5 BPM every 4 bars."
             >
-              <TrainerConfig />
+              <Suspense fallback={sectionFallback}><TrainerSection /></Suspense>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -333,7 +314,7 @@ export function HomePage() {
               onReset={resetPolyrhythmSection}
               help="Add extra tracks with different beat counts. Reset removes extra tracks and restores the main track to an unmuted, straight state."
             >
-              <PolyrhythmControl />
+              <Suspense fallback={sectionFallback}><PolyrhythmSection /></Suspense>
             </CollapsibleCard>
           </fieldset>
         </aside>
@@ -364,4 +345,22 @@ export function HomePage() {
       /></Suspense>}
     </div>
   );
+}
+
+/**
+ * Elapsed playing time. Owns its one-second tick so the dial and settings do
+ * not re-render with it; hidden from the live region so it isn't announced
+ * every second.
+ */
+function PlayingClock({ playing, startedAt, fallback }: { playing: boolean; startedAt: number | null; fallback: ReactNode }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!playing || !startedAt) { setElapsed(0); return; }
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [playing, startedAt]);
+  if (!playing || elapsed <= 0) return <>{fallback}</>;
+  return <span aria-hidden="true" className="font-mono text-xs text-text-muted">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>;
 }

@@ -122,7 +122,7 @@ test('closing during export cancels late downloads, deduplicates starts, and rel
   });
   await expect.poll(() => page.evaluate(() => (window as any).renderCalls)).toBe(1);
   // The UI must stay responsive while a render is outstanding.
-  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.evaluate(() => (window as any).releaseExport());
   await page.getByRole('button', { name: /Review take.*120 BPM/ }).click();

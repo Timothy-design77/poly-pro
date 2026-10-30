@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Parallel worktrees can each run a preview server; PW_PORT keeps them apart.
+const port = Number(process.env.PW_PORT ?? 4173);
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 45_000,
@@ -8,15 +11,16 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173/poly-pro/',
+    baseURL: `http://127.0.0.1:${port}/poly-pro/`,
     serviceWorkers: 'allow',
     permissions: ['microphone'],
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'npm run preview -- --host 127.0.0.1 --port 4173',
-    url: 'http://127.0.0.1:4173/poly-pro/',
-    reuseExistingServer: !process.env.CI,
+    command: `npm run preview -- --host 127.0.0.1 --port ${port} --strictPort`,
+    url: `http://127.0.0.1:${port}/poly-pro/`,
+    // Never reuse a listener: it may be another worktree's build.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
   projects: [
